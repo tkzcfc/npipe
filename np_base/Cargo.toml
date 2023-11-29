@@ -1,0 +1,20 @@
+[package]
+name = "np_base"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# json自动序列化反序列化
+serde = { version = "1.0", features = ["derive"] }
+# json
+serde_json = "1"
+
+tokio = { version = "1", features = ["full"] }
+log = "0.4.0"
+
+
+[dev-dependencies]
+env_logger = "0.10.0"
+

@@ -1,0 +1,8 @@
+[workspace]
+
+members = [
+    "np_base",
+    "np_proto",
+    "np_client",
+    "np_server",
+]
