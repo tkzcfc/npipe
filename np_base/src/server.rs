@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
-use log::info;
+use log::{error, info};
 use tokio::sync::RwLock;
 use crate::connection::Connection;
 
@@ -19,17 +19,19 @@ pub struct TcpServer {
 
 impl TcpServer {
     pub async fn run<F, Fut>(&self, listener: TcpListener, on_new_connection_callback: F) -> crate::Result<()>
-        where F: Fn(CallbackConnectionType) -> Fut + Copy + Send + Sync + 'static,
+        where F: Fn(CallbackConnectionType) -> Fut + Send + Sync + Clone + 'static,
               Fut: Future<Output = crate::Result<()>> + Send + 'static
     {
         info!("accepting inbound connections");
         loop {
             let (socket, addr) = self.accept(&listener).await?;
             info!("new connection: {}", addr);
+
+            let callback = on_new_connection_callback.clone();
             tokio::spawn(async move {
                 let connection = Connection::new(socket, addr);
-                if let Err(err) = on_new_connection_callback(connection).await {
-
+                if let Err(err) = callback(Arc::clone(&connection)).await {
+                    error!("{}", addr);
                 }
             });
         }

@@ -1,7 +1,10 @@
 use std::cell::RefCell;
 use std::{env, mem};
-use std::fmt::{Debug, Display};
-use std::sync::Arc;
+use std::fmt::{Debug, Display, format};
+use std::future::Future;
+use std::pin::Pin;
+use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 use log::info;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
@@ -68,69 +71,51 @@ impl Observer for User{
     }
 }
 
-fn test_func_1(param1: &(impl Clone + Debug + Display), param2: & mut(impl Clone + Display)) -> i32 {
-    0
-}
-
-fn test_func_2<T: Clone + Debug + Display, U: Clone + Display>(param1: &T, param2: &mut U) -> i32 {
-    0
-}
-
-fn test_func_3<T, U>(param1: &T, param2: &mut U) -> i32
-    where T: Clone + Debug + Display,
-          U: Clone + Display
-{
-    0
-}
-
 #[tokio::main]
 pub async fn main() -> Result<()> {
     env::set_var("RUST_LOG", "info");
     env_logger::init();
 
-    let mut var = String::from("aaa");
-    test_func_1(&String::from("aaaa"), &mut var);
-    test_func_2(&String::from("aaaa"), &mut var);
-    test_func_3(&String::from("aaaa"), &mut var);
+    let count = Arc::new(tokio::sync::RwLock::new(0));
 
-    // let listener = TcpListener::bind("0.0.0.0:2000").await?;
-    // let server = TcpServer {};
-    // server.run(listener, |connection| async {
-    //             // connection.stream.write_all(b"ok!").await;
-    //             // connection.stream.flush().await;
-    //             // connection.stream.shutdown().await;
-    //             // info!("write finish: {}", connection.addr);
-    // }).await?;
+    let count_copyed = Arc::clone(&count);
 
-    // tokio::spawn(async {
-    //     MANAGER_INSTANCE.lock().unwrap().call_me();
+    let listener = TcpListener::bind("0.0.0.0:2000").await?;
+    let server = TcpServer {};
+    server.run(listener, |connection| async move {
+        let mut connection = connection.write().await;
+
+        // let mut n =  count_copyed.write().await;
+        // *n = *n + 1;
+
+        let content = String::from("ok");
+        let response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}", content.len(), content);
+        connection.stream.write(response.as_bytes()).await?;
+        connection.stream.flush().await?;
+        connection.stream.shutdown().await?;
+        info!("send ok!");
+        Ok(())
+    }).await?;
+
+    // let count = Arc::new(tokio::sync::RwLock::new(0));
+    // tokio::spawn(async move {
+    //     let mut n =  count.write().await;
+    //     *n = *n + 1;
     // }).await;
 
-    // let listener = TcpListener::bind("0.0.0.0:2000").await?;
-    //
-    // server::run(listener, |mut connection: Connection| {
-    //     info!("new connection: {}", connection.addr);
-    //     tokio::spawn(async move {
-    //         connection.stream.write_all(b"ok!").await;
-    //         connection.stream.flush().await;
-    //         connection.stream.shutdown().await;
-    //         info!("write finish: {}", connection.addr);
-    //     });
-    // }).await?;
+    let server = Arc::new(Mutex::new(WechatServer::new()));
+    server.lock().unwrap().register_observer(Box::new(User{name:"张三"}));
+    server.lock().unwrap().register_observer(Box::new(User{name:"李四"}));
+    server.lock().unwrap().register_observer(Box::new(User{name:"王五"}));
 
-    // let server = Arc::new(Mutex::new(WechatServer::new()));
-    // server.lock().unwrap().register_observer(Box::new(User{name:"张三"}));
-    // server.lock().unwrap().register_observer(Box::new(User{name:"李四"}));
-    // server.lock().unwrap().register_observer(Box::new(User{name:"王五"}));
-    //
-    // let mut server_clone = Arc::clone(&server);
-    // tokio::spawn(async move {
-    //     server_clone.lock().unwrap().set_data_msg("这是测试消息");
-    //     // server.register_observer(Box::new(User{name:"赵六"}));
-    //     // server.remove_observer(1);
-    //     // server.register_observer(Box::new(User{name:"田七"}));
-    //     // server.set_data_msg("rust是最棒的");
-    // });
+    let mut server_clone = Arc::clone(&server);
+    tokio::spawn(async move {
+        server_clone.lock().unwrap().set_data_msg("这是测试消息");
+        // server.register_observer(Box::new(User{name:"赵六"}));
+        server_clone.lock().unwrap().remove_observer(1);
+        // server.register_observer(Box::new(User{name:"田七"}));
+        // server.set_data_msg("rust是最棒的");
+    });
     // println!("----------------->>>");
     Ok(())
 }
