@@ -1,8 +1,8 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
-use bytes::{Buf, BytesMut};
+use bytes::{BytesMut};
 use log::trace;
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter};
+use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::net::TcpStream;
 use tokio::sync::RwLock;
 

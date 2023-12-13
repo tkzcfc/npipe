@@ -11,6 +11,7 @@ tokio = { version = "1", features = ["full"] }
 log = "0.4.0"
 env_logger = "0.10.0"
 lazy_static = { version = "1.4.0", features = [] }
-
+bytes = { version = "1", features = [] }
+byteorder = "1.5.0"
 
 [dev-dependencies]

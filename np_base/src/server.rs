@@ -1,6 +1,5 @@
 use std::future::Future;
 use std::net::SocketAddr;
-use std::pin::Pin;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use log::{error, info};
@@ -30,7 +29,7 @@ impl TcpServer {
             let callback = on_new_connection_callback.clone();
             tokio::spawn(async move {
                 let connection = Connection::new(socket, addr);
-                if let Err(err) = callback(Arc::clone(&connection)).await {
+                if let Err(_err) = callback(Arc::clone(&connection)).await {
                     error!("{}", addr);
                 }
             });
