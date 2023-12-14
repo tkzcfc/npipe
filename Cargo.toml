@@ -1,6 +1,7 @@
 [workspace]
 
 members = [
+    "np_macro",
     "np_base",
     "np_client",
     "np_server",

@@ -78,9 +78,14 @@ impl Session {
                     // info!("socket[{}] read len: {}, total len: {}", self.addr, _n, buffer.len());
 
                     loop {
+                        match self.status {
+                            SessionStatus::Connected=>{},
+                            // 已经断开或正在端口，不继续处理后续数据
+                            _=>break
+                        }
                         if let Ok(result) = try_extract_frame(&mut buffer) {
                             if let Some(frame) = result {
-                                self.on_recv_pkg_frame(frame);
+                                self.on_recv_pkg_frame(frame).await;
                             }
                             else {
                                 break;
@@ -104,10 +109,18 @@ impl Session {
         }
     }
 
-    fn on_recv_pkg_frame(&self, frame : Vec<u8>) {
-        info!("recv pkg frame: {}", frame.iter()
-                                    .map(|x| (x + 0) as char)
-                                    .collect::<String>());
+    async fn on_recv_pkg_frame(&mut self, frame : Vec<u8>) {
+        if(frame.len() < 8) {
+            self.disconnect().await?;
+            return;
+        }
+        // 消息序号
+        let serial: i32 = BigEndian::read_i32(&frame[0..4]);
+        // 消息类型id
+        let msg_id: u32 = BigEndian::read_u32(&frame[4..8]);
+        // 消息数据
+        let msg_binary_data = &frame[8..];
+        println!("msglen:{}", msg_binary_data.len());
     }
 
     pub fn status(&self) -> &SessionStatus {
