@@ -3,10 +3,11 @@ use std::net::SocketAddr;
 use tokio::sync::RwLock;
 use std::sync::Arc;
 use bytes::{BytesMut};
-use log::{error, info};
+use log::{debug, error, info};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use byteorder::{ByteOrder, BigEndian};
+use crate::player::Player;
 
 #[derive(PartialEq)]
 pub enum SessionStatus {
@@ -18,6 +19,7 @@ pub enum SessionStatus {
 pub struct Session {
     pub socket : TcpStream,
     pub addr: SocketAddr,
+    pub player: Option<Arc<RwLock<Player>>>,
     status: SessionStatus,
 }
 
@@ -27,6 +29,7 @@ impl Session {
         Arc::new(RwLock::new(Session {
             socket,
             addr,
+            player: Option::None,
             status: SessionStatus::Connected
         }))
     }
@@ -36,11 +39,16 @@ impl Session {
             SessionStatus::Connected => {
                 self.status = SessionStatus::Disconnecting;
 
+                if let Some(ref player) = self.player {
+                    player.write().await.on_disconnect_session().await;
+                    self.player = Option::None;
+                }
+
                 if let Err(err) = self.socket.shutdown().await {
                     error!("socket[{}] shutdown error: {:?}", self.addr, err);
                 }
                 else {
-                    info!("socket[{}] shutdown success.", self.addr);
+                    debug!("socket[{}] shutdown success.", self.addr);
                 }
                 self.status = SessionStatus::Disconnected;
             }
@@ -61,7 +69,9 @@ impl Session {
             match self.socket.read_buf(&mut buffer).await {
                 // n为0表示对端已经关闭连接。
                 Ok(n) if n == 0 => {
-                    info!("socket[{}] closed.", self.addr);
+                    debug!("socket[{}] closed.", self.addr);
+                    // 客户端主动断开
+                    self.disconnect().await;
                     return;
                 }
                 Ok(_n) => {
@@ -77,7 +87,7 @@ impl Session {
                             }
                         }
                         else {
-                            info!("data parsing failed");
+                            debug!("data parsing failed");
                             // 消息解析错误主动断开
                             self.disconnect().await;
                             return;
@@ -86,6 +96,8 @@ impl Session {
                 }
                 Err(e) => {
                     error!("Failed to read from socket[{}]: {}", self.addr, e);
+                    // socket读错误
+                    self.disconnect().await;
                     return;
                 }
             }
@@ -100,6 +112,28 @@ impl Session {
 
     pub fn status(&self) -> &SessionStatus {
         return &self.status;
+    }
+
+    pub async fn reset_player(&mut self, value: Option<Arc<RwLock<Player>>>) {
+        // 一般只有账号在其他地方登录才会导致重置player，此时可以向这个会话发送被顶号消息然后关闭连接
+        if let Some(ref player) = self.player {
+            // 这个时候应该是穿的None才对
+            assert!(value.is_none());
+
+            // 发送顶号通知
+            player.write().await.on_terminate_old_session().await;
+            self.disconnect().await;
+        }
+        else {
+            // 正常初始化
+            assert!(value.is_some());
+            self.player = value;
+
+            // 玩家登录成功
+            if let Some(ref player) = self.player {
+                player.write().await.on_connect_session().await;
+            }
+        }
     }
 }
 
