@@ -12,7 +12,7 @@ async fn run_server()-> io::Result<()> {
         let (socket, addr) = listener.accept().await?;
 
         debug!("new connection: {}", addr);
-        let session = SESSIONMANAGER.write().await.new_session(socket, addr);
+        let session = SESSIONMANAGER.write().await.new_session(socket, addr).await;
         // 新连接单独起一个异步任务处理
         tokio::spawn(async move {
             session.write().await.read_poll().await;

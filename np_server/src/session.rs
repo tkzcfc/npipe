@@ -2,15 +2,23 @@ use std::io;
 use std::net::SocketAddr;
 use tokio::sync::RwLock;
 use std::sync::Arc;
-use bytes::{Buf, BytesMut};
+use bytes::{BytesMut};
 use log::{error, info};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use byteorder::{ByteOrder, BigEndian};
 
+#[derive(PartialEq)]
+pub enum SessionStatus {
+    Connected,
+    Disconnecting,
+    Disconnected
+}
+
 pub struct Session {
     pub socket : TcpStream,
-    pub addr: SocketAddr
+    pub addr: SocketAddr,
+    status: SessionStatus,
 }
 
 impl Session {
@@ -18,16 +26,25 @@ impl Session {
     pub fn new(socket: TcpStream, addr: SocketAddr) -> Arc<RwLock<Session>> {
         Arc::new(RwLock::new(Session {
             socket,
-            addr
+            addr,
+            status: SessionStatus::Connected
         }))
     }
 
     pub async fn disconnect(&mut self) {
-        if let Err(err) = self.socket.shutdown().await {
-            error!("socket[{}] shutdown error: {:?}", self.addr, err);
-        }
-        else {
-            info!("socket[{}] shutdown success.", self.addr);
+        match self.status {
+            SessionStatus::Connected => {
+                self.status = SessionStatus::Disconnecting;
+
+                if let Err(err) = self.socket.shutdown().await {
+                    error!("socket[{}] shutdown error: {:?}", self.addr, err);
+                }
+                else {
+                    info!("socket[{}] shutdown success.", self.addr);
+                }
+                self.status = SessionStatus::Disconnected;
+            }
+            _=>{}
         }
     }
 
@@ -79,6 +96,10 @@ impl Session {
         info!("recv pkg frame: {}", frame.iter()
                                     .map(|x| (x + 0) as char)
                                     .collect::<String>());
+    }
+
+    pub fn status(&self) -> &SessionStatus {
+        return &self.status;
     }
 }
 
