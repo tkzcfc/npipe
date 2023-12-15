@@ -9,6 +9,8 @@ use tokio::net::TcpStream;
 use byteorder::{ByteOrder, BigEndian};
 use crate::player::Player;
 use prost::Message;
+use np_base::client_server;
+use np_base::message_map::parse_message;
 
 
 #[derive(PartialEq)]
@@ -147,29 +149,21 @@ impl Session {
         let serial: i32 = BigEndian::read_i32(&frame[0..4]);
         // 消息类型id
         let msg_id: u32 = BigEndian::read_u32(&frame[4..8]);
-        // 消息数据
-        let bytes = &frame[8..];
-        println!("msglen:{}", bytes.len());
+        // // 消息数据
+        // let bytes = &frame[8..];
+        // println!("msglen:{}", bytes.len());
 
-        let _ = np_base::protos::LoginAck::decode(bytes);
+        match parse_message(msg_id, &frame[8..]) {
+            Ok(message) => {
 
-        // let num = 1;
-        // match (num) {
-        //     dispatch_message!(on_login_requst),
-        //     (_)=>{}
-        // }
-        // let message_id = 100i32;
-        // match message_id {
-        //     dispatch_message1!(101i32 | on_logout_request) |
-        //     _ => {}
-        // }
+            },
+            Err(err) => {
+                error!("pb parse error: {}", err);
+            }
+        }
     }
 
-    async fn on_login_requst(&mut self, message: np_base::protos::LoginAck) {
-
-    }
-
-    fn on_logout_request(&mut self) {
+    async fn on_login_requst(&mut self, message: client_server::LoginReq) {
 
     }
 }
