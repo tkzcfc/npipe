@@ -3,7 +3,7 @@ use protoc_prebuilt::init;
 use std::env::set_var;
 use prost_build::Config;
 use std::{env, fs};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use regex::Regex;
 use heck::{ToSnakeCase, ToUpperCamelCase};
 use std::collections::{HashMap, HashSet};
@@ -40,11 +40,17 @@ fn main() {
     let id_match_re = Regex::new(r#"enum\s+MsgId\s+"#).unwrap();
     let id_re = Regex::new(r#"Id\s+=\s+(\d+);"#).unwrap();
 
+    const BACKUP_AND_COPY_FILE: bool = true;
     let mut backups = HashMap::new();
     let mut messages = Vec::new();
 
     // 备份并修改协议文件
     proto_file_list.iter().for_each(|filename| {
+        if BACKUP_AND_COPY_FILE {
+            let backup_file_name = get_backup_file_name(filename);
+            fs::copy(env::current_dir().unwrap().join(filename), backup_file_name).unwrap();
+        }
+
         // 当前包名
         let mut package_name = String::new();
         // 当前消息名称
@@ -55,7 +61,10 @@ fn main() {
         let mut lines = Vec::new();
 
         let contents = fs::read_to_string(filename).unwrap();
-        backups.insert(filename.to_string(), contents.clone());
+
+        if !BACKUP_AND_COPY_FILE {
+            backups.insert(filename.to_string(), contents.clone());
+        }
 
         for line in contents.lines() {
             lines.push(line.to_string());
@@ -104,9 +113,19 @@ fn main() {
         .compile_protos(&proto_file_list, &include_list);
 
     // 还原协议文件
-    proto_file_list.iter().for_each(|filename| {
-        fs::write(env::current_dir().unwrap().join(filename), backups.get(*filename).unwrap()).expect("restore failed");
-    });
+    if BACKUP_AND_COPY_FILE {
+        proto_file_list.iter().for_each(|filename| {
+            let backup_file_name = get_backup_file_name(filename);
+            let filename = env::current_dir().unwrap().join(filename);
+            fs::remove_file(&filename).unwrap();
+            fs::rename(backup_file_name, filename).unwrap();
+        });
+    }
+    else {
+        proto_file_list.iter().for_each(|filename| {
+            fs::write(env::current_dir().unwrap().join(filename), backups.get(*filename).unwrap()).expect("restore failed");
+        });
+    }
 
     // 将生成的 pb.abc_def.rc重命名为abc_def.rc
     for entry in fs::read_dir(out_dir).unwrap() {
@@ -143,7 +162,7 @@ fn main() {
 
 /// Converts a `camelCase` or `SCREAMING_SNAKE_CASE` identifier to a `lower_snake` case Rust field
 /// identifier.
-pub fn to_snake(s: &str) -> String {
+fn to_snake(s: &str) -> String {
     let mut ident = s.to_snake_case();
 
     // Use a raw identifier if the identifier matches a Rust keyword:
@@ -169,7 +188,7 @@ pub fn to_snake(s: &str) -> String {
 }
 
 /// Converts a `snake_case` identifier to an `UpperCamel` case Rust type identifier.
-pub fn to_upper_camel(s: &str) -> String {
+fn to_upper_camel(s: &str) -> String {
     let mut ident = s.to_upper_camel_case();
 
     // Suffix an underscore for the `Self` Rust keyword as it is not allowed as raw identifier.
@@ -177,6 +196,11 @@ pub fn to_upper_camel(s: &str) -> String {
         ident += "_";
     }
     ident
+}
+
+fn get_backup_file_name(file_name: &str) -> PathBuf {
+    let new_name = format!("{}.backup", file_name);
+    env::current_dir().unwrap().join(new_name)
 }
 
 fn format_package_name(message_info: &MessageInfo) -> String{
@@ -229,7 +253,7 @@ pub fn get_message_id(message: MessageType) ->u32 {{
     }}
 }}
 
-pub fn parse_message(message_id: u32, bytes: &[u8]) -> Result<MessageType, DecodeError> {{
+pub fn decode_message(message_id: u32, bytes: &[u8]) -> Result<MessageType, DecodeError> {{
     match message_id {{
 {}
         _ => Err(DecodeError::new("unknown message id"))

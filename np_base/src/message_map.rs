@@ -14,7 +14,7 @@ pub fn get_message_id(message: MessageType) ->u32 {
     }
 }
 
-pub fn parse_message(message_id: u32, bytes: &[u8]) -> Result<MessageType, DecodeError> {
+pub fn decode_message(message_id: u32, bytes: &[u8]) -> Result<MessageType, DecodeError> {
     match message_id {
         1001u32 => {
             match super::client_server::LoginReq::decode(bytes) {

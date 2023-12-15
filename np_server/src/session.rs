@@ -10,7 +10,7 @@ use byteorder::{ByteOrder, BigEndian};
 use crate::player::Player;
 use prost::Message;
 use np_base::client_server;
-use np_base::message_map::parse_message;
+use np_base::message_map::{MessageType, decode_message};
 
 
 #[derive(PartialEq)]
@@ -60,9 +60,10 @@ impl Session {
         }
     }
 
-    pub async fn write_frame(&mut self, frame: Vec<u8>) -> io::Result<()> {
-        self.socket.write_u32(frame.len() as u32).await?;
-        self.socket.write_all(&frame[..]).await
+    pub async fn send_message(&mut self, message_type: MessageType) -> io::Result<()> {
+        // self.socket.write_u32(frame.len() as u32).await?;
+        // self.socket.write_all(&frame[..]).await
+        Ok(())
     }
 
 
@@ -153,7 +154,7 @@ impl Session {
         // let bytes = &frame[8..];
         // println!("msglen:{}", bytes.len());
 
-        match parse_message(msg_id, &frame[8..]) {
+        match decode_message(msg_id, &frame[8..]) {
             Ok(message) => {
 
             },
