@@ -280,7 +280,7 @@ fn build(
         let entry = entry?;
         let path = entry.path();
 
-        // 判断文件是否以.pb.开头
+        // 判断文件是否以pb.开头
         if let Some(name) = path.file_stem() {
             if name.to_string_lossy().starts_with("pb.") {
                 let new_name = name.to_string_lossy().replace("pb.", "");
