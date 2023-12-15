@@ -8,6 +8,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use byteorder::{ByteOrder, BigEndian};
 use crate::player::Player;
+use prost::Message;
+
 
 #[derive(PartialEq)]
 pub enum SessionStatus {
@@ -61,6 +63,33 @@ impl Session {
         self.socket.write_all(&frame[..]).await
     }
 
+
+    pub fn status(&self) -> &SessionStatus {
+        return &self.status;
+    }
+
+    pub async fn reset_player(&mut self, value: Option<Arc<RwLock<Player>>>) {
+        // 一般只有账号在其他地方登录才会导致重置player，此时可以向这个会话发送被顶号消息然后关闭连接
+        if let Some(ref player) = self.player {
+            // 这个时候应该是穿的None才对
+            assert!(value.is_none());
+
+            // 发送顶号通知
+            player.write().await.on_terminate_old_session().await;
+            self.disconnect().await;
+        }
+        else {
+            // 正常初始化
+            assert!(value.is_some());
+            self.player = value;
+
+            // 玩家登录成功
+            if let Some(ref player) = self.player {
+                player.write().await.on_connect_session().await;
+            }
+        }
+    }
+
     pub async fn read_poll(&mut self) {
         let mut buffer = BytesMut::with_capacity(1024);
 
@@ -110,8 +139,8 @@ impl Session {
     }
 
     async fn on_recv_pkg_frame(&mut self, frame : Vec<u8>) {
-        if(frame.len() < 8) {
-            self.disconnect().await?;
+        if frame.len() < 8 {
+            self.disconnect().await;
             return;
         }
         // 消息序号
@@ -119,34 +148,29 @@ impl Session {
         // 消息类型id
         let msg_id: u32 = BigEndian::read_u32(&frame[4..8]);
         // 消息数据
-        let msg_binary_data = &frame[8..];
-        println!("msglen:{}", msg_binary_data.len());
+        let bytes = &frame[8..];
+        println!("msglen:{}", bytes.len());
+
+        let _ = np_base::protos::LoginAck::decode(bytes);
+
+        // let num = 1;
+        // match (num) {
+        //     dispatch_message!(on_login_requst),
+        //     (_)=>{}
+        // }
+        // let message_id = 100i32;
+        // match message_id {
+        //     dispatch_message1!(101i32 | on_logout_request) |
+        //     _ => {}
+        // }
     }
 
-    pub fn status(&self) -> &SessionStatus {
-        return &self.status;
+    async fn on_login_requst(&mut self, message: np_base::protos::LoginAck) {
+
     }
 
-    pub async fn reset_player(&mut self, value: Option<Arc<RwLock<Player>>>) {
-        // 一般只有账号在其他地方登录才会导致重置player，此时可以向这个会话发送被顶号消息然后关闭连接
-        if let Some(ref player) = self.player {
-            // 这个时候应该是穿的None才对
-            assert!(value.is_none());
+    fn on_logout_request(&mut self) {
 
-            // 发送顶号通知
-            player.write().await.on_terminate_old_session().await;
-            self.disconnect().await;
-        }
-        else {
-            // 正常初始化
-            assert!(value.is_some());
-            self.player = value;
-
-            // 玩家登录成功
-            if let Some(ref player) = self.player {
-                player.write().await.on_connect_session().await;
-            }
-        }
     }
 }
 

@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package PB.ServerClient;
+
+// 登录回复
+message LoginAck {
+  enum MsgId {None = 0; Id = 1002;}
+  int32 code = 1;
+}

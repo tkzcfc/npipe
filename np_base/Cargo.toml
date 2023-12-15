@@ -8,8 +8,14 @@ build = "build.rs"
 
 [dependencies]
 prost = "0.12"
+regex = "1.10.2"
+bytes = { version = "1.5.0", features = [] }
+heck = "0.3.3"
 
 [build-dependencies]
 prost-build = "0.12"
 protoc-prebuilt = "0.2.0"
+regex = "1"
+heck = "0.4"
+
 

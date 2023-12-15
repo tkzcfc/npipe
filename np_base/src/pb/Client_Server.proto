@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package PB.Client_Server;
+
+// 登录请求
+message LoginReq {
+  enum MsgId {None = 0; Id = 1001;}
+  // 用户名
+  string username = 1;
+  // 密码
+  string password = 2;
+}
