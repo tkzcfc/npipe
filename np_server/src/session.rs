@@ -1,42 +1,40 @@
+use crate::player::Player;
+use byteorder::{BigEndian, ByteOrder};
+use bytes::BytesMut;
+use log::Level::Error;
+use log::{debug, error, info};
+use np_base::client_server;
+use np_base::message_map::{decode_message, encode_message, get_message_id, MessageType};
+use prost::Message;
 use std::io;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
-use tokio::sync::RwLock;
 use std::sync::Arc;
-use bytes::{BytesMut};
-use log::{debug, error, info};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use byteorder::{ByteOrder, BigEndian};
-use log::Level::Error;
-use crate::player::Player;
-use prost::Message;
-use np_base::client_server;
-use np_base::message_map::{MessageType, decode_message, encode_message, get_message_id};
-
+use tokio::sync::RwLock;
 
 #[derive(PartialEq)]
 pub enum SessionStatus {
     Connected,
     Disconnecting,
-    Disconnected
+    Disconnected,
 }
 
 pub struct Session {
-    pub socket : TcpStream,
+    pub socket: TcpStream,
     pub addr: SocketAddr,
     pub player: Option<Arc<RwLock<Player>>>,
     status: SessionStatus,
 }
 
 impl Session {
-
     pub fn new(socket: TcpStream, addr: SocketAddr) -> Arc<RwLock<Session>> {
         Arc::new(RwLock::new(Session {
             socket,
             addr,
             player: Option::None,
-            status: SessionStatus::Connected
+            status: SessionStatus::Connected,
         }))
     }
 
@@ -52,13 +50,12 @@ impl Session {
 
                 if let Err(err) = self.socket.shutdown().await {
                     error!("socket[{}] shutdown error: {:?}", self.addr, err);
-                }
-                else {
+                } else {
                     debug!("socket[{}] shutdown success.", self.addr);
                 }
                 self.status = SessionStatus::Disconnected;
             }
-            _=>{}
+            _ => {}
         }
     }
 
@@ -74,7 +71,6 @@ impl Session {
         Err(io::Error::new(ErrorKind::Other, "encode message error!"))
     }
 
-
     pub fn status(&self) -> &SessionStatus {
         return &self.status;
     }
@@ -88,8 +84,7 @@ impl Session {
             // 发送顶号通知
             player.write().await.on_terminate_old_session().await;
             self.disconnect().await;
-        }
-        else {
+        } else {
             // 正常初始化
             assert!(value.is_some());
             self.player = value;
@@ -119,19 +114,17 @@ impl Session {
 
                     loop {
                         match self.status {
-                            SessionStatus::Connected=>{},
+                            SessionStatus::Connected => {}
                             // 已经断开或正在端口，不继续处理后续数据
-                            _=>break
+                            _ => break,
                         }
                         if let Ok(result) = try_extract_frame(&mut buffer) {
                             if let Some(frame) = result {
                                 self.on_recv_pkg_frame(frame).await;
-                            }
-                            else {
+                            } else {
                                 break;
                             }
-                        }
-                        else {
+                        } else {
                             debug!("data parsing failed");
                             // 消息解析错误主动断开
                             self.disconnect().await;
@@ -149,7 +142,7 @@ impl Session {
         }
     }
 
-    async fn on_recv_pkg_frame(&mut self, frame : Vec<u8>) {
+    async fn on_recv_pkg_frame(&mut self, frame: Vec<u8>) {
         if frame.len() < 8 {
             self.disconnect().await;
             return;
@@ -162,21 +155,17 @@ impl Session {
         match decode_message(msg_id, &frame[8..]) {
             Ok(message) => {
                 if let Err(err) = self.on_recv_message(serial, &message).await {
-                    error!("request error: {}, message id: {}", err, get_message_id(&message));
+                    error!(
+                        "request error: {}, message id: {}",
+                        err,
+                        get_message_id(&message)
+                    );
                 }
-            },
+            }
             Err(err) => {
                 error!("pb parse error: {}", err);
             }
         }
-    }
-
-    async fn on_recv_message(&mut self, serial: i32, message: &MessageType) -> io::Result<()>  {
-        Ok(())
-    }
-
-    async fn on_login_requst(&mut self, serial: i32, message: &client_server::LoginReq) -> io::Result<()> {
-        Ok(())
     }
 }
 
@@ -192,7 +181,10 @@ fn try_extract_frame(buffer: &mut BytesMut) -> io::Result<Option<Vec<u8>>> {
 
     // 超出最大限制
     if len <= 0 || len >= 1024 * 1024 * 5 {
-        return Err(io::Error::new(io::ErrorKind::Other, String::from("bad length")));
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            String::from("bad length"),
+        ));
     }
 
     // 数据不够
@@ -204,4 +196,3 @@ fn try_extract_frame(buffer: &mut BytesMut) -> io::Result<Option<Vec<u8>>> {
 
     Ok(Some(frame))
 }
-

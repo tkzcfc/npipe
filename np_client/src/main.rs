@@ -1,5 +1,5 @@
-use std::{env, io};
 use std::time::Duration;
+use std::{env, io};
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpSocket, TcpStream};
 use tokio::time::sleep;
@@ -12,7 +12,7 @@ pub async fn main() -> io::Result<()> {
     run_client().await
 }
 
-async fn run_client() ->io::Result<()> {
+async fn run_client() -> io::Result<()> {
     let addr = "127.0.0.1:2000".parse().unwrap();
 
     let socket = TcpSocket::new_v4()?;
@@ -23,7 +23,6 @@ async fn run_client() ->io::Result<()> {
     stream.write_u32(frame.len() as u32).await?;
     stream.flush().await?;
     sleep(Duration::from_secs(1)).await;
-
 
     stream.write_all(&frame[..]).await?;
 
@@ -36,4 +35,3 @@ async fn run_client() ->io::Result<()> {
 
     Ok(())
 }
-
