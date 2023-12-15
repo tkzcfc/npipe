@@ -6,7 +6,7 @@ use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::env::set_var;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::{Path};
 use std::{env, fs};
 
 #[derive(Debug)]
