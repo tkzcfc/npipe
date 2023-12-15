@@ -1,4 +1,5 @@
 use std::io;
+use std::io::ErrorKind;
 use std::net::SocketAddr;
 use tokio::sync::RwLock;
 use std::sync::Arc;
@@ -7,10 +8,11 @@ use log::{debug, error, info};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use byteorder::{ByteOrder, BigEndian};
+use log::Level::Error;
 use crate::player::Player;
 use prost::Message;
 use np_base::client_server;
-use np_base::message_map::{MessageType, decode_message};
+use np_base::message_map::{MessageType, decode_message, encode_message, get_message_id};
 
 
 #[derive(PartialEq)]
@@ -60,10 +62,16 @@ impl Session {
         }
     }
 
-    pub async fn send_message(&mut self, message_type: MessageType) -> io::Result<()> {
-        // self.socket.write_u32(frame.len() as u32).await?;
-        // self.socket.write_all(&frame[..]).await
-        Ok(())
+    pub async fn send_message(&mut self, serial: i32, message: &MessageType) -> io::Result<()> {
+        if let Some((id, buf)) = encode_message(message) {
+            self.socket.write_i32(serial).await?;
+            self.socket.write_u32(id).await?;
+            self.socket.write_all(&buf).await?;
+            return Ok(());
+        }
+
+        error!("encode message error!");
+        Err(io::Error::new(ErrorKind::Other, "encode message error!"))
     }
 
 
@@ -150,13 +158,12 @@ impl Session {
         let serial: i32 = BigEndian::read_i32(&frame[0..4]);
         // 消息类型id
         let msg_id: u32 = BigEndian::read_u32(&frame[4..8]);
-        // // 消息数据
-        // let bytes = &frame[8..];
-        // println!("msglen:{}", bytes.len());
 
         match decode_message(msg_id, &frame[8..]) {
             Ok(message) => {
-
+                if let Err(err) = self.on_recv_message(serial, &message).await {
+                    error!("request error: {}, message id: {}", err, get_message_id(&message));
+                }
             },
             Err(err) => {
                 error!("pb parse error: {}", err);
@@ -164,8 +171,12 @@ impl Session {
         }
     }
 
-    async fn on_login_requst(&mut self, message: client_server::LoginReq) {
+    async fn on_recv_message(&mut self, serial: i32, message: &MessageType) -> io::Result<()>  {
+        Ok(())
+    }
 
+    async fn on_login_requst(&mut self, serial: i32, message: &client_server::LoginReq) -> io::Result<()> {
+        Ok(())
     }
 }
 

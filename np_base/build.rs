@@ -219,7 +219,8 @@ fn format_message_type_name(message_info: &MessageInfo) -> String {
 fn build_code(messages: &Vec<MessageInfo>) ->String {
     let mut code_message = Vec::new();
     let mut code_get_message_id = Vec::new();
-    let mut code_parse_message = Vec::new();
+    let mut code_decode_message = Vec::new();
+    let mut code_encode_message = Vec::new();
 
     messages.iter().for_each(|info| {
         let code = format!("    {}({}),", format_message_type_name(info), format_message_full_type(info));
@@ -236,7 +237,10 @@ fn build_code(messages: &Vec<MessageInfo>) ->String {
                 Err(err)=> Err(err)
             }}
         }}"#, info.id, format_message_full_type(info), format_message_type_name(info));
-        code_parse_message.push(code);
+        code_decode_message.push(code);
+
+        let code = format!(r#"        MessageType::{}(msg) => Some(({}u32, msg.encode_to_vec())),"#, format_message_type_name(info), info.id);
+        code_encode_message.push(code);
     });
 
     let code = format!(r#"use prost::{{DecodeError, Message}};
@@ -246,7 +250,7 @@ pub enum MessageType {{
 {}
 }}
 
-pub fn get_message_id(message: MessageType) ->u32 {{
+pub fn get_message_id(message: &MessageType) ->u32 {{
     match message {{
 {}
         _=> panic!("error message")
@@ -259,9 +263,18 @@ pub fn decode_message(message_id: u32, bytes: &[u8]) -> Result<MessageType, Deco
         _ => Err(DecodeError::new("unknown message id"))
     }}
 }}
+
+pub fn encode_message(message: &MessageType) -> Option<(u32, Vec<u8>)> {{
+    match message {{
+{}
+        _=> None
+    }}
+}}
+
 "#, code_message.join("\n")
                        , code_get_message_id.join("\n")
-                       , code_parse_message.join("\n")
+                       , code_decode_message.join("\n")
+                       , code_encode_message.join("\n")
     );
 
     code

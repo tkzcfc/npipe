@@ -6,7 +6,7 @@ pub enum MessageType {
     ServerClientLoginAck(super::server_client::LoginAck),
 }
 
-pub fn get_message_id(message: MessageType) ->u32 {
+pub fn get_message_id(message: &MessageType) ->u32 {
     match message {
         MessageType::ClientServerLoginReq(_) => 1001u32,
         MessageType::ServerClientLoginAck(_) => 1002u32,
@@ -31,3 +31,12 @@ pub fn decode_message(message_id: u32, bytes: &[u8]) -> Result<MessageType, Deco
         _ => Err(DecodeError::new("unknown message id"))
     }
 }
+
+pub fn encode_message(message: &MessageType) -> Option<(u32, Vec<u8>)> {
+    match message {
+        MessageType::ClientServerLoginReq(msg) => Some((1001u32, msg.encode_to_vec())),
+        MessageType::ServerClientLoginAck(msg) => Some((1002u32, msg.encode_to_vec())),
+        _=> None
+    }
+}
+
