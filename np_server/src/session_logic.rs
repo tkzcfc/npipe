@@ -1,14 +1,12 @@
 use crate::session::Session;
-use np_base::{client_server, generic};
 use np_base::message_map::MessageType;
+use np_base::{client_server, generic};
 use std::io;
 
 impl Session {
     pub async fn on_recv_message(&mut self, message: &MessageType) -> io::Result<MessageType> {
         match message {
-            MessageType::ClientServerLoginReq(msg) => {
-                return self.on_login_requst(msg).await
-            }
+            MessageType::ClientServerLoginReq(msg) => return self.on_login_requst(msg).await,
             _ => {
                 if let Some(ref player) = self.player {
                     return player.write().await.on_recv_message(message).await;

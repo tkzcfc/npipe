@@ -8,7 +8,7 @@ use tokio::sync::RwLock;
 use tokio::time::sleep;
 
 pub struct SessionManager {
-    sessions: RwLock<Vec<Arc<RwLock<Session>>>>,
+    sessions: Vec<Arc<RwLock<Session>>>,
 }
 
 lazy_static! {
@@ -18,7 +18,7 @@ lazy_static! {
 impl SessionManager {
     fn new() -> Arc<RwLock<SessionManager>> {
         let instance = Arc::new(RwLock::new(SessionManager {
-            sessions: RwLock::new(Vec::new()),
+            sessions: Vec::new(),
         }));
 
         let instance_cloned = Arc::clone(&instance);
@@ -42,20 +42,18 @@ impl SessionManager {
         addr: SocketAddr,
     ) -> Arc<RwLock<Session>> {
         let session = Session::new(socket, addr);
-        self.sessions.write().await.push(Arc::clone(&session));
+        self.sessions.push(Arc::clone(&session));
         session
     }
 
     pub async fn collect_garbage_session(&mut self) {
-        let mut sessions = self.sessions.write().await;
-
         let mut i = 0;
-        while i != sessions.len() {
-            let item_cloned = sessions[i].clone();
+        while i != self.sessions.len() {
+            let item_cloned = self.sessions[i].clone();
             let v = item_cloned.read().await;
             match v.status() {
                 SessionStatus::Disconnected => {
-                    sessions.remove(i);
+                    self.sessions.remove(i);
                 }
                 _ => {
                     i += 1;
