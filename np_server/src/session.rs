@@ -1,8 +1,9 @@
+use np_base::message_map::get_message_id;
 use crate::player::Player;
 use byteorder::{BigEndian, ByteOrder};
 use bytes::BytesMut;
-use log::{debug, error};
-use np_base::message_map::{decode_message, encode_message, get_message_id, MessageType};
+use log::{debug, error, trace};
+use np_base::message_map::{decode_message, encode_message, MessageType};
 use std::io;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
@@ -10,6 +11,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::RwLock;
+use np_base::generic;
 
 #[derive(PartialEq)]
 pub enum SessionStatus {
@@ -56,9 +58,9 @@ impl Session {
         }
     }
 
-    pub async fn send_message(&mut self, serial: i32, message: &MessageType) -> io::Result<()> {
+    pub async fn send_response(&mut self, serial: i32, message: &MessageType) -> io::Result<()> {
         if let Some((id, buf)) = encode_message(message) {
-            self.socket.write_i32(serial).await?;
+            self.socket.write_i32(-serial).await?;
             self.socket.write_u32(id).await?;
             self.socket.write_all(&buf).await?;
             return Ok(());
@@ -151,16 +153,32 @@ impl Session {
 
         match decode_message(msg_id, &frame[8..]) {
             Ok(message) => {
-                if let Err(err) = self.on_recv_message(serial, &message).await {
-                    error!(
-                        "request error: {}, message id: {}",
-                        err,
-                        get_message_id(&message)
-                    );
+                match self.on_recv_message(&message).await {
+                    Ok(msg) => {
+                        let _ = self.send_response(serial, &msg).await;
+                    },
+                    Err(err) => {
+                        trace!(
+                            "request error: {}, message id: {}",
+                            err,
+                            get_message_id(&message)
+                        );
+
+                        let _ = self.send_response(serial, &MessageType::GenericError(generic::Error {
+                            number: generic::ErrorCode::InternalError.into(),
+                            message: format!("{}", err),
+                        })).await;
+                    }
                 }
             }
             Err(err) => {
                 error!("pb parse error: {}", err);
+                let _ = self.send_response(serial, &MessageType::GenericError(generic::Error {
+                    number: generic::ErrorCode::InternalError.into(),
+                    message: format!("{}", err),
+                })).await;
+
+                self.disconnect().await;
             }
         }
     }

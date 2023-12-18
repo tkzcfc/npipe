@@ -16,6 +16,8 @@ struct MessageInfo {
     id: u32,
 }
 
+const ANNOTATION_PREFIX: &'static str = "//@build_automatically_generate_code@";
+
 // https://docs.rs/prost-build/latest/prost_build/
 fn main() -> io::Result<()> {
     // github访问太慢了,windows直接用下载好的
@@ -28,7 +30,11 @@ fn main() -> io::Result<()> {
     }
 
     // 需要导出的协议文件列表
-    let mut proto_file_list = ["src/pb/Client_Server.proto", "src/pb/Server_Client.proto"];
+    let proto_file_list = [
+        "src/pb/Client_Server.proto",
+        "src/pb/Server_Client.proto",
+        "src/pb/Generic.proto",
+    ];
     let include_list = ["src/pb"];
     let out_dir = Path::new("src");
 
@@ -46,7 +52,16 @@ fn main() -> io::Result<()> {
     // 还原协议文件
     for proto_file in &proto_file_list {
         let proto_file = env::current_dir()?.join(proto_file);
-        fs::write(&proto_file, backups.get(&proto_file).unwrap())?;
+        let content = backups.get(&proto_file).unwrap();
+
+        let lines = content.lines().map(|line| {
+            if line.starts_with(ANNOTATION_PREFIX) {
+                return line.trim_start_matches(ANNOTATION_PREFIX)
+            }
+            line
+        }).collect::<Vec<&str>>();
+
+        fs::write(&proto_file, lines.join("\n"))?;
     }
 
     match result {
@@ -244,7 +259,7 @@ fn build(
                 for msg_cap in msg_re.captures_iter(&line) {
                     msg_name = msg_cap.get(1).map_or("", |m| m.as_str()).to_string();
                 }
-            } else if line.starts_with("enum") && id_match_re.captures(&line).is_some() {
+            } else if (line.starts_with(ANNOTATION_PREFIX) || line.starts_with("enum")) && id_match_re.captures(&line).is_some() {
                 let mut has_id = false;
                 for id_cap in id_re.captures_iter(&line) {
                     has_id = true;
@@ -256,7 +271,9 @@ fn build(
                 }
                 if has_id {
                     // 注释消息id
-                    *lines.last_mut().unwrap() = format!("//{}", lines.last().unwrap());
+                    if !line.starts_with(ANNOTATION_PREFIX) {
+                        *lines.last_mut().unwrap() = format!("{}{}", ANNOTATION_PREFIX, lines.last().unwrap());
+                    }
                     messages.push(MessageInfo {
                         name: msg_name.clone(),
                         package: package_name.clone(),

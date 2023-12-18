@@ -1,0 +1,32 @@
+syntax = "proto3";
+package PB.Generic;
+
+//通用成功
+message Success{
+  enum MsgId { None=0; Id = 150001; }
+}
+
+//通用返回失败
+message Fail{
+  enum MsgId {  None=0;Id = 150002; }
+  int32 number=1;
+  string message=2;
+}
+
+//通用错误返回
+message Error{
+  enum MsgId {  None=0;Id = 150003; }
+  int32 number=1;
+  string message=2;
+}
+
+//通用错误码
+enum ErrorCode {
+	None = 0;
+	// 服务器内部错误
+	InternalError = -1000;
+	// 请求协议Id不存在
+	InterfaceAbsent = -1001;
+	// 玩家未登录
+	PlayerNotLogin = -1002;
+}
