@@ -224,7 +224,7 @@ fn build(
     proto_file_list: &[impl AsRef<Path>],
     include_list: &[impl AsRef<Path>],
     out_dir: &Path,
-) -> io::Result<(Vec<MessageInfo>)> {
+) -> io::Result<Vec<MessageInfo>> {
     let package_re = Regex::new(r#"package\s+([\w.]+)"#).unwrap();
     let msg_re = Regex::new(r#"message\s+(\w+)"#).unwrap();
     let id_match_re = Regex::new(r#"enum\s+MsgId\s+"#).unwrap();

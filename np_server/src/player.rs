@@ -5,8 +5,8 @@ use tokio::sync::RwLock;
 use np_base::generic;
 use np_base::message_map::MessageType;
 
+#[warn(dead_code)]
 pub struct Player {
-    #[warn(dead_code)]
     session: Weak<RwLock<Session>>,
 }
 
