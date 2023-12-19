@@ -1,5 +1,6 @@
 use prost::{DecodeError, Message};
 
+#[derive(Clone)]
 pub enum MessageType {
     None,
     ClientServerLoginReq(super::client_server::LoginReq),

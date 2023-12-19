@@ -1,3 +1,5 @@
+mod client;
+
 use std::time::Duration;
 use std::{env, io};
 use tokio::io::AsyncWriteExt;

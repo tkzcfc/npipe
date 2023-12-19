@@ -187,6 +187,7 @@ fn build_code(messages: &Vec<MessageInfo>) -> String {
     let code = format!(
         r#"use prost::{{DecodeError, Message}};
 
+#[derive(Clone)]
 pub enum MessageType {{
     None,
 {}
