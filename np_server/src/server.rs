@@ -1,6 +1,6 @@
+use crate::player_manager::PlayerManager;
 use std::mem;
 use tokio::sync::{Mutex, RwLock};
-use crate::player_manager::PlayerManager;
 
 pub struct Server {
     pub id_seed: Mutex<u32>,

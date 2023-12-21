@@ -50,7 +50,11 @@ impl Player {
     }
 
     // 玩家上线
-    pub async fn on_connect_session(&mut self, session_id: u32, tx: UnboundedSender<WriterMessage>) {
+    pub async fn on_connect_session(
+        &mut self,
+        session_id: u32,
+        tx: UnboundedSender<WriterMessage>,
+    ) {
         assert_eq!(self.is_online(), false);
         self.session_id = session_id;
         self.tx = Some(tx);
