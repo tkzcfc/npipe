@@ -1,17 +1,29 @@
 mod client;
 
+use np_base::client_server;
+use np_base::message_map::{encode_message, MessageType};
 use std::time::Duration;
 use std::{env, io};
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpSocket, TcpStream};
 use tokio::time::sleep;
+use tokio::try_join;
 
 #[tokio::main]
 pub async fn main() -> io::Result<()> {
     env::set_var("RUST_LOG", "info");
     env_logger::init();
 
-    run_client().await
+    try_join!(
+        run_client(),
+        run_client(),
+        run_client(),
+        run_client(),
+        run_client(),
+        run_client()
+    )?;
+
+    Ok(())
 }
 
 async fn run_client() -> io::Result<()> {
@@ -20,20 +32,31 @@ async fn run_client() -> io::Result<()> {
     let socket = TcpSocket::new_v4()?;
     let mut stream = socket.connect(addr).await?;
 
-    let mut frame: Vec<u8> = Vec::new();
-    frame.extend("hello,world!".as_bytes());
-    stream.write_u32(frame.len() as u32).await?;
-    stream.flush().await?;
-    sleep(Duration::from_secs(1)).await;
+    let message = MessageType::ClientServerLoginReq(client_server::LoginReq {
+        username: "test".into(),
+        password: "pass".into(),
+    });
 
-    stream.write_all(&frame[..]).await?;
+    if let Some((id, bytes)) = encode_message(&message) {
+        for _i in 0..10 {
+            let len = bytes.len() as u32 + 8;
+            stream.write_u32(len).await?;
+            stream.write_i32(0).await?;
+            stream.write_u32(id).await?;
+            stream.write_all(&bytes).await?;
+            stream.flush().await?;
+            sleep(Duration::from_millis(100)).await;
+        }
+    }
 
-    let mut frame: Vec<u8> = Vec::new();
-    // frame.extend("ヾ(ToT)Bye~Bye~!".as_bytes());
-    frame.extend("hello,worldd".as_bytes());
-    stream.write_u32(frame.len() as u32).await?;
-    stream.write_all(&frame[..]).await?;
-    stream.flush().await?;
+    // stream.write_all(&frame[..]).await?;
+    //
+    // let mut frame: Vec<u8> = Vec::new();
+    // // frame.extend("ヾ(ToT)Bye~Bye~!".as_bytes());
+    // frame.extend("hello,worldd".as_bytes());
+    // stream.write_u32(frame.len() as u32).await?;
+    // stream.write_all(&frame[..]).await?;
+    // stream.flush().await?;
 
     Ok(())
 }

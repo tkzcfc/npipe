@@ -1,24 +1,35 @@
 mod player;
 mod player_manager;
+mod server;
 mod session;
 mod session_logic;
-mod session_manager;
 
-use crate::session_manager::SESSIONMANAGER;
-use log::debug;
+use crate::server::Server;
+use crate::session::Session;
+use log::trace;
 use std::{env, io};
 use tokio::net::TcpListener;
+use tokio::sync::mpsc::unbounded_channel;
 
 async fn run_server() -> io::Result<()> {
     let listener = TcpListener::bind("0.0.0.0:2000").await?;
     loop {
         let (socket, addr) = listener.accept().await?;
 
-        debug!("new connection: {}", addr);
-        let session = SESSIONMANAGER.write().await.new_session(socket, addr).await;
-        // 新连接单独起一个异步任务处理
+        // const SEND_BUFFER_SIZE: usize = 262144;
+        // const RECV_BUFFER_SIZE: usize = SEND_BUFFER_SIZE * 2;
+
+        // // 新连接单独起一个异步任务处理
         tokio::spawn(async move {
-            session.write().await.read_poll().await;
+            trace!("new connection: {}", addr);
+
+            let (tx, rx) = unbounded_channel();
+
+            let (reader, writer) = tokio::io::split(socket);
+            let mut session = Session::new(tx.clone(), addr, Server::instance().new_id());
+            session.run(rx, reader, writer).await;
+
+            trace!("disconnect: {}", addr);
         });
     }
 }

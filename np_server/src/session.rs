@@ -8,61 +8,83 @@ use np_base::message_map::{decode_message, encode_message, MessageType};
 use std::io;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
+use std::time::Duration;
+use tokio::io::{
+    AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf,
+};
+use tokio::select;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::RwLock;
+use tokio::task::yield_now;
+use tokio::time::sleep;
 
-#[derive(PartialEq)]
-pub enum SessionStatus {
-    Connected,
-    Disconnecting,
-    Disconnected,
+pub enum WriterMessage {
+    Close,
+    Flush,
+    CloseDelayed(Duration),
+    Send(Vec<u8>),
 }
 
 pub struct Session {
-    pub socket: TcpStream,
+    pub tx: UnboundedSender<WriterMessage>,
     pub addr: SocketAddr,
     pub player: Option<Arc<RwLock<Player>>>,
-    status: SessionStatus,
+    session_id: u32,
+    closed: bool,
 }
 
 impl Session {
-    pub fn new(socket: TcpStream, addr: SocketAddr) -> Arc<RwLock<Session>> {
-        Arc::new(RwLock::new(Session {
-            socket,
+    pub fn new(tx: UnboundedSender<WriterMessage>, addr: SocketAddr, session_id: u32) -> Session {
+        Session {
+            tx,
             addr,
             player: Option::None,
-            status: SessionStatus::Connected,
-        }))
-    }
-
-    pub async fn disconnect(&mut self) {
-        match self.status {
-            SessionStatus::Connected => {
-                self.status = SessionStatus::Disconnecting;
-
-                if let Some(ref player) = self.player {
-                    player.write().await.on_disconnect_session().await;
-                    self.player = Option::None;
-                }
-
-                if let Err(err) = self.socket.shutdown().await {
-                    error!("socket[{}] shutdown error: {:?}", self.addr, err);
-                } else {
-                    debug!("socket[{}] shutdown success.", self.addr);
-                }
-                self.status = SessionStatus::Disconnected;
-            }
-            _ => {}
+            session_id,
+            closed: false,
         }
     }
 
-    pub async fn send_response(&mut self, serial: i32, message: &MessageType) -> io::Result<()> {
+    // 是否关闭会话
+    #[inline]
+    pub(crate) fn is_closed(&self) -> bool {
+        self.closed || self.tx.is_closed()
+    }
+
+    // 获取会话id
+    #[inline]
+    pub(crate) fn get_session_id(&self) -> u32 {
+        self.session_id
+    }
+
+    // clone tx
+    #[inline]
+    pub(crate) fn clone_tx(&self) -> UnboundedSender<WriterMessage> {
+        self.tx.clone()
+    }
+
+    // 关闭会话
+    #[inline]
+    pub(crate) fn close_session(&mut self) {
+        self.closed = true;
+        let _ = self.tx.send(WriterMessage::Close);
+    }
+
+    async fn on_session_close(&mut self) {
+        if let Some(ref player) = self.player {
+            if player.read().await.get_session_id() == self.session_id {
+                player.write().await.on_disconnect_session().await;
+            }
+        }
+        self.player = None;
+    }
+
+    pub async fn send_response(&self, serial: i32, message: &MessageType) -> io::Result<()> {
         if let Some((id, buf)) = encode_message(message) {
-            self.socket.write_i32(-serial).await?;
-            self.socket.write_u32(id).await?;
-            self.socket.write_all(&buf).await?;
+            // self.socket.write_i32(-serial).await?;
+            // self.socket.write_u32(id).await?;
+            // self.socket.write_all(&buf).await?;
             return Ok(());
         }
 
@@ -70,53 +92,80 @@ impl Session {
         Err(io::Error::new(ErrorKind::Other, "encode message error!"))
     }
 
-    pub fn status(&self) -> &SessionStatus {
-        return &self.status;
-    }
-
-    pub async fn reset_player(&mut self, value: Option<Arc<RwLock<Player>>>) {
-        // 一般只有账号在其他地方登录才会导致重置player，此时可以向这个会话发送被顶号消息然后关闭连接
-        if let Some(ref player) = self.player {
-            // 这个时候应该是穿的None才对
-            assert!(value.is_none());
-
-            // 发送顶号通知
-            player.write().await.on_terminate_old_session().await;
-            self.disconnect().await;
-        } else {
-            // 正常初始化
-            assert!(value.is_some());
-            self.player = value;
-
-            // 玩家登录成功
-            if let Some(ref player) = self.player {
-                player.write().await.on_connect_session().await;
-            }
+    pub async fn run<S>(
+        &mut self,
+        rx: UnboundedReceiver<WriterMessage>,
+        reader: ReadHalf<S>,
+        writer: WriteHalf<S>,
+    ) where
+        S: AsyncRead + AsyncWrite + Send + 'static,
+    {
+        select! {
+            _ = self.poll_read(reader) => {}
+            _ = Self::poll_write(rx, writer) => {}
         }
+        self.on_session_close().await;
     }
 
-    pub async fn read_poll(&mut self) {
+    async fn poll_write<S>(mut rx: UnboundedReceiver<WriterMessage>, writer: WriteHalf<S>)
+    where
+        S: AsyncRead + AsyncWrite + Send + 'static,
+    {
+        let mut writer = BufWriter::new(writer);
+
+        while let Some(message) = rx.recv().await {
+            match message {
+                WriterMessage::Close => break,
+                WriterMessage::CloseDelayed(duration) => {
+                    sleep(duration).await;
+                    break;
+                }
+                WriterMessage::Send(data) => {
+                    if data.is_empty() {
+                        yield_now().await;
+                        continue;
+                    }
+
+                    if let Err(error) = writer.write_all(&data).await {
+                        log::error!("Error when write_all {:?}", error);
+                        break;
+                    }
+                }
+                WriterMessage::Flush => {
+                    if let Err(error) = writer.flush().await {
+                        log::error!("Error when flushing {:?}", error);
+                    }
+                }
+            }
+
+            yield_now().await;
+        }
+
+        rx.close();
+    }
+
+    async fn poll_read<S>(&mut self, mut reader: ReadHalf<S>)
+    where
+        S: AsyncRead + AsyncWrite + Send + 'static,
+    {
         let mut buffer = BytesMut::with_capacity(1024);
 
         // 循环读取数据
         loop {
-            match self.socket.read_buf(&mut buffer).await {
+            match reader.read_buf(&mut buffer).await {
                 // n为0表示对端已经关闭连接。
                 Ok(n) if n == 0 => {
                     debug!("socket[{}] closed.", self.addr);
                     // 客户端主动断开
-                    self.disconnect().await;
+                    self.close_session();
                     return;
                 }
                 Ok(_n) => {
-                    // info!("socket[{}] read len: {}, total len: {}", self.addr, _n, buffer.len());
-
                     loop {
-                        match self.status {
-                            SessionStatus::Connected => {}
-                            // 已经断开或正在端口，不继续处理后续数据
-                            _ => break,
+                        if self.is_closed() {
+                            break;
                         }
+
                         if let Ok(result) = try_extract_frame(&mut buffer) {
                             if let Some(frame) = result {
                                 self.on_recv_pkg_frame(frame).await;
@@ -126,7 +175,7 @@ impl Session {
                         } else {
                             debug!("data parsing failed");
                             // 消息解析错误主动断开
-                            self.disconnect().await;
+                            self.close_session();
                             return;
                         }
                     }
@@ -134,7 +183,7 @@ impl Session {
                 Err(e) => {
                     error!("Failed to read from socket[{}]: {}", self.addr, e);
                     // socket读错误
-                    self.disconnect().await;
+                    self.close_session();
                     return;
                 }
             }
@@ -143,7 +192,7 @@ impl Session {
 
     async fn on_recv_pkg_frame(&mut self, frame: Vec<u8>) {
         if frame.len() < 8 {
-            self.disconnect().await;
+            self.close_session();
             return;
         }
         // 消息序号
@@ -186,7 +235,7 @@ impl Session {
                     )
                     .await;
 
-                self.disconnect().await;
+                self.close_session();
             }
         }
     }
