@@ -1,7 +1,6 @@
 use crate::player::{Player, PlayerId};
-use lazy_static::lazy_static;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 pub struct PlayerManager {
@@ -25,8 +24,8 @@ impl PlayerManager {
         }
     }
 
-    pub async fn create_player(&mut self) -> Result<Arc<RwLock<Player>>, std::io::Error> {
-        let player = Player::new(0);
+    pub async fn create_player(&mut self, player_id: PlayerId) -> Result<Arc<RwLock<Player>>, std::io::Error> {
+        let player = Player::new(player_id);
         self.players.push(player.clone());
         self.player_map
             .insert(player.read().await.get_player_id(), player.clone());

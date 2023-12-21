@@ -149,6 +149,8 @@ fn build_code(messages: &Vec<MessageInfo>) -> String {
     let mut code_get_message_id = Vec::new();
     let mut code_decode_message = Vec::new();
     let mut code_encode_message = Vec::new();
+    let mut code_get_message_size = Vec::new();
+    let mut code_encode_raw_message = Vec::new();
 
     messages.iter().for_each(|info| {
         let code = format!(
@@ -159,7 +161,7 @@ fn build_code(messages: &Vec<MessageInfo>) -> String {
         code_message.push(code);
 
         let code = format!(
-            "        MessageType::{}(_) => {}u32,",
+            "        MessageType::{}(_) => Some({}u32),",
             format_message_type_name(info),
             info.id
         );
@@ -182,10 +184,23 @@ fn build_code(messages: &Vec<MessageInfo>) -> String {
             info.id
         );
         code_encode_message.push(code);
+
+        let code = format!(
+            r#"        MessageType::{}(msg) => msg.encoded_len(),"#,
+            format_message_type_name(info),
+        );
+        code_get_message_size.push(code);
+
+        let code = format!(
+            r#"        MessageType::{}(msg) => msg.encode_raw(buf),"#,
+            format_message_type_name(info)
+        );
+        code_encode_raw_message.push(code);
     });
 
     let code = format!(
-        r#"use prost::{{DecodeError, Message}};
+        r#"use bytes::BufMut;
+use prost::{{DecodeError, Message}};
 
 #[derive(Clone)]
 pub enum MessageType {{
@@ -193,10 +208,10 @@ pub enum MessageType {{
 {}
 }}
 
-pub fn get_message_id(message: &MessageType) -> u32 {{
+pub fn get_message_id(message: &MessageType) -> Option<u32> {{
     match message {{
 {}
-        _ => panic!("error message"),
+        _ => None,
     }}
 }}
 
@@ -214,11 +229,27 @@ pub fn encode_message(message: &MessageType) -> Option<(u32, Vec<u8>)> {{
     }}
 }}
 
+pub fn get_message_size(message: &MessageType) -> usize {{
+    match message {{
+{}
+        _ => 0,
+    }}
+}}
+
+pub fn encode_raw_message(message: &MessageType, buf: &mut impl BufMut) {{
+    match message {{
+{}
+        _ => {{}}
+    }}
+}}
+
 "#,
         code_message.join("\n"),
         code_get_message_id.join("\n"),
         code_decode_message.join("\n"),
-        code_encode_message.join("\n")
+        code_encode_message.join("\n"),
+        code_get_message_size.join("\n"),
+        code_encode_raw_message.join("\n")
     );
 
     code

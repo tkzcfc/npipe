@@ -6,7 +6,11 @@ use np_base::{client_server, generic};
 use std::io;
 
 impl Session {
-    pub async fn on_recv_message(&mut self, message: &MessageType) -> io::Result<MessageType> {
+    // 收到玩家向服务器请求的消息
+    pub(crate) async fn on_recv_request(
+        &mut self,
+        message: &MessageType,
+    ) -> io::Result<MessageType> {
         match message {
             MessageType::ClientServerLoginReq(msg) => return self.on_login_requst(msg).await,
             _ => {
@@ -21,6 +25,16 @@ impl Session {
             number: generic::ErrorCode::PlayerNotLogin.into(),
             message: "player not logged in".into(),
         }))
+    }
+
+    // 收到玩家回复服务器的消息
+    pub(crate) async fn on_recv_response(&mut self, _message: &MessageType) -> io::Result<()> {
+        Ok(())
+    }
+
+    // 收到玩家向服务器推送的消息
+    pub(crate) async fn on_recv_push(&mut self, _message: &MessageType) -> io::Result<()> {
+        Ok(())
     }
 
     async fn on_login_requst(
@@ -59,7 +73,7 @@ impl Session {
 
         // 重复发送登录请求
         Ok(MessageType::GenericError(generic::Error {
-            number: -1,
+            number: -2,
             message: "unable to find player".into(),
         }))
     }

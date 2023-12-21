@@ -1,14 +1,12 @@
 use crate::player::Player;
 use byteorder::{BigEndian, ByteOrder};
 use bytes::BytesMut;
-use log::{debug, error, trace};
+use log::{debug, error};
 use np_base::generic;
-use np_base::message_map::get_message_id;
-use np_base::message_map::{decode_message, encode_message, MessageType};
+use np_base::message_map::{decode_message, encode_raw_message, MessageType};
+use np_base::message_map::{get_message_id, get_message_size};
 use std::io;
-use std::io::ErrorKind;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{
@@ -80,16 +78,24 @@ impl Session {
         self.player = None;
     }
 
-    pub async fn send_response(&self, serial: i32, message: &MessageType) -> io::Result<()> {
-        if let Some((id, buf)) = encode_message(message) {
-            // self.socket.write_i32(-serial).await?;
-            // self.socket.write_u32(id).await?;
-            // self.socket.write_all(&buf).await?;
-            return Ok(());
-        }
+    pub(crate) async fn send_response(&self, serial: i32, message: &MessageType) -> io::Result<()> {
+        if let Some(message_id) = get_message_id(message) {
+            let message_size = get_message_size(message);
+            let mut buf = Vec::with_capacity(message_size + 8);
 
-        error!("encode message error!");
-        Err(io::Error::new(ErrorKind::Other, "encode message error!"))
+            byteorder::WriteBytesExt::write_i32::<BigEndian>(&mut buf, -serial)?;
+            byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, message_id)?;
+            encode_raw_message(message, &mut buf);
+
+            if let Err(error) = self.tx.send(WriterMessage::Send(buf)) {
+                error!("send response error: {}", error);
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn send_request(_message: MessageType) -> io::Result<MessageType> {
+        todo!();
     }
 
     pub async fn run<S>(
@@ -107,6 +113,7 @@ impl Session {
         self.on_session_close().await;
     }
 
+    // 循环写入数据
     async fn poll_write<S>(mut rx: UnboundedReceiver<WriterMessage>, writer: WriteHalf<S>)
     where
         S: AsyncRead + AsyncWrite + Send + 'static,
@@ -144,13 +151,13 @@ impl Session {
         rx.close();
     }
 
+    // 循环读取数据
     async fn poll_read<S>(&mut self, mut reader: ReadHalf<S>)
     where
         S: AsyncRead + AsyncWrite + Send + 'static,
     {
         let mut buffer = BytesMut::with_capacity(1024);
 
-        // 循环读取数据
         loop {
             match reader.read_buf(&mut buffer).await {
                 // n为0表示对端已经关闭连接。
@@ -161,11 +168,8 @@ impl Session {
                     return;
                 }
                 Ok(_n) => {
-                    loop {
-                        if self.is_closed() {
-                            break;
-                        }
-
+                    while !self.is_closed() {
+                        // 粘包处理
                         if let Ok(result) = try_extract_frame(&mut buffer) {
                             if let Some(frame) = result {
                                 self.on_recv_pkg_frame(frame).await;
@@ -190,6 +194,7 @@ impl Session {
         }
     }
 
+    // 收到一个完整的消息包
     async fn on_recv_pkg_frame(&mut self, frame: Vec<u8>) {
         if frame.len() < 8 {
             self.close_session();
@@ -201,15 +206,31 @@ impl Session {
         let msg_id: u32 = BigEndian::read_u32(&frame[4..8]);
 
         match decode_message(msg_id, &frame[8..]) {
-            Ok(message) => match self.on_recv_message(&message).await {
+            Ok(message) => match self.on_recv_message(serial, &message).await {
                 Ok(msg) => {
-                    let _ = self.send_response(serial, &msg).await;
+                    if serial < 0 {
+                        if let MessageType::None = message {
+                            // 请求不应该不回复
+                            error!("the response to request {} is empty", msg_id);
+                            let _ = self
+                                .send_response(
+                                    serial,
+                                    &MessageType::GenericError(generic::Error {
+                                        number: generic::ErrorCode::InternalError.into(),
+                                        message: format!("response is empty"),
+                                    }),
+                                )
+                                .await;
+                        } else {
+                            let _ = self.send_response(serial, &msg).await;
+                        }
+                    }
                 }
                 Err(err) => {
-                    trace!(
+                    error!(
                         "request error: {}, message id: {}",
                         err,
-                        get_message_id(&message)
+                        get_message_id(&message).unwrap_or(0)
                     );
 
                     let _ = self
@@ -238,6 +259,22 @@ impl Session {
                 self.close_session();
             }
         }
+    }
+
+    pub async fn on_recv_message(
+        &mut self,
+        serial: i32,
+        message: &MessageType,
+    ) -> io::Result<MessageType> {
+        return if serial < 0 {
+            self.on_recv_request(message).await
+        } else if serial > 0 {
+            self.on_recv_response(message).await?;
+            Ok(MessageType::None)
+        } else {
+            self.on_recv_push(message).await?;
+            Ok(MessageType::None)
+        };
     }
 }
 

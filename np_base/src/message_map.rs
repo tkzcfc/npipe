@@ -1,3 +1,4 @@
+use bytes::BufMut;
 use prost::{DecodeError, Message};
 
 #[derive(Clone)]
@@ -10,14 +11,14 @@ pub enum MessageType {
     GenericError(super::generic::Error),
 }
 
-pub fn get_message_id(message: &MessageType) -> u32 {
+pub fn get_message_id(message: &MessageType) -> Option<u32> {
     match message {
-        MessageType::ClientServerLoginReq(_) => 1001u32,
-        MessageType::ServerClientLoginAck(_) => 1002u32,
-        MessageType::GenericSuccess(_) => 150001u32,
-        MessageType::GenericFail(_) => 150002u32,
-        MessageType::GenericError(_) => 150003u32,
-        _ => panic!("error message"),
+        MessageType::ClientServerLoginReq(_) => Some(1001u32),
+        MessageType::ServerClientLoginAck(_) => Some(1002u32),
+        MessageType::GenericSuccess(_) => Some(150001u32),
+        MessageType::GenericFail(_) => Some(150002u32),
+        MessageType::GenericError(_) => Some(150003u32),
+        _ => None,
     }
 }
 
@@ -55,6 +56,28 @@ pub fn encode_message(message: &MessageType) -> Option<(u32, Vec<u8>)> {
         MessageType::GenericFail(msg) => Some((150002u32, msg.encode_to_vec())),
         MessageType::GenericError(msg) => Some((150003u32, msg.encode_to_vec())),
         _ => None,
+    }
+}
+
+pub fn get_message_size(message: &MessageType) -> usize {
+    match message {
+        MessageType::ClientServerLoginReq(msg) => msg.encoded_len(),
+        MessageType::ServerClientLoginAck(msg) => msg.encoded_len(),
+        MessageType::GenericSuccess(msg) => msg.encoded_len(),
+        MessageType::GenericFail(msg) => msg.encoded_len(),
+        MessageType::GenericError(msg) => msg.encoded_len(),
+        _ => 0,
+    }
+}
+
+pub fn encode_raw_message(message: &MessageType, buf: &mut impl BufMut) {
+    match message {
+        MessageType::ClientServerLoginReq(msg) => msg.encode_raw(buf),
+        MessageType::ServerClientLoginAck(msg) => msg.encode_raw(buf),
+        MessageType::GenericSuccess(msg) => msg.encode_raw(buf),
+        MessageType::GenericFail(msg) => msg.encode_raw(buf),
+        MessageType::GenericError(msg) => msg.encode_raw(buf),
+        _ => {}
     }
 }
 

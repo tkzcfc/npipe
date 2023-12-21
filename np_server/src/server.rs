@@ -17,7 +17,7 @@ impl Server {
     pub fn instance() -> &'static mut Server {
         unsafe {
             match SERVER_INSTANCE {
-                Option::Some(ref mut Server) => *Server,
+                Option::Some(ref mut server) => *server,
                 Option::None => {
                     // 如果不存在，先创建新的实例，然后返回
                     let server_box = Box::new(Server {
