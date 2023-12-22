@@ -6,14 +6,28 @@ mod session_logic;
 
 use crate::server::Server;
 use crate::session::Session;
-use log::trace;
+use log::{info, trace};
+use std::net::SocketAddr;
 use std::{env, io};
-use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::unbounded_channel;
 
-async fn run_server() -> io::Result<()> {
-    let listener = TcpListener::bind("0.0.0.0:8118").await?;
+async fn run_server(addr: &str) -> io::Result<()> {
+    let addr = addr.parse::<SocketAddr>();
+    match addr {
+        Err(parse_error) => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                parse_error.to_string(),
+            ));
+        }
+        _ => {}
+    }
+
+    let addr = addr.unwrap();
+    info!("Start listening: {}", addr);
+
+    let listener = TcpListener::bind(addr).await?;
     loop {
         let (socket, addr) = listener.accept().await?;
 
@@ -25,7 +39,7 @@ async fn run_server() -> io::Result<()> {
             trace!("new connection: {}", addr);
 
             let (tx, rx) = unbounded_channel();
-            let (reader, mut writer) = tokio::io::split(socket);
+            let (reader, writer) = tokio::io::split(socket);
 
             let mut session = Session::new(tx.clone(), addr, Server::instance().new_id());
             session.run(rx, reader, writer).await;
@@ -39,5 +53,8 @@ async fn run_server() -> io::Result<()> {
 pub async fn main() -> io::Result<()> {
     env::set_var("RUST_LOG", "debug");
     env_logger::init();
-    run_server().await
+    Server::instance();
+    run_server("0.0.0.0:8118").await?;
+    Server::destroy();
+    Ok(())
 }

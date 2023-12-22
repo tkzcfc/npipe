@@ -1,7 +1,6 @@
 extern crate prost_build;
 use heck::{ToSnakeCase, ToUpperCamelCase};
 use prost_build::Config;
-use protoc_prebuilt::init;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::env::set_var;

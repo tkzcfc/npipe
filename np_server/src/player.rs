@@ -1,9 +1,9 @@
 use crate::session::{package_and_send_message, WriterMessage};
+use log::error;
 use np_base::generic;
 use np_base::message_map::MessageType;
 use std::io;
 use std::sync::Arc;
-use log::error;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
 
@@ -43,6 +43,7 @@ impl Player {
         self.session_id > 0
     }
 
+    #[inline]
     pub async fn send_response(&self, serial: i32, message: &MessageType) -> io::Result<()> {
         if let Some(ref tx) = self.tx {
             return package_and_send_message(tx, serial, message, true).await;
@@ -51,10 +52,12 @@ impl Player {
         Ok(())
     }
 
+    #[inline]
     pub async fn send_request(&self, _message: &MessageType) -> io::Result<MessageType> {
         todo!();
     }
 
+    #[inline]
     pub async fn send_push(&self, message: &MessageType) -> io::Result<()> {
         if let Some(ref tx) = self.tx {
             return package_and_send_message(tx, 0, message, true).await;
@@ -63,6 +66,21 @@ impl Player {
         Ok(())
     }
 
+    #[inline]
+    pub fn flush(&self) {
+        if let Some(ref tx) = self.tx {
+            let _ = tx.send(WriterMessage::Flush);
+        }
+    }
+
+    #[inline]
+    pub fn close_session(&mut self) {
+        if let Some(ref tx) = self.tx {
+            let _ = tx.send(WriterMessage::Close);
+        }
+    }
+
+    #[inline]
     pub async fn write_push(&self, message: &MessageType) -> io::Result<()> {
         if let Some(ref tx) = self.tx {
             return package_and_send_message(tx, 0, message, false).await;

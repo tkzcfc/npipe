@@ -1,6 +1,5 @@
 use crate::server::Server;
 use crate::session::Session;
-use log::info;
 use np_base::message_map::MessageType;
 use np_base::{client_server, generic};
 use std::io;

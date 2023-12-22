@@ -1,6 +1,7 @@
 use crate::player::Player;
 use byteorder::{BigEndian, ByteOrder};
 use bytes::BytesMut;
+use log::{debug, error};
 use np_base::generic;
 use np_base::message_map::{decode_message, encode_raw_message, MessageType};
 use np_base::message_map::{get_message_id, get_message_size};
@@ -8,7 +9,6 @@ use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
-use log::{debug, error};
 use tokio::io::{
     AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf,
 };
@@ -34,8 +34,7 @@ pub struct Session {
 }
 
 impl Drop for Session {
-    fn drop(&mut self) {
-    }
+    fn drop(&mut self) {}
 }
 
 impl Session {
@@ -230,11 +229,7 @@ impl Session {
                     }
                 }
                 Err(err) => {
-                    error!(
-                        "Request error: {}, message id: {}",
-                        err,
-                        msg_id
-                    );
+                    error!("Request error: {}, message id: {}", err, msg_id);
 
                     let _ = self
                         .send_response(
@@ -282,6 +277,7 @@ impl Session {
 }
 
 // 数据粘包处理
+#[inline]
 fn try_extract_frame(buffer: &mut BytesMut) -> io::Result<Option<Vec<u8>>> {
     // 数据小于4字节
     if buffer.len() < 4 {
@@ -310,7 +306,12 @@ fn try_extract_frame(buffer: &mut BytesMut) -> io::Result<Option<Vec<u8>>> {
 }
 
 #[inline]
-pub(crate) async fn package_and_send_message(tx: &UnboundedSender<WriterMessage>, serial: i32, message: &MessageType, flush: bool) -> io::Result<()> {
+pub(crate) async fn package_and_send_message(
+    tx: &UnboundedSender<WriterMessage>,
+    serial: i32,
+    message: &MessageType,
+    flush: bool,
+) -> io::Result<()> {
     if let Some(message_id) = get_message_id(message) {
         let message_size = get_message_size(message);
         let mut buf = Vec::with_capacity(message_size + 12);
