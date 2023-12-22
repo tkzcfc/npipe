@@ -74,12 +74,11 @@ impl Session {
     }
 
     async fn on_session_close(&mut self) {
-        if let Some(ref player) = self.player {
+        if let Some(player) = self.player.take() {
             if player.read().await.get_session_id() == self.session_id {
                 player.write().await.on_disconnect_session().await;
             }
         }
-        self.player = None;
     }
 
     pub(crate) async fn send_response(&self, serial: i32, message: &MessageType) -> io::Result<()> {

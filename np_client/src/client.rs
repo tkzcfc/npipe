@@ -237,7 +237,7 @@ impl Client {
                             break;
                         },
                         ChannelMessage::RecvMessage(serial, message) => {
-                            
+
                         }
                     }
                 }

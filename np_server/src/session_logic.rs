@@ -1,4 +1,3 @@
-use crate::server::Server;
 use crate::session::Session;
 use np_base::message_map::MessageType;
 use np_base::{client_server, generic};
@@ -58,22 +57,22 @@ impl Session {
         // 根据用户名查找用户id
         let player_id = 100u32;
 
-        // 用户登录成功，将会话绑定到Player上
-        if let Some(player) = Server::instance()
-            .player_manager
-            .write()
-            .await
-            .get_player(player_id)
-        {
-            let mut player = player.write().await;
-            if player.is_online() {
-                player.on_terminate_old_session().await;
-            }
-            player
-                .on_connect_session(self.get_session_id(), self.clone_tx())
-                .await;
-            return Ok(MessageType::GenericSuccess(generic::Success {}));
-        }
+        // // 用户登录成功，将会话绑定到Player上
+        // if let Some(player) = Server::instance()
+        //     .player_manager
+        //     .write()
+        //     .await
+        //     .get_player(player_id)
+        // {
+        //     let mut player = player.write().await;
+        //     if player.is_online() {
+        //         player.on_terminate_old_session().await;
+        //     }
+        //     player
+        //         .on_connect_session(self.get_session_id(), self.clone_tx())
+        //         .await;
+        //     return Ok(MessageType::GenericSuccess(generic::Success {}));
+        // }
 
         Ok(MessageType::GenericError(generic::Error {
             number: -2,

@@ -93,7 +93,7 @@ impl Player {
     #[inline]
     fn reset_session_info(&mut self) {
         self.session_id = 0;
-        self.tx = None;
+        self.tx.take();
     }
 
     // 玩家上线
