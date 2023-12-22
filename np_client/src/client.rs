@@ -15,7 +15,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt, WriteHalf};
 use tokio::net::{TcpSocket, TcpStream};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::RwLock;
-use tokio::time::{Instant, self};
+use tokio::time::{self, Instant};
 
 enum Response {
     // 请求回复的消息
@@ -67,7 +67,6 @@ impl Client {
 
         self.writer = Some(writer);
 
-
         let (tx, rx) = unbounded_channel();
 
         let addr = self.addr.clone();
@@ -111,11 +110,7 @@ impl Client {
                         }
                     }
                     Err(e) => {
-                        error!(
-                            "Failed to read from socket[{}]: {}",
-                            addr,
-                            e
-                        );
+                        error!("Failed to read from socket[{}]: {}", addr, e);
                         // socket读错误,主动断开
                         if let Err(error) = tx.send(ChannelMessage::Disconnect) {
                             error!("Send channel message error: {}", error);
@@ -177,9 +172,7 @@ impl Client {
                 if let Some(response) = self.response_map.get(&serial) {
                     match response {
                         Response::Message(_message) => {
-                            if let Some(message) =
-                                self.response_map.remove(&serial)
-                            {
+                            if let Some(message) = self.response_map.remove(&serial) {
                                 if let Response::Message(msg) = message {
                                     return Ok(msg);
                                 }
@@ -192,10 +185,7 @@ impl Client {
                         Response::Cancel => {
                             // 请求被取消
                             self.response_map.remove(&serial);
-                            return Err(io::Error::new(
-                                ErrorKind::TimedOut,
-                                "request cancelled",
-                            ));
+                            return Err(io::Error::new(ErrorKind::TimedOut, "request cancelled"));
                         }
                         Response::Error => {
                             self.response_map.remove(&serial);
@@ -229,13 +219,10 @@ impl Client {
                         ChannelMessage::Disconnect => {
                             self.disconnect();
                             break;
-                        },
-                        ChannelMessage::RecvMessage(serial, message) => {
-
                         }
+                        ChannelMessage::RecvMessage(serial, message) => {}
                     }
-                }
-                else {
+                } else {
                     break;
                 }
             }
@@ -272,7 +259,6 @@ fn try_extract_frame(buffer: &mut BytesMut) -> io::Result<Option<Vec<u8>>> {
     Ok(Some(frame))
 }
 
-
 // 收到一个完整的消息包
 fn on_recv_pkg_frame(tx: &UnboundedSender<ChannelMessage>, frame: Vec<u8>) -> bool {
     // 消息不合法，长度不够
@@ -296,7 +282,7 @@ fn on_recv_pkg_frame(tx: &UnboundedSender<ChannelMessage>, frame: Vec<u8>) -> bo
             error!("Protobuf parse error: {}", err);
             false
         }
-    }
+    };
 }
 
 #[inline]
