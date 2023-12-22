@@ -37,7 +37,7 @@ async fn run_server() -> io::Result<()> {
 
 #[tokio::main]
 pub async fn main() -> io::Result<()> {
-    env::set_var("RUST_LOG", "trace");
+    env::set_var("RUST_LOG", "debug");
     env_logger::init();
     run_server().await
 }
