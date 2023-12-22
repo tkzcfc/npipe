@@ -85,24 +85,15 @@ impl Session {
     }
 
     pub(crate) async fn send_response(&self, serial: i32, message: &MessageType) -> io::Result<()> {
-        if let Some(message_id) = get_message_id(message) {
-            let message_size = get_message_size(message);
-            let mut buf = Vec::with_capacity(message_size + 12);
-
-            byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, (8 + message_size) as u32)?;
-            byteorder::WriteBytesExt::write_i32::<BigEndian>(&mut buf, -serial)?;
-            byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, message_id)?;
-            encode_raw_message(message, &mut buf);
-
-            if let Err(error) = self.tx.send(WriterMessage::Send(buf, true)) {
-                error!("send response error: {}", error);
-            }
-        }
-        Ok(())
+        package_and_send_message(&self.tx, serial, message, true).await
     }
 
-    pub(crate) async fn send_request(_message: MessageType) -> io::Result<MessageType> {
+    pub(crate) async fn send_request(&self, _message: &MessageType) -> io::Result<MessageType> {
         todo!();
+    }
+
+    pub(crate) async fn send_push(&self, message: &MessageType) -> io::Result<()> {
+        package_and_send_message(&self.tx, 0, message, true).await
     }
 
     pub async fn run<S>(
@@ -219,12 +210,12 @@ impl Session {
         let msg_id: u32 = BigEndian::read_u32(&frame[4..8]);
 
         match decode_message(msg_id, &frame[8..]) {
-            Ok(message) => match self.on_recv_message(serial, &message).await {
+            Ok(message) => match self.on_recv_message(serial, message).await {
                 Ok(msg) => {
                     if serial < 0 {
-                        if let MessageType::None = message {
+                        if let MessageType::None = msg {
                             // 请求不应该不回复
-                            error!("the response to request {} is empty", msg_id);
+                            error!("The response to request {} is empty", msg_id);
                             let _ = self
                                 .send_response(
                                     serial,
@@ -241,9 +232,9 @@ impl Session {
                 }
                 Err(err) => {
                     error!(
-                        "request error: {}, message id: {}",
+                        "Request error: {}, message id: {}",
                         err,
-                        get_message_id(&message).unwrap_or(0)
+                        msg_id
                     );
 
                     let _ = self
@@ -258,7 +249,7 @@ impl Session {
                 }
             },
             Err(err) => {
-                error!("pb parse error: {}", err);
+                error!("Protobuf parse error: {}", err);
                 let _ = self
                     .send_response(
                         serial,
@@ -277,7 +268,7 @@ impl Session {
     pub async fn on_recv_message(
         &mut self,
         serial: i32,
-        message: &MessageType,
+        message: MessageType,
     ) -> io::Result<MessageType> {
         return if serial < 0 {
             self.on_recv_request(message).await
@@ -317,4 +308,22 @@ fn try_extract_frame(buffer: &mut BytesMut) -> io::Result<Option<Vec<u8>>> {
     let frame = buffer.split_to(4 + len).split_off(4).to_vec();
 
     Ok(Some(frame))
+}
+
+#[inline]
+pub(crate) async fn package_and_send_message(tx: &UnboundedSender<WriterMessage>, serial: i32, message: &MessageType, flush: bool) -> io::Result<()> {
+    if let Some(message_id) = get_message_id(message) {
+        let message_size = get_message_size(message);
+        let mut buf = Vec::with_capacity(message_size + 12);
+
+        byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, (8 + message_size) as u32)?;
+        byteorder::WriteBytesExt::write_i32::<BigEndian>(&mut buf, -serial)?;
+        byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, message_id)?;
+        encode_raw_message(message, &mut buf);
+
+        if let Err(error) = tx.send(WriterMessage::Send(buf, flush)) {
+            error!("Send message error: {}", error);
+        }
+    }
+    Ok(())
 }

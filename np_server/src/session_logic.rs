@@ -9,7 +9,7 @@ impl Session {
     // 收到玩家向服务器请求的消息
     pub(crate) async fn on_recv_request(
         &mut self,
-        message: &MessageType,
+        message: MessageType,
     ) -> io::Result<MessageType> {
         match message {
             MessageType::GenericPing(msg) => return self.on_ping(msg).await,
@@ -29,16 +29,16 @@ impl Session {
     }
 
     // 收到玩家回复服务器的消息
-    pub(crate) async fn on_recv_response(&mut self, _message: &MessageType) -> io::Result<()> {
+    pub(crate) async fn on_recv_response(&mut self, _message: MessageType) -> io::Result<()> {
         Ok(())
     }
 
     // 收到玩家向服务器推送的消息
-    pub(crate) async fn on_recv_push(&mut self, _message: &MessageType) -> io::Result<()> {
+    pub(crate) async fn on_recv_push(&mut self, _message: MessageType) -> io::Result<()> {
         Ok(())
     }
 
-    async fn on_ping(&mut self, message: &generic::Ping) -> io::Result<MessageType> {
+    async fn on_ping(&mut self, message: generic::Ping) -> io::Result<MessageType> {
         Ok(MessageType::GenericPong(generic::Pong {
             ticks: message.ticks,
         }))
@@ -46,7 +46,7 @@ impl Session {
 
     async fn on_login_requst(
         &mut self,
-        message: &client_server::LoginReq,
+        message: client_server::LoginReq,
     ) -> io::Result<MessageType> {
         if self.player.is_some() {
             // 重复发送登录请求
@@ -55,8 +55,6 @@ impl Session {
                 message: "repeat login".into(),
             }));
         }
-
-        info!("request login -------------->>>");
 
         // 根据用户名查找用户id
         let player_id = 100u32;
@@ -78,10 +76,15 @@ impl Session {
             return Ok(MessageType::GenericSuccess(generic::Success {}));
         }
 
-        // 重复发送登录请求
         Ok(MessageType::GenericError(generic::Error {
             number: -2,
-            message: "unable to find player".into(),
+            message: message.password,
         }))
+
+        // 找不到玩家
+        // Ok(MessageType::GenericError(generic::Error {
+        //     number: -2,
+        //     message: "unable to find player".into(),
+        // }))
     }
 }

@@ -1,8 +1,9 @@
-use crate::session::WriterMessage;
+use crate::session::{package_and_send_message, WriterMessage};
 use np_base::generic;
 use np_base::message_map::MessageType;
 use std::io;
 use std::sync::Arc;
+use log::error;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
 
@@ -42,6 +43,34 @@ impl Player {
         self.session_id > 0
     }
 
+    pub async fn send_response(&self, serial: i32, message: &MessageType) -> io::Result<()> {
+        if let Some(ref tx) = self.tx {
+            return package_and_send_message(tx, serial, message, true).await;
+        }
+        error!("Can't send the response to the player.");
+        Ok(())
+    }
+
+    pub async fn send_request(&self, _message: &MessageType) -> io::Result<MessageType> {
+        todo!();
+    }
+
+    pub async fn send_push(&self, message: &MessageType) -> io::Result<()> {
+        if let Some(ref tx) = self.tx {
+            return package_and_send_message(tx, 0, message, true).await;
+        }
+        error!("Can't send the push to the player.");
+        Ok(())
+    }
+
+    pub async fn write_push(&self, message: &MessageType) -> io::Result<()> {
+        if let Some(ref tx) = self.tx {
+            return package_and_send_message(tx, 0, message, false).await;
+        }
+        error!("Can't send the push to the player.");
+        Ok(())
+    }
+
     // 重置会话信息
     #[inline]
     fn reset_session_info(&mut self) {
@@ -74,7 +103,7 @@ impl Player {
     }
 
     // 玩家收到消息
-    pub async fn on_recv_message(&mut self, message: &MessageType) -> io::Result<MessageType> {
+    pub async fn on_recv_message(&mut self, message: MessageType) -> io::Result<MessageType> {
         // 客户端请求的消息，服务器未实现
         Ok(MessageType::GenericError(generic::Error {
             number: generic::ErrorCode::InterfaceAbsent.into(),
