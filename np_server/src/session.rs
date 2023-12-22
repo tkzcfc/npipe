@@ -35,7 +35,6 @@ pub struct Session {
 
 impl Drop for Session {
     fn drop(&mut self) {
-        println!("drop session!!!");
     }
 }
 
@@ -166,7 +165,7 @@ impl Session {
             match reader.read_buf(&mut buffer).await {
                 // n为0表示对端已经关闭连接。
                 Ok(n) if n == 0 => {
-                    debug!("socket[{}] closed.", self.addr);
+                    debug!("Socket[{}] closed.", self.addr);
                     // 客户端主动断开
                     self.close_session();
                     return;
@@ -181,7 +180,7 @@ impl Session {
                                 break;
                             }
                         } else {
-                            debug!("data parsing failed");
+                            debug!("Data parsing failed");
                             // 消息解析错误主动断开
                             self.close_session();
                             return;
