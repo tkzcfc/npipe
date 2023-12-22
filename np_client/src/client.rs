@@ -1,13 +1,16 @@
+use byteorder::{BigEndian, ByteOrder};
 use bytes::BytesMut;
 use log::{debug, error};
-use np_base::message_map::{decode_message, encode_message, encode_raw_message, get_message_id, get_message_size, MessageType};
+use np_base::message_map::{
+    decode_message, encode_message, encode_raw_message, get_message_id, get_message_size,
+    MessageType,
+};
 use std::collections::HashMap;
 use std::io;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
-use byteorder::{BigEndian, ByteOrder};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, WriteHalf};
 use tokio::net::{TcpSocket, TcpStream};
 use tokio::sync::RwLock;
@@ -85,7 +88,11 @@ impl Client {
                         }
                     }
                     Err(e) => {
-                        error!("Failed to read from socket[{}]: {}", this.read().await.addr, e);
+                        error!(
+                            "Failed to read from socket[{}]: {}",
+                            this.read().await.addr,
+                            e
+                        );
                         // socket读错误
                         this.write().await.disconnect().await;
                         return;
@@ -188,7 +195,6 @@ impl Client {
         Err(io::Error::new(ErrorKind::NotConnected, "not connected"))
     }
 
-
     // 收到一个完整的消息包
     async fn on_recv_pkg_frame(&mut self, frame: Vec<u8>) {
         if frame.len() < 8 {
@@ -203,7 +209,7 @@ impl Client {
         match decode_message(msg_id, &frame[8..]) {
             Ok(message) => {
                 self.on_recv_message(serial, message).await;
-            },
+            }
             Err(err) => {
                 error!("Protobuf parse error: {}", err);
                 if let Some(_response) = self.response_map.get(&-serial) {
@@ -213,14 +219,10 @@ impl Client {
         }
     }
 
-    pub async fn on_recv_message(
-        &mut self,
-        serial: i32,
-        message: MessageType,
-    ) {
-
+    pub async fn on_recv_message(&mut self, serial: i32, message: MessageType) {
         if let Some(_response) = self.response_map.get(&-serial) {
-            self.response_map.insert(-serial, Response::Message(message));
+            self.response_map
+                .insert(-serial, Response::Message(message));
         }
 
         // return if serial < 0 {
@@ -234,7 +236,6 @@ impl Client {
         // };
     }
 }
-
 
 // 数据粘包处理
 #[inline]
