@@ -15,7 +15,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt, WriteHalf};
 use tokio::net::{TcpSocket, TcpStream};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::RwLock;
-use tokio::time::Instant;
+use tokio::time::{Instant, self};
 
 enum Response {
     // 请求回复的消息
@@ -156,7 +156,7 @@ impl Client {
         }
     }
 
-    pub async fn send_request(&mut self, message: &MessageType) -> Result<MessageType, io::Error> {
+    pub async fn send_request(&mut self, message: &MessageType) -> io::Result<MessageType> {
         if let Some(ref mut writer) = self.writer {
             // 防止请求序号越界
             if self.serial >= i32::MAX {
@@ -164,65 +164,59 @@ impl Client {
             }
             self.serial += 1;
 
-            // if let Some((id, buf)) = encode_message(message) {
-            //     let serial = -self.serial;
-            //
-            //     package_and_send_message(writer, serial, message, true).await?;
-            //     self.response_map.insert(serial, Response::Waiting);
-            //
-            //     let start = Instant::now();
-            //     // 检测间隔时间 20毫秒检测一次
-            //     let mut interval = time::interval(Duration::from_millis(20));
-            //     // 10超时等待时间
-            //     while Instant::now().duration_since(start) < Duration::from_secs(10) {
-            //         interval.tick().await;
-            //         if let Some(response) = self.response_map.get(&serial) {
-            //             match response {
-            //                 Response::Message(_message) => {
-            //                     if let Some(message) =
-            //                         self.response_map.write().await.remove(&serial)
-            //                     {
-            //                         if let Response::Message(msg) = message {
-            //                             return Ok(msg);
-            //                         }
-            //                     }
-            //                     // 不可能出现的错误
-            //                     self.response_map.write().await.remove(&serial);
-            //                     return Err(io::Error::new(ErrorKind::Other, "impossible errors"));
-            //                 }
-            //                 Response::Waiting => {}
-            //                 Response::Cancel => {
-            //                     // 请求被取消
-            //                     self.response_map.write().await.remove(&serial);
-            //                     return Err(io::Error::new(
-            //                         ErrorKind::TimedOut,
-            //                         "request cancelled",
-            //                     ));
-            //                 }
-            //                 Response::Error => {
-            //                     self.response_map.write().await.remove(&serial);
-            //                     return Err(io::Error::new(
-            //                         ErrorKind::Other,
-            //                         "protocol decoding failed",
-            //                     ));
-            //                 }
-            //             }
-            //         } else {
-            //             // 连接已重置
-            //             return Err(io::Error::new(
-            //                 ErrorKind::ConnectionReset,
-            //                 "connection reset",
-            //             ));
-            //         }
-            //     }
-            //
-            //     // 请求等待回复超时
-            //     self.response_map.write().await.remove(&serial);
-            //     return Err(io::Error::new(ErrorKind::TimedOut, "request timeout"));
-            // }
+            let serial = -self.serial;
+            self.response_map.insert(serial, Response::Waiting);
+            package_and_send_message(writer, serial, message, true).await?;
 
-            error!("encode message error!");
-            return Err(io::Error::new(ErrorKind::Other, "encode message error!"));
+            let start = Instant::now();
+            // 检测间隔时间 20毫秒检测一次
+            let mut interval = time::interval(Duration::from_millis(20));
+            // 10超时等待时间
+            while Instant::now().duration_since(start) < Duration::from_secs(10) {
+                interval.tick().await;
+                if let Some(response) = self.response_map.get(&serial) {
+                    match response {
+                        Response::Message(_message) => {
+                            if let Some(message) =
+                                self.response_map.remove(&serial)
+                            {
+                                if let Response::Message(msg) = message {
+                                    return Ok(msg);
+                                }
+                            }
+                            // 不可能出现的错误
+                            self.response_map.remove(&serial);
+                            return Err(io::Error::new(ErrorKind::Other, "impossible errors"));
+                        }
+                        Response::Waiting => {}
+                        Response::Cancel => {
+                            // 请求被取消
+                            self.response_map.remove(&serial);
+                            return Err(io::Error::new(
+                                ErrorKind::TimedOut,
+                                "request cancelled",
+                            ));
+                        }
+                        Response::Error => {
+                            self.response_map.remove(&serial);
+                            return Err(io::Error::new(
+                                ErrorKind::Other,
+                                "protocol decoding failed",
+                            ));
+                        }
+                    }
+                } else {
+                    // 连接已重置
+                    return Err(io::Error::new(
+                        ErrorKind::ConnectionReset,
+                        "connection reset",
+                    ));
+                }
+            }
+
+            // 请求等待回复超时
+            self.response_map.remove(&serial);
+            return Err(io::Error::new(ErrorKind::TimedOut, "request timeout"));
         }
         Err(io::Error::new(ErrorKind::NotConnected, "not connected"))
     }
