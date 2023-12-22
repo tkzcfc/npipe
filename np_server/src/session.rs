@@ -179,8 +179,8 @@ impl Session {
                                 break;
                             }
                         } else {
-                            debug!("Data parsing failed");
-                            // 消息解析错误主动断开
+                            debug!("Message too long");
+                            // 消息过长, 主动断开
                             self.close_session();
                             return;
                         }

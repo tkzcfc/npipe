@@ -13,6 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, WriteHalf};
 use tokio::net::{TcpSocket, TcpStream};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 
@@ -27,12 +28,18 @@ enum Response {
     Error,
 }
 
+enum ChannelMessage {
+    Disconnect,
+    RecvMessage(i32, MessageType),
+}
+
 pub struct Client {
     addr: SocketAddr,
     writer: Option<WriteHalf<TcpStream>>,
     serial: i32,
     response_map: HashMap<i32, Response>,
     closed: bool,
+    rx: Option<UnboundedReceiver<ChannelMessage>>,
 }
 
 impl Client {
@@ -43,46 +50,62 @@ impl Client {
             serial: 0i32,
             response_map: HashMap::new(),
             closed: true,
+            rx: None,
         }))
     }
 
-    pub async fn connect(this: Arc<RwLock<Self>>) -> Result<(), io::Error> {
-        let _ = this.write().await.disconnect().await;
+    pub async fn connect(&mut self) -> Result<(), io::Error> {
+        self.disconnect();
 
-        let socket = if this.read().await.addr.is_ipv4() {
+        let socket = if self.addr.is_ipv4() {
             TcpSocket::new_v4()?
         } else {
             TcpSocket::new_v6()?
         };
-        let stream = socket.connect(this.read().await.addr).await?;
+        let stream = socket.connect(self.addr).await?;
         let (mut reader, writer) = tokio::io::split(stream);
 
-        this.write().await.writer = Some(writer);
+        self.writer = Some(writer);
+
+
+        let (tx, rx) = unbounded_channel();
+
+        let addr = self.addr.clone();
 
         // 单独开一个协程处理读逻辑
         tokio::spawn(async move {
             let mut buffer = BytesMut::with_capacity(1024);
             loop {
+                if tx.is_closed() {
+                    break;
+                }
+
                 match reader.read_buf(&mut buffer).await {
                     // n为0表示对端已经关闭连接。
                     Ok(n) if n == 0 => {
-                        debug!("socket[{}] closed.", this.read().await.addr);
-                        // 客户端主动断开
-                        this.write().await.disconnect().await;
+                        debug!("socket[{}] closed.", addr);
+                        if let Err(error) = tx.send(ChannelMessage::Disconnect) {
+                            error!("Send channel message error: {}", error);
+                        }
                         return;
                     }
                     Ok(_n) => {
-                        while this.read().await.is_connect() {
+                        loop {
                             if let Ok(result) = try_extract_frame(&mut buffer) {
                                 if let Some(frame) = result {
-                                    this.write().await.on_recv_pkg_frame(frame).await;
+                                    if !on_recv_pkg_frame(&tx, frame) {
+                                        return;
+                                    }
                                 } else {
+                                    // 数据包长度不够,继续读
                                     break;
                                 }
                             } else {
-                                debug!("data parsing failed");
-                                // 消息解析错误主动断开
-                                this.write().await.disconnect().await;
+                                error!("Message too long");
+                                // 消息过长, 主动断开
+                                if let Err(error) = tx.send(ChannelMessage::Disconnect) {
+                                    error!("Send channel message error: {}", error);
+                                }
                                 return;
                             }
                         }
@@ -90,11 +113,13 @@ impl Client {
                     Err(e) => {
                         error!(
                             "Failed to read from socket[{}]: {}",
-                            this.read().await.addr,
+                            addr,
                             e
                         );
-                        // socket读错误
-                        this.write().await.disconnect().await;
+                        // socket读错误,主动断开
+                        if let Err(error) = tx.send(ChannelMessage::Disconnect) {
+                            error!("Send channel message error: {}", error);
+                        }
                         return;
                     }
                 }
@@ -110,16 +135,23 @@ impl Client {
         !self.closed
     }
 
-    pub async fn disconnect(&mut self) {
+    pub fn disconnect(&mut self) {
         self.response_map.clear();
+
+        if let Some(ref mut rx) = self.rx {
+            rx.close();
+            self.rx = None;
+        }
+
         if self.is_connect() {
             self.closed = true;
 
-            if let Some(ref mut writer) = self.writer {
-                if let Err(error) = writer.shutdown().await {
-                    error!("Disconnect error: {}", error);
-                }
-                self.writer = None;
+            if let Some(mut writer) = self.writer.take() {
+                tokio::spawn(async move {
+                    if let Err(error) = writer.shutdown().await {
+                        error!("Socket shutdown error: {}", error)
+                    }
+                });
             }
         }
     }
@@ -195,45 +227,25 @@ impl Client {
         Err(io::Error::new(ErrorKind::NotConnected, "not connected"))
     }
 
-    // 收到一个完整的消息包
-    async fn on_recv_pkg_frame(&mut self, frame: Vec<u8>) {
-        if frame.len() < 8 {
-            self.disconnect().await;
-            return;
-        }
-        // 消息序号
-        let serial: i32 = BigEndian::read_i32(&frame[0..4]);
-        // 消息类型id
-        let msg_id: u32 = BigEndian::read_u32(&frame[4..8]);
-
-        match decode_message(msg_id, &frame[8..]) {
-            Ok(message) => {
-                self.on_recv_message(serial, message).await;
-            }
-            Err(err) => {
-                error!("Protobuf parse error: {}", err);
-                if let Some(_response) = self.response_map.get(&-serial) {
-                    self.response_map.insert(-serial, Response::Error);
+    fn update_frame(&mut self) {
+        if let Some(ref mut rx) = self.rx {
+            loop {
+                if let Ok(channel_message) = rx.try_recv() {
+                    match channel_message {
+                        ChannelMessage::Disconnect => {
+                            self.disconnect();
+                            break;
+                        },
+                        ChannelMessage::RecvMessage(serial, message) => {
+                            
+                        }
+                    }
+                }
+                else {
+                    break;
                 }
             }
         }
-    }
-
-    pub async fn on_recv_message(&mut self, serial: i32, message: MessageType) {
-        if let Some(_response) = self.response_map.get(&-serial) {
-            self.response_map
-                .insert(-serial, Response::Message(message));
-        }
-
-        // return if serial < 0 {
-        //     self.on_recv_request(message).await
-        // } else if serial > 0 {
-        //     self.on_recv_response(message).await?;
-        //     Ok(MessageType::None)
-        // } else {
-        //     self.on_recv_push(message).await?;
-        //     Ok(MessageType::None)
-        // };
     }
 }
 
@@ -264,6 +276,33 @@ fn try_extract_frame(buffer: &mut BytesMut) -> io::Result<Option<Vec<u8>>> {
     let frame = buffer.split_to(4 + len).split_off(4).to_vec();
 
     Ok(Some(frame))
+}
+
+
+// 收到一个完整的消息包
+fn on_recv_pkg_frame(tx: &UnboundedSender<ChannelMessage>, frame: Vec<u8>) -> bool {
+    // 消息不合法，长度不够
+    if frame.len() < 8 {
+        return false;
+    }
+    // 消息序号
+    let serial: i32 = BigEndian::read_i32(&frame[0..4]);
+    // 消息类型id
+    let msg_id: u32 = BigEndian::read_u32(&frame[4..8]);
+
+    return match decode_message(msg_id, &frame[8..]) {
+        Ok(message) => {
+            if let Err(error) = tx.send(ChannelMessage::RecvMessage(serial, message)) {
+                error!("Send channel message error: {}", error);
+                return false;
+            }
+            true
+        }
+        Err(err) => {
+            error!("Protobuf parse error: {}", err);
+            false
+        }
+    }
 }
 
 #[inline]
