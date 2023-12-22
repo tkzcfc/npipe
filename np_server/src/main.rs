@@ -8,6 +8,7 @@ use crate::server::Server;
 use crate::session::Session;
 use log::trace;
 use std::{env, io};
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::unbounded_channel;
 
@@ -24,8 +25,8 @@ async fn run_server() -> io::Result<()> {
             trace!("new connection: {}", addr);
 
             let (tx, rx) = unbounded_channel();
+            let (reader, mut writer) = tokio::io::split(socket);
 
-            let (reader, writer) = tokio::io::split(socket);
             let mut session = Session::new(tx.clone(), addr, Server::instance().new_id());
             session.run(rx, reader, writer).await;
 
@@ -36,7 +37,7 @@ async fn run_server() -> io::Result<()> {
 
 #[tokio::main]
 pub async fn main() -> io::Result<()> {
-    env::set_var("RUST_LOG", "debug");
+    env::set_var("RUST_LOG", "trace");
     env_logger::init();
     run_server().await
 }

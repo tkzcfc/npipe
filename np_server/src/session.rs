@@ -1,7 +1,6 @@
 use crate::player::Player;
 use byteorder::{BigEndian, ByteOrder};
 use bytes::BytesMut;
-use log::{debug, error};
 use np_base::generic;
 use np_base::message_map::{decode_message, encode_raw_message, MessageType};
 use np_base::message_map::{get_message_id, get_message_size};
@@ -9,6 +8,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
+use log::{debug, error};
 use tokio::io::{
     AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf,
 };
@@ -22,7 +22,7 @@ pub enum WriterMessage {
     Close,
     Flush,
     CloseDelayed(Duration),
-    Send(Vec<u8>),
+    Send(Vec<u8>, bool),
 }
 
 pub struct Session {
@@ -31,6 +31,12 @@ pub struct Session {
     pub player: Option<Arc<RwLock<Player>>>,
     session_id: u32,
     closed: bool,
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        println!("drop session!!!");
+    }
 }
 
 impl Session {
@@ -81,13 +87,14 @@ impl Session {
     pub(crate) async fn send_response(&self, serial: i32, message: &MessageType) -> io::Result<()> {
         if let Some(message_id) = get_message_id(message) {
             let message_size = get_message_size(message);
-            let mut buf = Vec::with_capacity(message_size + 8);
+            let mut buf = Vec::with_capacity(message_size + 12);
 
+            byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, (8 + message_size) as u32)?;
             byteorder::WriteBytesExt::write_i32::<BigEndian>(&mut buf, -serial)?;
             byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, message_id)?;
             encode_raw_message(message, &mut buf);
 
-            if let Err(error) = self.tx.send(WriterMessage::Send(buf)) {
+            if let Err(error) = self.tx.send(WriterMessage::Send(buf, true)) {
                 error!("send response error: {}", error);
             }
         }
@@ -127,20 +134,26 @@ impl Session {
                     sleep(duration).await;
                     break;
                 }
-                WriterMessage::Send(data) => {
+                WriterMessage::Send(data, flush) => {
                     if data.is_empty() {
                         yield_now().await;
                         continue;
                     }
 
                     if let Err(error) = writer.write_all(&data).await {
-                        log::error!("Error when write_all {:?}", error);
+                        error!("Error when write_all {:?}", error);
                         break;
+                    }
+
+                    if flush {
+                        if let Err(error) = writer.flush().await {
+                            error!("Error when flushing {:?}", error);
+                        }
                     }
                 }
                 WriterMessage::Flush => {
                     if let Err(error) = writer.flush().await {
-                        log::error!("Error when flushing {:?}", error);
+                        error!("Error when flushing {:?}", error);
                     }
                 }
             }

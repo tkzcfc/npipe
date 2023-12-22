@@ -24,6 +24,22 @@ pub struct Error {
     #[prost(string, tag = "2")]
     pub message: ::prost::alloc::string::String,
 }
+/// ping
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Ping {
+    /// @build_automatically_generate_code@  enum MsgId {None = 0; Id = 150004;}
+    #[prost(int64, tag = "1")]
+    pub ticks: i64,
+}
+/// pong
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Pong {
+    /// @build_automatically_generate_code@  enum MsgId {None = 0; Id = 150005;}
+    #[prost(int64, tag = "1")]
+    pub ticks: i64,
+}
 /// 通用错误码
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

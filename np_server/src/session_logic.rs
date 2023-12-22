@@ -12,6 +12,7 @@ impl Session {
         message: &MessageType,
     ) -> io::Result<MessageType> {
         match message {
+            MessageType::GenericPing(msg) => return self.on_ping(msg).await,
             MessageType::ClientServerLoginReq(msg) => return self.on_login_requst(msg).await,
             _ => {
                 if let Some(ref player) = self.player {
@@ -35,6 +36,12 @@ impl Session {
     // 收到玩家向服务器推送的消息
     pub(crate) async fn on_recv_push(&mut self, _message: &MessageType) -> io::Result<()> {
         Ok(())
+    }
+
+    async fn on_ping(&mut self, message: &generic::Ping) -> io::Result<MessageType> {
+        Ok(MessageType::GenericPong(generic::Pong {
+            ticks: message.ticks,
+        }))
     }
 
     async fn on_login_requst(

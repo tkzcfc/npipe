@@ -5,7 +5,7 @@ use np_base::message_map::{encode_message, MessageType};
 use std::time::Duration;
 use std::{env, io};
 use tokio::io::AsyncWriteExt;
-use tokio::net::{TcpSocket, TcpStream};
+use tokio::net::TcpSocket;
 use tokio::time::sleep;
 use tokio::try_join;
 
@@ -45,7 +45,7 @@ async fn run_client() -> io::Result<()> {
             stream.write_u32(id).await?;
             stream.write_all(&bytes).await?;
             stream.flush().await?;
-            sleep(Duration::from_millis(100)).await;
+            sleep(Duration::from_millis(1000)).await;
         }
     }
 

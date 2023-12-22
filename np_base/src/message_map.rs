@@ -9,6 +9,8 @@ pub enum MessageType {
     GenericSuccess(super::generic::Success),
     GenericFail(super::generic::Fail),
     GenericError(super::generic::Error),
+    GenericPing(super::generic::Ping),
+    GenericPong(super::generic::Pong),
 }
 
 pub fn get_message_id(message: &MessageType) -> Option<u32> {
@@ -18,6 +20,8 @@ pub fn get_message_id(message: &MessageType) -> Option<u32> {
         MessageType::GenericSuccess(_) => Some(150001u32),
         MessageType::GenericFail(_) => Some(150002u32),
         MessageType::GenericError(_) => Some(150003u32),
+        MessageType::GenericPing(_) => Some(150004u32),
+        MessageType::GenericPong(_) => Some(150005u32),
         _ => None,
     }
 }
@@ -44,6 +48,14 @@ pub fn decode_message(message_id: u32, bytes: &[u8]) -> Result<MessageType, Deco
             Ok(message) => Ok(MessageType::GenericError(message)),
             Err(err) => Err(err),
         },
+        150004u32 => match super::generic::Ping::decode(bytes) {
+            Ok(message) => Ok(MessageType::GenericPing(message)),
+            Err(err) => Err(err),
+        },
+        150005u32 => match super::generic::Pong::decode(bytes) {
+            Ok(message) => Ok(MessageType::GenericPong(message)),
+            Err(err) => Err(err),
+        },
         _ => Err(DecodeError::new("unknown message id")),
     }
 }
@@ -55,6 +67,8 @@ pub fn encode_message(message: &MessageType) -> Option<(u32, Vec<u8>)> {
         MessageType::GenericSuccess(msg) => Some((150001u32, msg.encode_to_vec())),
         MessageType::GenericFail(msg) => Some((150002u32, msg.encode_to_vec())),
         MessageType::GenericError(msg) => Some((150003u32, msg.encode_to_vec())),
+        MessageType::GenericPing(msg) => Some((150004u32, msg.encode_to_vec())),
+        MessageType::GenericPong(msg) => Some((150005u32, msg.encode_to_vec())),
         _ => None,
     }
 }
@@ -66,6 +80,8 @@ pub fn get_message_size(message: &MessageType) -> usize {
         MessageType::GenericSuccess(msg) => msg.encoded_len(),
         MessageType::GenericFail(msg) => msg.encoded_len(),
         MessageType::GenericError(msg) => msg.encoded_len(),
+        MessageType::GenericPing(msg) => msg.encoded_len(),
+        MessageType::GenericPong(msg) => msg.encoded_len(),
         _ => 0,
     }
 }
@@ -77,6 +93,8 @@ pub fn encode_raw_message(message: &MessageType, buf: &mut impl BufMut) {
         MessageType::GenericSuccess(msg) => msg.encode_raw(buf),
         MessageType::GenericFail(msg) => msg.encode_raw(buf),
         MessageType::GenericError(msg) => msg.encode_raw(buf),
+        MessageType::GenericPing(msg) => msg.encode_raw(buf),
+        MessageType::GenericPong(msg) => msg.encode_raw(buf),
         _ => {}
     }
 }

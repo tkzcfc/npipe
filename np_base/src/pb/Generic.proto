@@ -30,3 +30,16 @@ enum ErrorCode {
 	// 玩家未登录
 	PlayerNotLogin = -1002;
 }
+
+
+// ping
+message Ping {
+  enum MsgId {None = 0; Id = 150004;}
+  int64 ticks = 1;
+}
+
+// pong
+message Pong {
+  enum MsgId {None = 0; Id = 150005;}
+  int64 ticks = 1;
+}
