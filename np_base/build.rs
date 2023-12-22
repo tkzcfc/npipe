@@ -24,9 +24,10 @@ fn main() -> io::Result<()> {
     if cfg!(windows) {
         set_var("PROTOC", "bin/protoc.exe");
     } else {
-        let (protoc_bin, _) = init("22.0").unwrap();
-        println!("protoc_bin: {}", protoc_bin.to_str().unwrap());
-        set_var("PROTOC", protoc_bin);
+        return Ok(());
+        // let (protoc_bin, _) = init("22.0").unwrap();
+        // println!("protoc_bin: {}", protoc_bin.to_str().unwrap());
+        // set_var("PROTOC", protoc_bin);
     }
 
     // 需要导出的协议文件列表
