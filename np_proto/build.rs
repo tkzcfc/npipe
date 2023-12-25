@@ -242,7 +242,6 @@ pub fn encode_raw_message(message: &MessageType, buf: &mut impl BufMut) {{
         _ => {{}}
     }}
 }}
-
 "#,
         code_message.join("\n"),
         code_get_message_id.join("\n"),

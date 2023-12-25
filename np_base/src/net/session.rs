@@ -145,22 +145,25 @@ impl Session {
                 }
                 Ok(_n) => {
                     while !self.is_closed() {
-                        // 粘包处理
-                        if let Ok(result) = self.logic.on_try_extract_frame(&mut buffer) {
-                            if let Some(frame) = result {
-                                if !self.logic.on_recv_frame(frame).await {
-                                    // 消息处理失败
-                                    self.close_session();
-                                    return;
+                        // 处理数据粘包
+                        match self.logic.on_try_extract_frame(&mut buffer) {
+                            Ok(result) => {
+                                if let Some(frame) = result {
+                                    // 收到完整消息
+                                    if !self.logic.on_recv_frame(frame).await {
+                                        // 消息处理失败
+                                        self.close_session();
+                                        return;
+                                    }
+                                } else {
+                                    break;
                                 }
-                            } else {
-                                break;
                             }
-                        } else {
-                            debug!("Message too long");
-                            // 消息过长, 主动断开
-                            self.close_session();
-                            return;
+                            Err(error) => {
+                                error!("Try extract frame error {}", error);
+                                self.close_session();
+                                return;
+                            }
                         }
                     }
                 }
