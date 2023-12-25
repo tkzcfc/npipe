@@ -33,6 +33,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4668cab20f66d8d020e1fbc0ebe47217433c1b6c8f2040faf858554e394ace6"
 
 [[package]]
+name = "async-trait"
+version = "0.1.75"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fdf6721fb0140e4f897002dd086c06f6c27775df19cfe1fccb21181a48fd2c98"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -216,15 +227,6 @@ checksum = "290f1a1d9242c78d09ce40a5e87e7554ee637af1351968159f4952f028f75604"
 
 [[package]]
 name = "heck"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d621efb26863f0e9924c6ac577e8275e5e6b77455db64ffa6c65c904e9e132c"
-dependencies = [
- "unicode-segmentation",
-]
-
-[[package]]
-name = "heck"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
@@ -360,13 +362,11 @@ checksum = "e5ce46fe64a9d73be07dcbe690a38ce1b293be448fd8ce1e6c1b8062c9f72c6a"
 name = "np_base"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "bytes",
- "heck 0.3.3",
- "heck 0.4.1",
- "prost",
- "prost-build",
- "protoc-prebuilt",
- "regex",
+ "env_logger",
+ "log",
+ "tokio",
 ]
 
 [[package]]
@@ -384,18 +384,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "np_proto"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "heck",
+ "prost",
+ "prost-build",
+ "protoc-prebuilt",
+ "regex",
+]
+
+[[package]]
 name = "np_server"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "byteorder",
  "bytes",
  "env_logger",
  "lazy_static",
  "log",
  "np_base",
+ "np_proto",
  "prost",
  "tokio",
 ]
+
+[[package]]
+name = "np_test"
+version = "0.1.0"
 
 [[package]]
 name = "num_cpus"
@@ -509,7 +527,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c55e02e35260070b6f716a2423c2ff1c3bb1642ddca6f99e1f26d06268a0e2d2"
 dependencies = [
  "bytes",
- "heck 0.4.1",
+ "heck",
  "itertools",
  "log",
  "multimap",
@@ -841,12 +859,6 @@ checksum = "5c5713f0fc4b5db668a2ac63cdb7bb4469d8c9fed047b1d0292cc7b0ce2ba921"
 dependencies = [
  "tinyvec",
 ]
-
-[[package]]
-name = "unicode-segmentation"
-version = "1.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1dd624098567895118886609431a7c3b8f516e41d30e0643f03d94592a147e36"
 
 [[package]]
 name = "untrusted"

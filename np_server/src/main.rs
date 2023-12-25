@@ -1,13 +1,16 @@
 mod player;
-mod player_manager;
-mod server;
-mod session;
-mod session_logic;
+mod peer;
+
 use std::{env, io};
+use np_base::net::server::run_server;
+use crate::peer::Peer;
 
 #[tokio::main]
 pub async fn main() -> io::Result<()> {
     env::set_var("RUST_LOG", "debug");
     env_logger::init();
-    server::run("0.0.0.0:8118").await
+
+    run_server("0.0.0.0:8118", || {
+        Box::new(Peer::new())
+    }).await
 }

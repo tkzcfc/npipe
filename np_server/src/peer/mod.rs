@@ -1,0 +1,197 @@
+mod handle_push;
+mod handle_request;
+mod handle_response;
+
+use std::io;
+use std::sync::Arc;
+use async_trait::async_trait;
+use byteorder::{BigEndian, ByteOrder};
+use bytes::BytesMut;
+use log::error;
+use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::RwLock;
+use np_base::net::session::WriterMessage;
+use np_base::net::session_logic::SessionLogic;
+use np_proto::{generic, message_map};
+use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size, MessageType};
+use crate::player::Player;
+
+pub struct Peer {
+    tx: Option<UnboundedSender<WriterMessage>>,
+    player: Option<Arc<RwLock<Player>>>,
+}
+
+impl Peer {
+    pub(crate) fn new() -> Self {
+        Peer{
+            tx: None,
+            player: None,
+        }
+    }
+
+    #[inline]
+    pub async fn package_and_send_message(
+        &self,
+        serial: i32,
+        message: &MessageType,
+        flush: bool,
+    ) -> io::Result<()> {
+        if let Some(message_id) = get_message_id(message) {
+            let message_size = get_message_size(message);
+            let mut buf = Vec::with_capacity(message_size + 12);
+
+            byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, (8 + message_size) as u32)?;
+            byteorder::WriteBytesExt::write_i32::<BigEndian>(&mut buf, -serial)?;
+            byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, message_id)?;
+            encode_raw_message(message, &mut buf);
+
+            if let Some(ref tx) = self.tx {
+                if let Err(error) = tx.send(WriterMessage::Send(buf, flush)) {
+                    error!("Send message error: {}", error);
+                }
+            }
+            else {
+                error!("Send message error: tx is None");
+            }
+        }
+        Ok(())
+    }
+
+    #[inline]
+    pub(crate) async fn send_response(&self, serial: i32, message: &MessageType) -> io::Result<()> {
+        self.package_and_send_message(serial, message, true).await
+    }
+
+    // #[inline]
+    // pub(crate) async fn send_request(&self, _message: &MessageType) -> io::Result<MessageType> {
+    //     todo!();
+    // }
+
+    #[inline]
+    pub(crate) async fn send_push(&self, message: &MessageType) -> io::Result<()> {
+        self.package_and_send_message(0, message, true).await
+    }
+
+    pub async fn handle_message(
+        &self,
+        serial: i32,
+        message: MessageType
+    ) -> io::Result<MessageType> {
+        return if serial < 0 {
+            self.handle_request(message).await
+        } else if serial > 0 {
+            self.handle_response(message).await?;
+            Ok(MessageType::None)
+        } else {
+            self.handle_push(message).await?;
+            Ok(MessageType::None)
+        };
+    }
+}
+
+#[async_trait]
+impl SessionLogic for Peer {
+    fn on_session_start(&mut self, tx: UnboundedSender<WriterMessage>) {
+        self.tx = Some(tx);
+    }
+
+    // 会话关闭回调
+    async fn on_session_close(&mut self) {
+        self.tx = None;
+    }
+
+    // 数据粘包处理
+    fn on_try_extract_frame(&self, buffer: &mut BytesMut) -> io::Result<Option<Vec<u8>>> {
+        // 数据小于4字节,继续读取数据
+        if buffer.len() < 4 {
+            return Ok(None);
+        }
+
+        // 读取包长度
+        let buf = buffer.get(0..4).unwrap();
+        let len = BigEndian::read_u32(buf) as usize;
+
+        // 超出最大限制
+        if len <= 0 || len >= 1024 * 1024 * 5 {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                String::from("bad length"),
+            ));
+        }
+
+        // 数据不够,继续读取数据
+        if buffer.len() < 4 + len {
+            return Ok(None);
+        }
+
+        // 拆出这个包的数据
+        let frame = buffer.split_to(4 + len).split_off(4).to_vec();
+
+        Ok(Some(frame))
+    }
+
+    // 收到一个完整的消息包
+    async fn on_recv_frame(&self, frame: Vec<u8>) -> bool {
+        if frame.len() < 8 {
+            return false;
+        }
+        // 消息序号
+        let serial: i32 = BigEndian::read_i32(&frame[0..4]);
+        // 消息类型id
+        let msg_id: u32 = BigEndian::read_u32(&frame[4..8]);
+
+        match message_map::decode_message(msg_id, &frame[8..]) {
+            Ok(message) => match self.handle_message(serial, message).await {
+                Ok(msg) => {
+                    if serial < 0 {
+                        if let MessageType::None = msg {
+                            // 请求不应该不回复
+                            error!("The response to request {} is empty", msg_id);
+                            let _ = self
+                                .send_response(
+                                    serial,
+                                    &MessageType::GenericError(generic::Error {
+                                        number: generic::ErrorCode::InternalError.into(),
+                                        message: format!("response is empty"),
+                                    }),
+                                )
+                                .await;
+                        } else {
+                            let _ = self.send_response(serial, &msg).await;
+                        }
+                    }
+                }
+                Err(err) => {
+                    error!("Request error: {}, message id: {}", err, msg_id);
+
+                    let _ = self
+                        .send_response(
+                            serial,
+                            &MessageType::GenericError(generic::Error {
+                                number: generic::ErrorCode::InternalError.into(),
+                                message: format!("{}", err),
+                            }),
+                        )
+                        .await;
+                }
+            },
+            Err(err) => {
+                error!("Protobuf parse error: {}", err);
+                let _ = self
+                    .send_response(
+                        serial,
+                        &MessageType::GenericError(generic::Error {
+                            number: generic::ErrorCode::InternalError.into(),
+                            message: format!("{}", err),
+                        }),
+                    )
+                    .await;
+
+                return false;
+            }
+        }
+
+        true
+    }
+}
+

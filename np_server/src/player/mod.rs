@@ -1,11 +1,12 @@
-use crate::session::{package_and_send_message, WriterMessage};
 use log::error;
-use np_base::generic;
-use np_base::message_map::MessageType;
 use std::io;
 use std::sync::Arc;
+use byteorder::BigEndian;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
+use np_base::net::session::WriterMessage;
+use np_proto::generic;
+use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size, MessageType};
 
 pub type PlayerId = u32;
 
@@ -44,26 +45,46 @@ impl Player {
     }
 
     #[inline]
-    pub async fn send_response(&self, serial: i32, message: &MessageType) -> io::Result<()> {
-        if let Some(ref tx) = self.tx {
-            return package_and_send_message(tx, serial, message, true).await;
+    pub async fn package_and_send_message(
+        &self,
+        serial: i32,
+        message: &MessageType,
+        flush: bool,
+    ) -> io::Result<()> {
+        if let Some(message_id) = get_message_id(message) {
+            let message_size = get_message_size(message);
+            let mut buf = Vec::with_capacity(message_size + 12);
+
+            byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, (8 + message_size) as u32)?;
+            byteorder::WriteBytesExt::write_i32::<BigEndian>(&mut buf, -serial)?;
+            byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, message_id)?;
+            encode_raw_message(message, &mut buf);
+
+            if let Some(ref tx) = self.tx {
+                if let Err(error) = tx.send(WriterMessage::Send(buf, flush)) {
+                    error!("Send message error: {}", error);
+                }
+            }
+            else {
+                error!("Send message error: tx is None");
+            }
         }
-        error!("Can't send the response to the player.");
         Ok(())
     }
 
     #[inline]
-    pub async fn send_request(&self, _message: &MessageType) -> io::Result<MessageType> {
-        todo!();
+    pub async fn send_response(&self, serial: i32, message: &MessageType) -> io::Result<()> {
+        self.package_and_send_message(serial, message, true).await
     }
+
+    // #[inline]
+    // pub async fn send_request(&self, _message: &MessageType) -> io::Result<MessageType> {
+    //     todo!();
+    // }
 
     #[inline]
     pub async fn send_push(&self, message: &MessageType) -> io::Result<()> {
-        if let Some(ref tx) = self.tx {
-            return package_and_send_message(tx, 0, message, true).await;
-        }
-        error!("Can't send the push to the player.");
-        Ok(())
+        self.package_and_send_message(0, message, true).await
     }
 
     #[inline]
@@ -80,14 +101,6 @@ impl Player {
         }
     }
 
-    #[inline]
-    pub async fn write_push(&self, message: &MessageType) -> io::Result<()> {
-        if let Some(ref tx) = self.tx {
-            return package_and_send_message(tx, 0, message, false).await;
-        }
-        error!("Can't send the push to the player.");
-        Ok(())
-    }
 
     // 重置会话信息
     #[inline]
@@ -121,7 +134,7 @@ impl Player {
     }
 
     // 玩家收到消息
-    pub async fn on_recv_message(&mut self, message: MessageType) -> io::Result<MessageType> {
+    pub async fn handle_request(&mut self, message: MessageType) -> io::Result<MessageType> {
         // 客户端请求的消息，服务器未实现
         Ok(MessageType::GenericError(generic::Error {
             number: generic::ErrorCode::InterfaceAbsent.into(),

@@ -1,12 +1,12 @@
-use crate::session::Session;
-use np_base::message_map::MessageType;
-use np_base::{client_server, generic};
 use std::io;
+use np_proto::{client_server, generic};
+use np_proto::message_map::MessageType;
+use super::Peer;
 
-impl Session {
+impl Peer {
     // 收到玩家向服务器请求的消息
-    pub(crate) async fn on_recv_request(
-        &mut self,
+    pub(crate) async fn handle_request(
+        &self,
         message: MessageType,
     ) -> io::Result<MessageType> {
         match message {
@@ -14,7 +14,7 @@ impl Session {
             MessageType::ClientServerLoginReq(msg) => return self.on_login_requst(msg).await,
             _ => {
                 if let Some(ref player) = self.player {
-                    return player.write().await.on_recv_message(message).await;
+                    return player.write().await.handle_request(message).await;
                 }
             }
         }
@@ -26,24 +26,14 @@ impl Session {
         }))
     }
 
-    // 收到玩家回复服务器的消息
-    pub(crate) async fn on_recv_response(&mut self, _message: MessageType) -> io::Result<()> {
-        Ok(())
-    }
-
-    // 收到玩家向服务器推送的消息
-    pub(crate) async fn on_recv_push(&mut self, _message: MessageType) -> io::Result<()> {
-        Ok(())
-    }
-
-    async fn on_ping(&mut self, message: generic::Ping) -> io::Result<MessageType> {
+    async fn on_ping(&self, message: generic::Ping) -> io::Result<MessageType> {
         Ok(MessageType::GenericPong(generic::Pong {
             ticks: message.ticks,
         }))
     }
 
     async fn on_login_requst(
-        &mut self,
+        &self,
         message: client_server::LoginReq,
     ) -> io::Result<MessageType> {
         if self.player.is_some() {
