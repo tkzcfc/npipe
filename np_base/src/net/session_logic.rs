@@ -1,11 +1,13 @@
-use std::io;
-use bytes::BytesMut;
-use async_trait::async_trait;
-use tokio::sync::mpsc::UnboundedSender;
 use crate::net::session::WriterMessage;
+use async_trait::async_trait;
+use bytes::BytesMut;
+use std::io;
+use tokio::sync::mpsc::UnboundedSender;
 
 #[async_trait]
-pub trait SessionLogic where Self: Sync + Send
+pub trait SessionLogic
+where
+    Self: Sync + Send,
 {
     // 会话开始
     fn on_session_start(&mut self, tx: UnboundedSender<WriterMessage>);
@@ -18,5 +20,4 @@ pub trait SessionLogic where Self: Sync + Send
 
     // 收到一个完整的消息包
     async fn on_recv_frame(&self, frame: Vec<u8>) -> bool;
-
 }

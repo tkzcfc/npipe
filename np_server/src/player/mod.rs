@@ -1,12 +1,12 @@
-use log::error;
-use std::io;
-use std::sync::Arc;
 use byteorder::BigEndian;
-use tokio::sync::mpsc::UnboundedSender;
-use tokio::sync::RwLock;
+use log::error;
 use np_base::net::session::WriterMessage;
 use np_proto::generic;
 use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size, MessageType};
+use std::io;
+use std::sync::Arc;
+use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::RwLock;
 
 pub type PlayerId = u32;
 
@@ -64,8 +64,7 @@ impl Player {
                 if let Err(error) = tx.send(WriterMessage::Send(buf, flush)) {
                     error!("Send message error: {}", error);
                 }
-            }
-            else {
+            } else {
                 error!("Send message error: tx is None");
             }
         }
@@ -100,7 +99,6 @@ impl Player {
             let _ = tx.send(WriterMessage::Close);
         }
     }
-
 
     // 重置会话信息
     #[inline]

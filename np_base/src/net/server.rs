@@ -1,15 +1,17 @@
+use crate::net::session::Session;
+use crate::net::session_logic::SessionLogic;
 use log::{info, trace};
 use std::io;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::unbounded_channel;
-use crate::net::session::Session;
-use crate::net::session_logic::SessionLogic;
 
 pub type CreateSessionLogicCallback = fn() -> Box<dyn SessionLogic>;
 
-pub async fn run_server(addr: &str, on_create_session_logic_callback: CreateSessionLogicCallback) -> io::Result<()>
-{
+pub async fn run_server(
+    addr: &str,
+    on_create_session_logic_callback: CreateSessionLogicCallback,
+) -> io::Result<()> {
     let addr = addr.parse::<SocketAddr>();
     match addr {
         Err(parse_error) => {
@@ -54,4 +56,3 @@ pub async fn run_server(addr: &str, on_create_session_logic_callback: CreateSess
         });
     }
 }
-

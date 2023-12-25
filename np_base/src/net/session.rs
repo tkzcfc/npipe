@@ -1,3 +1,4 @@
+use crate::net::session_logic::SessionLogic;
 use bytes::BytesMut;
 use log::{debug, error};
 use std::net::SocketAddr;
@@ -9,7 +10,6 @@ use tokio::select;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::task::yield_now;
 use tokio::time::sleep;
-use crate::net::session_logic::SessionLogic;
 
 pub enum WriterMessage {
     Close,
@@ -32,13 +32,18 @@ impl Drop for Session {
 }
 
 impl Session {
-    pub fn new(tx: UnboundedSender<WriterMessage>, addr: SocketAddr, session_id: u32, logic: Box<dyn SessionLogic>) -> Session {
+    pub fn new(
+        tx: UnboundedSender<WriterMessage>,
+        addr: SocketAddr,
+        session_id: u32,
+        logic: Box<dyn SessionLogic>,
+    ) -> Session {
         Session {
             tx,
             addr,
             session_id,
             closed: false,
-            logic
+            logic,
         }
     }
 

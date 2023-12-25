@@ -2,19 +2,19 @@ mod handle_push;
 mod handle_request;
 mod handle_response;
 
-use std::io;
-use std::sync::Arc;
+use crate::player::Player;
 use async_trait::async_trait;
 use byteorder::{BigEndian, ByteOrder};
 use bytes::BytesMut;
 use log::error;
-use tokio::sync::mpsc::UnboundedSender;
-use tokio::sync::RwLock;
 use np_base::net::session::WriterMessage;
 use np_base::net::session_logic::SessionLogic;
-use np_proto::{generic, message_map};
 use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size, MessageType};
-use crate::player::Player;
+use np_proto::{generic, message_map};
+use std::io;
+use std::sync::Arc;
+use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::RwLock;
 
 pub struct Peer {
     tx: Option<UnboundedSender<WriterMessage>>,
@@ -23,7 +23,7 @@ pub struct Peer {
 
 impl Peer {
     pub(crate) fn new() -> Self {
-        Peer{
+        Peer {
             tx: None,
             player: None,
         }
@@ -49,8 +49,7 @@ impl Peer {
                 if let Err(error) = tx.send(WriterMessage::Send(buf, flush)) {
                     error!("Send message error: {}", error);
                 }
-            }
-            else {
+            } else {
                 error!("Send message error: tx is None");
             }
         }
@@ -75,7 +74,7 @@ impl Peer {
     pub async fn handle_message(
         &self,
         serial: i32,
-        message: MessageType
+        message: MessageType,
     ) -> io::Result<MessageType> {
         return if serial < 0 {
             self.handle_request(message).await
@@ -194,4 +193,3 @@ impl SessionLogic for Peer {
         true
     }
 }
-

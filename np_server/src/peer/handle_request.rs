@@ -1,14 +1,11 @@
-use std::io;
-use np_proto::{client_server, generic};
-use np_proto::message_map::MessageType;
 use super::Peer;
+use np_proto::message_map::MessageType;
+use np_proto::{client_server, generic};
+use std::io;
 
 impl Peer {
     // 收到玩家向服务器请求的消息
-    pub(crate) async fn handle_request(
-        &self,
-        message: MessageType,
-    ) -> io::Result<MessageType> {
+    pub(crate) async fn handle_request(&self, message: MessageType) -> io::Result<MessageType> {
         match message {
             MessageType::GenericPing(msg) => return self.on_ping(msg).await,
             MessageType::ClientServerLoginReq(msg) => return self.on_login_requst(msg).await,
@@ -32,10 +29,7 @@ impl Peer {
         }))
     }
 
-    async fn on_login_requst(
-        &self,
-        message: client_server::LoginReq,
-    ) -> io::Result<MessageType> {
+    async fn on_login_requst(&self, message: client_server::LoginReq) -> io::Result<MessageType> {
         if self.player.is_some() {
             // 重复发送登录请求
             return Ok(MessageType::GenericError(generic::Error {
