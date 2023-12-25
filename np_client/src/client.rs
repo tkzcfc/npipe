@@ -1,7 +1,7 @@
 use byteorder::{BigEndian, ByteOrder};
 use bytes::BytesMut;
 use log::{debug, error};
-use np_base::message_map::{
+use np_proto::message_map::{
     decode_message, encode_message, encode_raw_message, get_message_id, get_message_size,
     MessageType,
 };

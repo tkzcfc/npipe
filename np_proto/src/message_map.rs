@@ -98,4 +98,3 @@ pub fn encode_raw_message(message: &MessageType, buf: &mut impl BufMut) {
         _ => {}
     }
 }
-

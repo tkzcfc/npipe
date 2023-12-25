@@ -1,7 +1,7 @@
 mod client;
 
-use np_base::client_server;
-use np_base::message_map::{encode_message, MessageType};
+use np_proto::client_server;
+use np_proto::message_map::{encode_message, MessageType};
 use std::time::Duration;
 use std::{env, io};
 use tokio::io::AsyncWriteExt;

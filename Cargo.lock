@@ -363,6 +363,7 @@ name = "np_base"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "byteorder",
  "bytes",
  "env_logger",
  "log",
@@ -378,6 +379,7 @@ dependencies = [
  "env_logger",
  "log",
  "np_base",
+ "np_proto",
  "prost",
  "time",
  "tokio",
