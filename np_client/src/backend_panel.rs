@@ -45,8 +45,7 @@ fn default_run_mode() -> RunMode {
 
 // ----------------------------------------------------------------------------
 
-#[derive(Default)]
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Default, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct BackendPanel {
     pub open: bool,
@@ -221,8 +220,8 @@ fn integration_ui(ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let fullscreen = ui.input(|i| i.viewport().fullscreen.unwrap_or(false));
         if !fullscreen
             && ui
-            .button("Drag me to drag window")
-            .is_pointer_button_down_on()
+                .button("Drag me to drag window")
+                .is_pointer_button_down_on()
         {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
         }

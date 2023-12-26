@@ -37,10 +37,10 @@ impl FrameHistory {
             "Mean CPU usage: {:.2} ms / frame",
             1e3 * self.mean_frame_time()
         ))
-            .on_hover_text(
-                "Includes egui layout and tessellation time.\n\
+        .on_hover_text(
+            "Includes egui layout and tessellation time.\n\
             Does not include GPU usage, nor overhead for sending data to GPU.",
-            );
+        );
         egui::warn_if_debug_build(ui);
 
         if !cfg!(target_arch = "wasm32") {

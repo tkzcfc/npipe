@@ -1,5 +1,4 @@
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 enum Anchor {
     Demo,
     Clock,
@@ -34,8 +33,7 @@ enum Command {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Default)]
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Default, serde::Deserialize, serde::Serialize)]
 pub struct ConcurrencyTestApp {
     logic: crate::apps::concurrency_test::ConcurrencyTest,
 }
@@ -48,8 +46,7 @@ impl eframe::App for ConcurrencyTestApp {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Default)]
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Default, serde::Deserialize, serde::Serialize)]
 pub struct FractalClockApp {
     fractal_clock: crate::apps::fractal_clock::FractalClock,
 }
@@ -59,16 +56,14 @@ impl eframe::App for FractalClockApp {
         egui::CentralPanel::default()
             .frame(egui::Frame::dark_canvas(&ctx.style()))
             .show(ctx, |ui| {
-                self.fractal_clock
-                    .ui(ui, Some(seconds_since_midnight()));
+                self.fractal_clock.ui(ui, Some(seconds_since_midnight()));
             });
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Default)]
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Default, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct State {
     concurrency_test: ConcurrencyTestApp,
@@ -213,13 +208,11 @@ impl Application {
 }
 
 impl eframe::App for Application {
-
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F11)) {
             let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
             ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!fullscreen));
         }
-
 
         egui::TopBottomPanel::top("wrap_app_top_bar").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {

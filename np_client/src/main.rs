@@ -1,11 +1,11 @@
-mod client;
 mod app;
-mod backend_panel;
-mod frame_history;
 mod apps;
+mod backend_panel;
+mod client;
+mod frame_history;
 
-use std::env;
 use crate::app::Application;
+use std::env;
 
 fn main() -> eframe::Result<()> {
     env::set_var("RUST_LOG", "info");
