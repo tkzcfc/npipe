@@ -1,5 +1,8 @@
 mod client;
 mod app;
+mod backend_panel;
+mod frame_history;
+mod apps;
 
 use std::env;
 use crate::app::Application;
@@ -10,8 +13,9 @@ fn main() -> eframe::Result<()> {
 
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([400.0, 300.0])
-            .with_min_inner_size([300.0, 220.0]),
+            .with_inner_size([640.0, 320.0])
+            .with_min_inner_size([300.0, 220.0])
+            .with_drag_and_drop(true),
         ..Default::default()
     };
     eframe::run_native(
