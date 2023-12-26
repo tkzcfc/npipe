@@ -1,6 +1,8 @@
 #[derive(PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
-pub struct ConcurrencyTest {}
+pub struct ConcurrencyTest {
+    // clients : Vec<>
+}
 
 impl Default for ConcurrencyTest {
     fn default() -> Self {

@@ -5,10 +5,8 @@ mod client;
 mod frame_history;
 
 use crate::app::Application;
-use std::env;
 
 fn main() -> eframe::Result<()> {
-    env::set_var("RUST_LOG", "info");
     env_logger::init();
 
     let native_options = eframe::NativeOptions {
