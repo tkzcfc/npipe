@@ -31,7 +31,7 @@ where
         if len <= 0 || len >= 1024 * 1024 * 5 {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
-                String::from("bad length"),
+                String::from("Length too long"),
             ));
         }
 

@@ -144,7 +144,11 @@ impl Session {
                     return;
                 }
                 Ok(_n) => {
-                    while !self.is_closed() {
+                    loop {
+                        if self.is_closed() {
+                            return;
+                        }
+
                         // 处理数据粘包
                         match self.logic.on_try_extract_frame(&mut buffer) {
                             Ok(result) => {
