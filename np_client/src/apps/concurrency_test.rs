@@ -29,6 +29,7 @@ pub struct ConcurrencyTest {
     host: String,
     port: u16,
     concurrent_quantity: u32,
+    use_raw: bool,
 }
 
 impl Default for ConcurrencyTest {
@@ -39,6 +40,7 @@ impl Default for ConcurrencyTest {
             host: "127.0.0.1".into(),
             port: 8118,
             concurrent_quantity: 100,
+            use_raw: true,
         }
     }
 }
@@ -105,22 +107,22 @@ async fn do_test_raw(tx: Sender<u32>, addr: SocketAddr) -> io::Result<()> {
         TcpSocket::new_v6()?
     };
     let mut stream = socket.connect(addr).await?;
-
-    while Instant::now().duration_since(start) < Duration::from_secs(1) {
+    let duration = Duration::from_secs(1);
+    while Instant::now().duration_since(start) < duration {
         stream.write_all(&buf).await?;
         stream.flush().await?;
 
         buffer.clear();
         loop {
             stream.read_buf(&mut buffer).await?;
-            if buffer.len() >= 11 {
+            if buffer.len() >= 11 || Instant::now().duration_since(start) < duration {
                 break;
             }
         }
         qps += 1;
+        break;
     }
     stream.shutdown().await?;
-
     tx.send(qps).unwrap();
     Ok(())
 }
@@ -128,12 +130,11 @@ async fn do_test_raw(tx: Sender<u32>, addr: SocketAddr) -> io::Result<()> {
 impl ConcurrencyTest {
     pub fn ui(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                if self.rx.is_none() {
-                    ui.add(egui::Slider::new(&mut self.concurrent_quantity, 1..=100000).text("concurrent quantity"));
-                }
-                ui.add(egui::Slider::new(&mut self.port, 0..=65535).text("port"));
-            });
+            ui.add(egui::Checkbox::new(&mut self.use_raw, "use raw"));
+            ui.add(egui::Slider::new(&mut self.port, 0..=65535).text("port"));
+            if self.rx.is_none() {
+                ui.add(egui::Slider::new(&mut self.concurrent_quantity, 1..=100000).text("concurrent quantity"));
+            }
 
             ui.horizontal(|ui| {
                 ui.label("hots:");
@@ -145,10 +146,16 @@ impl ConcurrencyTest {
                             let (tx, rx) = channel();
                             self.rx = Some(rx);
                             self.results.clear();
+                            let use_raw = self.use_raw;
                             for _ in 0..self.concurrent_quantity {
                                 let tx_cloned = tx.clone();
                                 tokio_runtime::instance().spawn(async move {
-                                    let _ = do_test_raw(tx_cloned, addr).await;
+                                    if use_raw {
+                                        let _ = do_test_raw(tx_cloned, addr).await;
+                                    }
+                                    else {
+                                        do_test(tx_cloned, addr).await;
+                                    }
                                 });
                             }
                         }
