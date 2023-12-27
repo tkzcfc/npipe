@@ -1,13 +1,15 @@
 mod app;
 mod apps;
 mod backend_panel;
-mod client;
 mod frame_history;
+mod tokio_runtime;
 
 use crate::app::Application;
 
 fn main() -> eframe::Result<()> {
     env_logger::init();
+
+    tokio_runtime::instance();
 
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -16,9 +18,13 @@ fn main() -> eframe::Result<()> {
             .with_drag_and_drop(true),
         ..Default::default()
     };
-    eframe::run_native(
+    let result = eframe::run_native(
         "client",
         native_options,
         Box::new(|cc| Box::new(Application::new(cc))),
-    )
+    );
+
+    crate::tokio_runtime::destroy();
+    result
 }
+

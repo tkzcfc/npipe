@@ -61,7 +61,7 @@ impl RpcClient {
         self.on_recv_message_callback = Some(callback);
     }
 
-    pub(crate) async fn send_request(&mut self, message: &MessageType) -> io::Result<MessageType> {
+    pub(crate) async fn send_request(&mut self, message: MessageType) -> io::Result<MessageType> {
         // 防止请求序号越界
         if self.serial >= i32::MAX {
             self.serial = 0;
@@ -76,9 +76,10 @@ impl RpcClient {
 
         let start = Instant::now();
         // 检测间隔时间 20毫秒检测一次
-        let mut interval = time::interval(Duration::from_millis(20));
+        let mut interval = time::interval(Duration::from_millis(10));
         // 10超时等待时间
         while Instant::now().duration_since(start) < Duration::from_secs(10) {
+            self.update();
             interval.tick().await;
             if let Some(response) = self.response_map.get(&serial) {
                 match response {
@@ -132,7 +133,7 @@ impl RpcClient {
                     &mut buf,
                     (8 + message_size) as u32,
                 )?;
-                byteorder::WriteBytesExt::write_i32::<BigEndian>(&mut buf, -serial)?;
+                byteorder::WriteBytesExt::write_i32::<BigEndian>(&mut buf, serial)?;
                 byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, message_id)?;
                 encode_raw_message(message, &mut buf);
 

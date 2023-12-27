@@ -46,6 +46,7 @@ impl Client {
         let (mut reader, writer) = tokio::io::split(stream);
 
         self.writer = Some(writer);
+        self.closed = false;
 
         let (tx, rx) = unbounded_channel();
 
