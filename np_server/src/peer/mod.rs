@@ -19,6 +19,7 @@ use tokio::sync::RwLock;
 pub struct Peer {
     tx: Option<UnboundedSender<WriterMessage>>,
     player: Option<Arc<RwLock<Player>>>,
+    session_id: u32,
 }
 
 impl Peer {
@@ -26,6 +27,7 @@ impl Peer {
         Peer {
             tx: None,
             player: None,
+            session_id: 0,
         }
     }
 
@@ -90,8 +92,9 @@ impl Peer {
 
 #[async_trait]
 impl SessionLogic for Peer {
-    fn on_session_start(&mut self, tx: UnboundedSender<WriterMessage>) {
+    fn on_session_start(&mut self, session_id: u32, tx: UnboundedSender<WriterMessage>) {
         self.tx = Some(tx);
+        self.session_id = session_id;
     }
 
     // 会话关闭回调

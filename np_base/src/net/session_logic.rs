@@ -11,7 +11,7 @@ where
     Self: Sync + Send,
 {
     // 会话开始
-    fn on_session_start(&mut self, tx: UnboundedSender<WriterMessage>);
+    fn on_session_start(&mut self, session_id: u32, tx: UnboundedSender<WriterMessage>);
 
     // 会话关闭
     async fn on_session_close(&mut self);

@@ -1,4 +1,5 @@
 use super::Peer;
+use crate::player::manager::PLAYER_MANAGER;
 use np_proto::message_map::MessageType;
 use np_proto::{client_server, generic};
 use std::io;
@@ -41,22 +42,17 @@ impl Peer {
         // 根据用户名查找用户id
         let player_id = 100u32;
 
-        // // 用户登录成功，将会话绑定到Player上
-        // if let Some(player) = Server::instance()
-        //     .player_manager
-        //     .write()
-        //     .await
-        //     .get_player(player_id)
-        // {
-        //     let mut player = player.write().await;
-        //     if player.is_online() {
-        //         player.on_terminate_old_session().await;
-        //     }
-        //     player
-        //         .on_connect_session(self.get_session_id(), self.clone_tx())
-        //         .await;
-        //     return Ok(MessageType::GenericSuccess(generic::Success {}));
-        // }
+        // 用户登录成功，将会话绑定到Player上
+        if let Some(player) = PLAYER_MANAGER.read().await.get_player(player_id) {
+            let mut player = player.write().await;
+            if player.is_online() {
+                player.on_terminate_old_session().await;
+            }
+            player
+                .on_connect_session(self.session_id, self.tx.clone().unwrap())
+                .await;
+            return Ok(MessageType::GenericSuccess(generic::Success {}));
+        }
 
         Ok(MessageType::GenericError(generic::Error {
             number: -2,

@@ -137,7 +137,7 @@ async fn do_test_raw_impl(tx: &Sender<u32>, addr: SocketAddr) -> io::Result<()> 
         } => {},
     }
 
-    if let Err(error) = result{
+    if let Err(error) = result {
         error!("{}", error.to_string());
     }
 

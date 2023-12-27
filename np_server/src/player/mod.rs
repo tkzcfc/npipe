@@ -1,3 +1,5 @@
+pub mod manager;
+
 use byteorder::BigEndian;
 use log::error;
 use np_base::net::session::WriterMessage;

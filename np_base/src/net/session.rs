@@ -53,13 +53,6 @@ impl Session {
         self.closed || self.tx.is_closed()
     }
 
-    // 获取会话id
-    #[inline]
-    #[allow(dead_code)]
-    pub fn get_session_id(&self) -> u32 {
-        self.session_id
-    }
-
     // 关闭会话
     #[inline]
     pub fn close_session(&mut self) {
@@ -75,7 +68,8 @@ impl Session {
     ) where
         S: AsyncRead + AsyncWrite + Send + 'static,
     {
-        self.logic.on_session_start(self.tx.clone());
+        self.logic
+            .on_session_start(self.session_id, self.tx.clone());
         select! {
             _ = self.poll_read(reader) => {}
             _ = Self::poll_write(rx, writer) => {}
