@@ -76,7 +76,7 @@ async fn do_test(tx: Sender<u32>, addr: SocketAddr) {
     tx.send(qps).unwrap();
 }
 
-async fn do_test_raw(tx: Sender<u32>, addr: SocketAddr) -> io::Result<()> {
+async fn do_test_raw_impl(tx: &Sender<u32>, addr: SocketAddr) -> io::Result<()> {
     let message = MessageType::GenericPing(generic::Ping { ticks: 0 });
     let message_id = get_message_id(&message).unwrap();
     let message_size = get_message_size(&message);
@@ -97,6 +97,7 @@ async fn do_test_raw(tx: Sender<u32>, addr: SocketAddr) -> io::Result<()> {
     } else {
         TcpSocket::new_v6()?
     };
+
     let mut stream = socket.connect(addr).await?;
     let duration = Duration::from_secs(1);
     while Instant::now().duration_since(start) < duration {
@@ -115,7 +116,17 @@ async fn do_test_raw(tx: Sender<u32>, addr: SocketAddr) -> io::Result<()> {
     }
     stream.shutdown().await?;
     tx.send(qps).unwrap();
-    Ok(())
+    return Ok(());
+}
+
+async fn do_test_raw(tx: Sender<u32>, addr: SocketAddr) {
+    match do_test_raw_impl(&tx, addr).await {
+        Err(error) => {
+            error!("{}", error.to_string());
+            tx.send(0).unwrap();
+        }
+        _ => {}
+    }
 }
 
 impl ConcurrencyTest {
@@ -145,7 +156,7 @@ impl ConcurrencyTest {
                                 let tx_cloned = tx.clone();
                                 tokio_runtime::instance().spawn(async move {
                                     if use_raw {
-                                        let _ = do_test_raw(tx_cloned, addr).await;
+                                        do_test_raw(tx_cloned, addr).await
                                     } else {
                                         do_test(tx_cloned, addr).await;
                                     }
