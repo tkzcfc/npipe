@@ -27,4 +27,3 @@ fn main() -> eframe::Result<()> {
     crate::tokio_runtime::destroy();
     result
 }
-

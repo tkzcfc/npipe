@@ -1,28 +1,27 @@
-use std::io;
-use std::net::SocketAddr;
-use std::time::Duration;
-use log::error;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use crate::apps::rpc_client::RpcClient;
+use crate::tokio_runtime;
 use byteorder::BigEndian;
 use bytes::BytesMut;
+use log::error;
+use np_proto::generic;
+use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size, MessageType};
+use std::io;
+use std::net::SocketAddr;
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpSocket;
 use tokio::time::Instant;
-use np_proto::generic;
-use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size, MessageType};
-use crate::apps::rpc_client::RpcClient;
-use crate::tokio_runtime;
 
 struct TestResult {
     qps: u32,
 }
 
-
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct ConcurrencyTest {
     #[serde(skip)]
-    results :Vec<TestResult>,
+    results: Vec<TestResult>,
     #[serde(skip)]
     rx: Option<Receiver<(u32)>>,
 
@@ -58,14 +57,14 @@ async fn do_test(tx: Sender<u32>, addr: SocketAddr) {
     let mut qps = 0u32;
     // 10超时等待时间
     while Instant::now().duration_since(start) < Duration::from_secs(1) {
-        let result = rpc.send_request(MessageType::GenericPing(generic::Ping{
-            ticks: 0,
-        })).await;
+        let result = rpc
+            .send_request(MessageType::GenericPing(generic::Ping { ticks: 0 }))
+            .await;
 
         match result {
             Err(error) => {
                 println!("{}", error.to_string());
-            },
+            }
             _ => {
                 qps += 1;
             }
@@ -77,24 +76,16 @@ async fn do_test(tx: Sender<u32>, addr: SocketAddr) {
     tx.send(qps).unwrap();
 }
 
-
 async fn do_test_raw(tx: Sender<u32>, addr: SocketAddr) -> io::Result<()> {
-
-    let message = MessageType::GenericPing(generic::Ping{
-        ticks: 0,
-    });
+    let message = MessageType::GenericPing(generic::Ping { ticks: 0 });
     let message_id = get_message_id(&message).unwrap();
     let message_size = get_message_size(&message);
     let mut buf = Vec::with_capacity(message_size + 12);
 
-    byteorder::WriteBytesExt::write_u32::<BigEndian>(
-        &mut buf,
-        (8 + message_size) as u32,
-    )?;
+    byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, (8 + message_size) as u32)?;
     byteorder::WriteBytesExt::write_i32::<BigEndian>(&mut buf, -1)?;
     byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, message_id)?;
     encode_raw_message(&message, &mut buf);
-
 
     let mut buffer = BytesMut::with_capacity(1024);
 
@@ -133,7 +124,10 @@ impl ConcurrencyTest {
             ui.add(egui::Checkbox::new(&mut self.use_raw, "use raw"));
             ui.add(egui::Slider::new(&mut self.port, 0..=65535).text("port"));
             if self.rx.is_none() {
-                ui.add(egui::Slider::new(&mut self.concurrent_quantity, 1..=100000).text("concurrent quantity"));
+                ui.add(
+                    egui::Slider::new(&mut self.concurrent_quantity, 1..=100000)
+                        .text("concurrent quantity"),
+                );
             }
 
             ui.horizontal(|ui| {
@@ -152,8 +146,7 @@ impl ConcurrencyTest {
                                 tokio_runtime::instance().spawn(async move {
                                     if use_raw {
                                         let _ = do_test_raw(tx_cloned, addr).await;
-                                    }
-                                    else {
+                                    } else {
                                         do_test(tx_cloned, addr).await;
                                     }
                                 });
@@ -171,11 +164,8 @@ impl ConcurrencyTest {
                 Some(ref mut rx) => {
                     loop {
                         if let Ok(qps) = rx.try_recv() {
-                            self.results.push(TestResult {
-                                qps
-                            });
-                        }
-                        else {
+                            self.results.push(TestResult { qps });
+                        } else {
                             break;
                         }
                     }
@@ -185,25 +175,12 @@ impl ConcurrencyTest {
                     }
                 }
                 None => {
-                    ui.label(format!("{}", self.results.iter().map(|x| x.qps).sum::<u32>()));
+                    ui.label(format!(
+                        "{}",
+                        self.results.iter().map(|x| x.qps).sum::<u32>()
+                    ));
                 }
             }
-
-
-            // if ui.button("connect").clicked() {
-            //     for peer in &self.peers {
-            //         if let Ok(p) = peer.read() {
-            //             if let Some(rpc) = &p.rpc {
-            //                 if !rpc.is_connect() {
-            //                     let peer_cloned = peer.clone();
-            //                     tokio::spawn(async move {
-            //                         peer_cloned.write().unwrap().rpc.unwrap().connect().await;
-            //                     });
-            //                 }
-            //             }
-            //         }
-            //     }
-            // }
         });
     }
 }
