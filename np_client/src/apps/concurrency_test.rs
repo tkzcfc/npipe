@@ -11,7 +11,8 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpSocket;
-use tokio::time::Instant;
+use tokio::select;
+use tokio::time::{interval, Instant};
 
 struct TestResult {
     qps: u32,
@@ -100,20 +101,46 @@ async fn do_test_raw_impl(tx: &Sender<u32>, addr: SocketAddr) -> io::Result<()> 
 
     let mut stream = socket.connect(addr).await?;
     let duration = Duration::from_secs(1);
-    while Instant::now().duration_since(start) < duration {
-        stream.write_all(&buf).await?;
-        stream.flush().await?;
 
-        buffer.clear();
-        loop {
-            stream.read_buf(&mut buffer).await?;
-            if buffer.len() >= 11 || Instant::now().duration_since(start) < duration {
-                break;
+    let mut result = Ok(());
+
+    select! {
+        _= async {
+            loop {
+                result = stream.write_all(&buf).await;
+                if result.is_err() {
+                    break;
+                }
+                result = stream.flush().await;
+                if result.is_err() {
+                    break;
+                }
+
+                buffer.clear();
+                loop {
+                    if let Err(err) = stream.read_buf(&mut buffer).await {
+                        result = Err(err);
+                        return;
+                    }
+                    if buffer.len() >= 11 || Instant::now().duration_since(start) < duration {
+                        qps += 1;
+                        break;
+                    }
+                }
             }
-        }
-        qps += 1;
-        break;
+        } => {},
+        _= async {
+            let mut wait = interval(Duration::from_millis(1));
+            while Instant::now().duration_since(start) < duration {
+                wait.tick().await;
+            }
+        } => {},
     }
+
+    if let Err(error) = result{
+        error!("{}", error.to_string());
+    }
+
     stream.shutdown().await?;
     tx.send(qps).unwrap();
     return Ok(());
