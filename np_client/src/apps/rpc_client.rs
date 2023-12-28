@@ -10,7 +10,6 @@ use std::io;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::time::Duration;
-use tokio::task::yield_now;
 use tokio::time::{self, Instant};
 
 enum ResponseStatus {
@@ -76,6 +75,8 @@ impl RpcClient {
         self.response_map.insert(serial, ResponseStatus::Waiting);
 
         let start = Instant::now();
+        // 检测间隔时间 20毫秒检测一次
+        let mut interval = time::interval(Duration::from_millis(10));
         // 10超时等待时间
         while Instant::now().duration_since(start) < Duration::from_secs(10) {
             self.update();
@@ -109,7 +110,7 @@ impl RpcClient {
                     "connection reset",
                 ));
             }
-            yield_now().await;
+            interval.tick().await;
         }
 
         // 请求等待回复超时
