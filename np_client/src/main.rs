@@ -26,6 +26,6 @@ fn main() -> eframe::Result<()> {
         Box::new(|cc| Box::new(Application::new(cc))),
     );
 
-    crate::tokio_runtime::destroy();
+    tokio_runtime::destroy();
     result
 }
