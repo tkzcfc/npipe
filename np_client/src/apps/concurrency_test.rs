@@ -2,9 +2,11 @@ use crate::apps::rpc_client::RpcClient;
 use crate::tokio_runtime;
 use byteorder::BigEndian;
 use bytes::BytesMut;
+use egui_extras::{Column, TableBuilder};
 use log::error;
 use np_proto::generic;
 use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size, MessageType};
+use std::fmt::Pointer;
 use std::io;
 use std::net::SocketAddr;
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -24,7 +26,7 @@ pub struct ConcurrencyTest {
     #[serde(skip)]
     results: Vec<TestResult>,
     #[serde(skip)]
-    rx: Option<Receiver<(u32)>>,
+    rx: Option<Receiver<u32>>,
 
     host: String,
     port: u16,
@@ -196,7 +198,6 @@ impl ConcurrencyTest {
                     }
                 }
             });
-            ui.separator();
 
             match self.rx {
                 Some(ref mut rx) => {
@@ -219,6 +220,73 @@ impl ConcurrencyTest {
                     ));
                 }
             }
+
+            ui.separator();
+
+            let table = TableBuilder::new(ui)
+                .striped(true)
+                .resizable(true)
+                .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                .column(Column::auto())
+                .column(Column::initial(60.0).range(30.0..=60.0))
+                .column(Column::initial(100.0).range(60.0..=300.0))
+                .column(Column::remainder())
+                .min_scrolled_height(0.0);
+
+            table
+                .header(20.0, |mut header| {
+                    header.col(|ui| {
+                        ui.strong("Id");
+                    });
+                    header.col(|ui| {
+                        ui.strong("Qps");
+                    });
+                    header.col(|ui| {
+                        ui.strong("Qps(Percent)");
+                    });
+                    header.col(|ui| {
+                        ui.strong("Percent");
+                    });
+                })
+                .body(|mut body| {
+                    let mut max_value = 0;
+                    if let Some(max) = self.results.iter().map(|r| r.qps).max() {
+                        max_value = max;
+                    }
+                    let total_value = self.results.iter().map(|r| r.qps).sum::<u32>();
+
+                    let mut index = 0;
+                    for result in &self.results {
+                        index = index + 1;
+                        body.row(20.0, |mut row| {
+                            row.col(|ui| {
+                                ui.label(index.to_string());
+                            });
+                            row.col(|ui| {
+                                ui.label(result.qps.to_string());
+                            });
+                            row.col(|ui| {
+                                let mut progress = 1.0;
+                                if max_value > 0 {
+                                    progress = result.qps as f32 / max_value as f32;
+                                }
+                                let progress_bar =
+                                    egui::ProgressBar::new(progress).show_percentage();
+                                ui.add(progress_bar);
+                            });
+                            row.col(|ui| {
+                                let mut progress = 0.0;
+                                if total_value > 0 {
+                                    progress = result.qps as f32 / total_value as f32;
+                                }
+                                // ui.label(format!("{:.2}%", progress * 100.0));
+                                let progress_bar =
+                                    egui::ProgressBar::new(progress).show_percentage();
+                                ui.add(progress_bar);
+                            });
+                        });
+                    }
+                });
         });
     }
 }

@@ -17,6 +17,7 @@ byteorder = "1.5.0"
 prost = "0.12"
 # gui
 egui = "0.24.1"
+egui_extras = "0.24.1"
 eframe = { version = "0.24.1", default-features = false, features = [
     "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
     "default_fonts", # Embed the default egui fonts.

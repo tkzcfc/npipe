@@ -35,12 +35,8 @@ enum RunMode {
 ///    so there are no events to miss.
 impl Default for RunMode {
     fn default() -> Self {
-        RunMode::Reactive
+        RunMode::Continuous
     }
-}
-
-fn default_run_mode() -> RunMode {
-    RunMode::Continuous
 }
 
 // ----------------------------------------------------------------------------
@@ -50,7 +46,7 @@ fn default_run_mode() -> RunMode {
 pub struct BackendPanel {
     pub open: bool,
 
-    #[serde(skip, default = "default_run_mode")]
+    #[serde(skip)]
     run_mode: RunMode,
 
     #[serde(skip)]

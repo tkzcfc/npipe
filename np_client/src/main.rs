@@ -5,6 +5,7 @@ mod frame_history;
 mod tokio_runtime;
 
 use crate::app::Application;
+use eframe::Theme;
 
 fn main() -> eframe::Result<()> {
     env_logger::init();
@@ -16,6 +17,7 @@ fn main() -> eframe::Result<()> {
             .with_inner_size([640.0, 320.0])
             .with_min_inner_size([300.0, 220.0])
             .with_drag_and_drop(true),
+        default_theme: Theme::Dark,
         ..Default::default()
     };
     let result = eframe::run_native(
