@@ -61,15 +61,11 @@ async fn do_test(tx: Sender<u32>, addr: SocketAddr) {
         return;
     }
 
-    // let qps = Arc::new(Mutex::new(0u32));
-
-    let mut qps = Arc::new(Mutex::new(0u32));
-    let mut isback = Arc::new(RwLock::new(false));
+    let qps = Arc::new(Mutex::new(0u32));
+    let isback = Arc::new(RwLock::new(false));
 
     while Instant::now().duration_since(start) < Duration::from_secs(1) {
-        //{
-            *isback.write().unwrap() = false;
-        //}
+        *isback.write().unwrap() = false;
 
         let isback_cloned = isback.clone();
         let qps_cloned = qps.clone();
@@ -88,11 +84,9 @@ async fn do_test(tx: Sender<u32>, addr: SocketAddr) {
             }
         });
 
-        {
-            while !*isback.read().unwrap() {
-                rpc.update();
-                tokio::time::sleep(Duration::from_millis(1)).await;
-            }
+        while !*isback.read().unwrap() {
+            rpc.update();
+            tokio::time::sleep(Duration::from_millis(1)).await;
         }
     }
 
