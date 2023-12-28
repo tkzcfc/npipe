@@ -10,6 +10,7 @@ use std::io;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::time::Duration;
+use tokio::task::yield_now;
 use tokio::time::{self, Instant};
 
 enum ResponseStatus {
@@ -69,18 +70,15 @@ impl RpcClient {
         self.serial += 1;
         let serial = -self.serial;
 
-        if let Err(error) = self.package_and_send_message(serial, &message).await {
+        if let Err(error) = self.package_and_send_message(serial, &message) {
             return Err(error);
         }
         self.response_map.insert(serial, ResponseStatus::Waiting);
 
         let start = Instant::now();
-        // 检测间隔时间 20毫秒检测一次
-        let mut interval = time::interval(Duration::from_millis(10));
         // 10超时等待时间
         while Instant::now().duration_since(start) < Duration::from_secs(10) {
             self.update();
-            interval.tick().await;
             if let Some(response) = self.response_map.get(&serial) {
                 match response {
                     ResponseStatus::Message(_message) => {
@@ -111,6 +109,7 @@ impl RpcClient {
                     "connection reset",
                 ));
             }
+            yield_now().await;
         }
 
         // 请求等待回复超时
@@ -119,28 +118,23 @@ impl RpcClient {
     }
 
     #[inline]
-    pub(crate) async fn package_and_send_message(
-        &mut self,
+    pub(crate) fn package_and_send_message(
+        &self,
         serial: i32,
         message: &MessageType,
     ) -> io::Result<()> {
-        if self.is_connect() {
-            if let Some(message_id) = get_message_id(message) {
-                let message_size = get_message_size(message);
-                let mut buf = Vec::with_capacity(message_size + 12);
+        if let Some(message_id) = get_message_id(message) {
+            let message_size = get_message_size(message);
+            let mut buf = Vec::with_capacity(message_size + 12);
 
-                byteorder::WriteBytesExt::write_u32::<BigEndian>(
-                    &mut buf,
-                    (8 + message_size) as u32,
-                )?;
-                byteorder::WriteBytesExt::write_i32::<BigEndian>(&mut buf, serial)?;
-                byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, message_id)?;
-                encode_raw_message(message, &mut buf);
+            byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, (8 + message_size) as u32)?;
+            byteorder::WriteBytesExt::write_i32::<BigEndian>(&mut buf, serial)?;
+            byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, message_id)?;
+            encode_raw_message(message, &mut buf);
 
-                return self.inner.send(&buf, true).await;
-            }
+            return self.inner.send(buf, true);
         }
-        Err(io::Error::new(ErrorKind::NotConnected, "not connected"))
+        Err(io::Error::new(ErrorKind::Other, "error message"))
     }
 
     pub(crate) fn update(&mut self) {

@@ -3,20 +3,24 @@ use log::{debug, error};
 use std::io;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
-use tokio::io::{AsyncReadExt, AsyncWriteExt, WriteHalf};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf};
 use tokio::net::{TcpSocket, TcpStream};
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
+use tokio::select;
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::task::yield_now;
 
 enum ChannelMessage {
-    Disconnect,
-    RecvMessage(Vec<u8>),
+    OnDisconnect,
+    OnRecvMessage(Vec<u8>),
+    DoWriteData(Vec<u8>, bool),
+    DoDisconnect,
 }
 
 pub struct Client {
     addr: SocketAddr,
-    writer: Option<WriteHalf<TcpStream>>,
     closed: bool,
     rx: Option<UnboundedReceiver<ChannelMessage>>,
+    tx: Option<UnboundedSender<ChannelMessage>>,
     callback: ExtractFrameCallback,
 }
 
@@ -26,9 +30,9 @@ impl Client {
     pub fn new(addr: SocketAddr, callback: ExtractFrameCallback) -> Client {
         Client {
             addr,
-            writer: None,
             closed: true,
             rx: None,
+            tx: None,
             callback,
         }
     }
@@ -43,68 +47,27 @@ impl Client {
             TcpSocket::new_v6()?
         };
         let stream = socket.connect(self.addr).await?;
-        let (mut reader, writer) = tokio::io::split(stream);
+        let (reader, writer) = tokio::io::split(stream);
 
-        self.writer = Some(writer);
         self.closed = false;
 
-        let (tx, rx) = unbounded_channel();
+        let (tx1, rx1) = unbounded_channel();
+        self.rx = Some(rx1);
 
-        self.rx = Some(rx);
+        let (tx2, rx2) = unbounded_channel();
+        self.tx = Some(tx2);
+
         let addr = self.addr.clone();
-
         let extract_frame_callback = self.callback.clone();
-        // 单独开一个协程处理读逻辑
         tokio::spawn(async move {
-            let mut buffer = BytesMut::with_capacity(1024);
-            loop {
-                if tx.is_closed() {
-                    break;
-                }
+            select! {
+            _ = Self::poll_read(tx1.clone(), reader, addr, extract_frame_callback) => {},
+            _ = Self::poll_write(rx2, writer) => {},
+            }
 
-                match reader.read_buf(&mut buffer).await {
-                    // n为0表示对端已经关闭连接。
-                    Ok(n) if n == 0 => {
-                        debug!("socket[{}] closed.", addr);
-                        if let Err(error) = tx.send(ChannelMessage::Disconnect) {
-                            error!("Send channel message error: {}", error);
-                        }
-                        return;
-                    }
-                    Ok(_n) => {
-                        loop {
-                            if let Ok(result) = extract_frame_callback(&mut buffer) {
-                                if let Some(frame) = result {
-                                    if let Err(error) = tx.send(ChannelMessage::RecvMessage(frame))
-                                    {
-                                        error!(
-                                            "Send channel message(RecvMessage) error: {}",
-                                            error
-                                        );
-                                        return;
-                                    }
-                                } else {
-                                    // 数据包长度不够,继续读
-                                    break;
-                                }
-                            } else {
-                                error!("Message too long");
-                                // 消息过长, 主动断开
-                                if let Err(error) = tx.send(ChannelMessage::Disconnect) {
-                                    error!("Send channel message(Disconnect) error: {}", error);
-                                }
-                                return;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        error!("Failed to read from socket[{}]: {}", addr, e);
-                        // socket读错误,主动断开
-                        if let Err(error) = tx.send(ChannelMessage::Disconnect) {
-                            error!("Send channel message(Disconnect) error: {}", error);
-                        }
-                        return;
-                    }
+            if !tx1.is_closed() {
+                if let Err(error) = tx1.send(ChannelMessage::OnDisconnect) {
+                    error!("Send channel message error: {}", error);
                 }
             }
         });
@@ -126,21 +89,18 @@ impl Client {
             rx.close();
         }
 
-        if let Some(mut writer) = self.writer.take() {
-            tokio::spawn(async move {
-                if let Err(error) = writer.shutdown().await {
-                    error!("Socket shutdown error: {}", error)
-                }
-            });
+        if let Some(tx) = self.tx.take() {
+            if let Err(error) = tx.send(ChannelMessage::DoDisconnect) {
+                error!("Send Disconnect error: {}", error);
+            }
         }
     }
 
     // 发送消息
-    pub async fn send(&mut self, buf: &Vec<u8>, flush: bool) -> io::Result<()> {
-        if let Some(ref mut writer) = self.writer {
-            writer.write_all(buf).await?;
-            if flush {
-                writer.flush().await?;
+    pub fn send(&self, buf: Vec<u8>, flush: bool) -> io::Result<()> {
+        if let Some(ref tx) = self.tx {
+            if let Err(error) = tx.send(ChannelMessage::DoWriteData(buf, flush)) {
+                error!("Send Disconnect error: {}", error);
             }
             return Ok(());
         }
@@ -152,15 +112,96 @@ impl Client {
         if let Some(ref mut rx) = self.rx {
             if let Ok(channel_message) = rx.try_recv() {
                 match channel_message {
-                    ChannelMessage::Disconnect => {
+                    ChannelMessage::OnDisconnect => {
                         self.disconnect();
                     }
-                    ChannelMessage::RecvMessage(message) => {
+                    ChannelMessage::OnRecvMessage(message) => {
                         return Some(message);
                     }
+                    _ => {}
                 }
             }
         }
         None
+    }
+
+    async fn poll_write(mut rx: UnboundedReceiver<ChannelMessage>, writer: WriteHalf<TcpStream>) {
+        let mut writer = BufWriter::new(writer);
+        while let Some(message) = rx.recv().await {
+            match message {
+                ChannelMessage::DoWriteData(data, flush) => {
+                    if data.is_empty() {
+                        yield_now().await;
+                        continue;
+                    }
+
+                    if let Err(error) = writer.write_all(&data).await {
+                        error!("Error when write_all {:?}", error);
+                        break;
+                    }
+
+                    if flush {
+                        if let Err(error) = writer.flush().await {
+                            error!("Error when flushing {:?}", error);
+                        }
+                    }
+                }
+                ChannelMessage::DoDisconnect => {
+                    if let Err(error) = writer.shutdown().await {
+                        error!("Error when shutdown {:?}", error);
+                    }
+                    break;
+                }
+                _ => {}
+            }
+            yield_now().await;
+        }
+        rx.close();
+    }
+
+    async fn poll_read(
+        tx: UnboundedSender<ChannelMessage>,
+        mut reader: ReadHalf<TcpStream>,
+        addr: SocketAddr,
+        extract_frame_callback: ExtractFrameCallback,
+    ) {
+        let mut buffer = BytesMut::with_capacity(1024);
+        loop {
+            if tx.is_closed() {
+                break;
+            }
+
+            match reader.read_buf(&mut buffer).await {
+                // n为0表示对端已经关闭连接。
+                Ok(n) if n == 0 => {
+                    debug!("socket[{}] closed.", addr);
+                    return;
+                }
+                Ok(_n) => {
+                    loop {
+                        if let Ok(result) = extract_frame_callback(&mut buffer) {
+                            if let Some(frame) = result {
+                                if let Err(error) = tx.send(ChannelMessage::OnRecvMessage(frame)) {
+                                    error!("Send channel message(RecvMessage) error: {}", error);
+                                    return;
+                                }
+                            } else {
+                                // 数据包长度不够,继续读
+                                break;
+                            }
+                        } else {
+                            error!("Message too long");
+                            // 消息过长, 主动断开
+                            return;
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to read from socket[{}]: {}", addr, e);
+                    // socket读错误,主动断开
+                    return;
+                }
+            }
+        }
     }
 }
