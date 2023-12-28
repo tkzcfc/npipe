@@ -12,33 +12,26 @@ use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::time::{self, Instant};
 
-enum ResponseStatus {
-    // 请求回复的消息
-    Message(MessageType),
-    // 等待回复中...
-    Waiting,
-    // 请求被取消
-    Cancel,
-    // 请求出错，如服务器返回的消息客户端解码失败
-    Error,
-}
 
-pub type RecvMessageCallback = fn(i32, &MessageType);
+pub type RecvMessageCallback = Box<dyn FnMut(i32, &MessageType) + Send + 'static>;
+pub type RequestResultCallback = Box<dyn FnMut(io::Result<&MessageType>) + Send + 'static>;
 
 pub(crate) struct RpcClient {
     inner: Client,
     serial: i32,
     on_recv_message_callback: Option<RecvMessageCallback>,
-    response_map: HashMap<i32, ResponseStatus>,
+    response_map: HashMap<i32, (RequestResultCallback, Instant)>,
+    last_clear_time: Instant,
 }
 
 impl RpcClient {
-    pub(crate) fn new(addr: SocketAddr) -> RpcClient {
+    pub(crate) fn new(addr: SocketAddr) -> Self {
         RpcClient {
             inner: Client::new(addr, try_extract_frame),
             serial: 0,
             on_recv_message_callback: None,
             response_map: HashMap::new(),
+            last_clear_time: Instant::now(),
         }
     }
 
@@ -57,11 +50,15 @@ impl RpcClient {
         self.inner.disconnect()
     }
 
-    pub(crate) fn set_recv_message_callback(&mut self, callback: RecvMessageCallback) {
-        self.on_recv_message_callback = Some(callback);
+    pub(crate) fn set_recv_message_callback<F>(&mut self, callback: F)
+        where F: FnMut(i32, &MessageType) + 'static + Send
+    {
+        self.on_recv_message_callback = Some(Box::new(callback));
     }
 
-    pub(crate) async fn send_request(&mut self, message: MessageType) -> io::Result<MessageType> {
+    pub(crate) fn send_request<F>(&mut self, message: MessageType, callback: F)
+        where F: FnMut(io::Result<&MessageType>) + 'static + Send
+    {
         // 防止请求序号越界
         if self.serial >= i32::MAX {
             self.serial = 0;
@@ -69,53 +66,9 @@ impl RpcClient {
         self.serial += 1;
         let serial = -self.serial;
 
-        if let Err(error) = self.package_and_send_message(serial, &message) {
-            return Err(error);
-        }
-        self.response_map.insert(serial, ResponseStatus::Waiting);
+        self.package_and_send_message(serial, &message).unwrap();
 
-        let start = Instant::now();
-        // 检测间隔时间 20毫秒检测一次
-        let mut interval = time::interval(Duration::from_millis(10));
-        // 10超时等待时间
-        while Instant::now().duration_since(start) < Duration::from_secs(10) {
-            self.update();
-            if let Some(response) = self.response_map.get(&serial) {
-                match response {
-                    ResponseStatus::Message(_message) => {
-                        if let Some(message) = self.response_map.remove(&serial) {
-                            if let ResponseStatus::Message(msg) = message {
-                                return Ok(msg);
-                            }
-                        }
-                        // 不可能出现的错误
-                        self.response_map.remove(&serial);
-                        return Err(io::Error::new(ErrorKind::Other, "impossible errors"));
-                    }
-                    ResponseStatus::Waiting => {}
-                    ResponseStatus::Cancel => {
-                        // 请求被取消
-                        self.response_map.remove(&serial);
-                        return Err(io::Error::new(ErrorKind::TimedOut, "request cancelled"));
-                    }
-                    ResponseStatus::Error => {
-                        self.response_map.remove(&serial);
-                        return Err(io::Error::new(ErrorKind::Other, "protocol decoding failed"));
-                    }
-                }
-            } else {
-                // 连接已重置
-                return Err(io::Error::new(
-                    ErrorKind::ConnectionReset,
-                    "connection reset",
-                ));
-            }
-            interval.tick().await;
-        }
-
-        // 请求等待回复超时
-        self.response_map.remove(&serial);
-        return Err(io::Error::new(ErrorKind::TimedOut, "request timeout"));
+        self.response_map.insert(serial, (Box::new(callback), Instant::now()));
     }
 
     #[inline]
@@ -147,6 +100,12 @@ impl RpcClient {
                 // 消息不合法，长度不够
                 if frame.len() < 8 {
                     self.disconnect();
+
+                    for (ref mut callback, ref time) in self.response_map.values_mut() {
+                        let err = Err(io::Error::new(io::ErrorKind::Other, "The response is illegal"));
+                        callback(err)
+                    }
+                    self.response_map.clear();
                     break;
                 }
                 // 消息序号
@@ -156,24 +115,36 @@ impl RpcClient {
 
                 match decode_message(msg_id, &frame[8..]) {
                     Ok(message) => {
-                        if let Some(ref on_recv_message_callback) = self.on_recv_message_callback {
+                        if let Some(ref mut on_recv_message_callback) = self.on_recv_message_callback {
                             on_recv_message_callback(serial, &message);
                         }
 
                         serial = -serial;
-                        if self.response_map.contains_key(&serial) {
-                            self.response_map
-                                .insert(serial, ResponseStatus::Message(message));
+                        if let Some((ref mut callback, ref _time)) = self.response_map.get_mut(&serial) {
+                            callback(Ok(&message));
+                            self.response_map.remove(&serial);
                         }
                     }
                     Err(err) => {
                         error!("Protobuf parse error: {}", err);
+                        serial = -serial;
+
+                        if let Some((ref mut callback, ref _time)) = self.response_map.get_mut(&serial) {
+                            callback(Err(err.into()));
+                            self.response_map.remove(&serial);
+                        }
                         break;
                     }
                 }
             } else {
                 break;
             }
+        }
+
+        let now = Instant::now();
+        if now.duration_since(self.last_clear_time) > Duration::from_secs(1) {
+            let duration = Duration::from_secs(10);
+            self.response_map.retain(|_, (__, time)| now.duration_since(*time) < duration);
         }
     }
 }

@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use crate::apps::rpc_client::RpcClient;
 use crate::tokio_runtime;
 use byteorder::BigEndian;
@@ -9,11 +10,14 @@ use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size
 use std::fmt::Pointer;
 use std::io;
 use std::net::SocketAddr;
+use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpSocket;
 use tokio::select;
+use std::sync::Mutex;
 use tokio::time::{interval, Instant};
 
 struct TestResult {
@@ -57,26 +61,45 @@ async fn do_test(tx: Sender<u32>, addr: SocketAddr) {
         return;
     }
 
-    let mut qps = 0u32;
-    // 10超时等待时间
-    while Instant::now().duration_since(start) < Duration::from_secs(1) {
-        let result = rpc
-            .send_request(MessageType::GenericPing(generic::Ping { ticks: 0 }))
-            .await;
+    // let qps = Arc::new(Mutex::new(0u32));
 
-        match result {
-            Err(error) => {
-                println!("{}", error.to_string());
+    let mut qps = Arc::new(Mutex::new(0u32));
+    let mut isback = Arc::new(RwLock::new(false));
+
+    while Instant::now().duration_since(start) < Duration::from_secs(1) {
+        //{
+            *isback.write().unwrap() = false;
+        //}
+
+        let isback_cloned = isback.clone();
+        let qps_cloned = qps.clone();
+
+        let message = MessageType::GenericPing(generic::Ping { ticks: 0 });
+
+        rpc.send_request(message, move |result: io::Result<&MessageType>| {
+            *isback_cloned.write().unwrap() = true;
+            match result {
+                Err(error) => {
+                    println!("{}", error.to_string());
+                }
+                _ => {
+                    *qps_cloned.lock().unwrap() += 1;
+                }
             }
-            _ => {
-                qps += 1;
+        });
+
+        {
+            while !*isback.read().unwrap() {
+                rpc.update();
+                tokio::time::sleep(Duration::from_millis(1)).await;
             }
         }
     }
+
     rpc.disconnect();
 
     // println!("qps:{}", qps);
-    tx.send(qps).unwrap();
+    tx.send(*qps.lock().unwrap()).unwrap();
 }
 
 async fn do_test_raw_impl(tx: &Sender<u32>, addr: SocketAddr) -> io::Result<()> {
