@@ -236,16 +236,16 @@ impl ConcurrencyTest {
             table
                 .header(20.0, |mut header| {
                     header.col(|ui| {
-                        ui.strong("Id");
+                        ui.strong("id");
                     });
                     header.col(|ui| {
-                        ui.strong("Qps");
+                        ui.strong("qps");
                     });
                     header.col(|ui| {
-                        ui.strong("Qps(Percent)");
+                        ui.strong("qps percent");
                     });
                     header.col(|ui| {
-                        ui.strong("Percent");
+                        ui.strong("total percent");
                     });
                 })
                 .body(|mut body| {
