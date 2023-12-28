@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use crate::apps::rpc_client::RpcClient;
 use crate::tokio_runtime;
 use byteorder::BigEndian;
@@ -7,17 +6,18 @@ use egui_extras::{Column, TableBuilder};
 use log::error;
 use np_proto::generic;
 use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size, MessageType};
+use std::cell::RefCell;
 use std::fmt::Pointer;
 use std::io;
 use std::net::SocketAddr;
 use std::rc::Rc;
-use std::sync::{Arc, RwLock};
 use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::Mutex;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpSocket;
 use tokio::select;
-use std::sync::Mutex;
 use tokio::time::{interval, Instant};
 
 struct TestResult {

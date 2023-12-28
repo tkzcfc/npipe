@@ -8,7 +8,6 @@ async fn main() {
     callback_test::run().await;
     let mtx = Mutex::new(0);
 
-
     tokio::join!(work(&mtx), work(&mtx));
 
     println!("{}", *mtx.lock().await);

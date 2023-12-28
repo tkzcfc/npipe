@@ -12,7 +12,6 @@ use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::time::{self, Instant};
 
-
 pub type RecvMessageCallback = Box<dyn FnMut(i32, &MessageType) + Send + 'static>;
 pub type RequestResultCallback = Box<dyn FnMut(io::Result<&MessageType>) + Send + 'static>;
 
@@ -51,13 +50,15 @@ impl RpcClient {
     }
 
     pub(crate) fn set_recv_message_callback<F>(&mut self, callback: F)
-        where F: FnMut(i32, &MessageType) + 'static + Send
+    where
+        F: FnMut(i32, &MessageType) + 'static + Send,
     {
         self.on_recv_message_callback = Some(Box::new(callback));
     }
 
     pub(crate) fn send_request<F>(&mut self, message: MessageType, callback: F)
-        where F: FnMut(io::Result<&MessageType>) + 'static + Send
+    where
+        F: FnMut(io::Result<&MessageType>) + 'static + Send,
     {
         // 防止请求序号越界
         if self.serial >= i32::MAX {
@@ -68,7 +69,8 @@ impl RpcClient {
 
         self.package_and_send_message(serial, &message).unwrap();
 
-        self.response_map.insert(serial, (Box::new(callback), Instant::now()));
+        self.response_map
+            .insert(serial, (Box::new(callback), Instant::now()));
     }
 
     #[inline]
@@ -102,7 +104,10 @@ impl RpcClient {
                     self.disconnect();
 
                     for (ref mut callback, ref time) in self.response_map.values_mut() {
-                        let err = Err(io::Error::new(io::ErrorKind::Other, "The response is illegal"));
+                        let err = Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            "The response is illegal",
+                        ));
                         callback(err)
                     }
                     self.response_map.clear();
@@ -115,12 +120,16 @@ impl RpcClient {
 
                 match decode_message(msg_id, &frame[8..]) {
                     Ok(message) => {
-                        if let Some(ref mut on_recv_message_callback) = self.on_recv_message_callback {
+                        if let Some(ref mut on_recv_message_callback) =
+                            self.on_recv_message_callback
+                        {
                             on_recv_message_callback(serial, &message);
                         }
 
                         serial = -serial;
-                        if let Some((ref mut callback, ref _time)) = self.response_map.get_mut(&serial) {
+                        if let Some((ref mut callback, ref _time)) =
+                            self.response_map.get_mut(&serial)
+                        {
                             callback(Ok(&message));
                             self.response_map.remove(&serial);
                         }
@@ -129,7 +138,9 @@ impl RpcClient {
                         error!("Protobuf parse error: {}", err);
                         serial = -serial;
 
-                        if let Some((ref mut callback, ref _time)) = self.response_map.get_mut(&serial) {
+                        if let Some((ref mut callback, ref _time)) =
+                            self.response_map.get_mut(&serial)
+                        {
                             callback(Err(err.into()));
                             self.response_map.remove(&serial);
                         }
@@ -144,7 +155,8 @@ impl RpcClient {
         let now = Instant::now();
         if now.duration_since(self.last_clear_time) > Duration::from_secs(1) {
             let duration = Duration::from_secs(10);
-            self.response_map.retain(|_, (__, time)| now.duration_since(*time) < duration);
+            self.response_map
+                .retain(|_, (__, time)| now.duration_since(*time) < duration);
         }
     }
 }
