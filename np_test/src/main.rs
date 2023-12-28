@@ -1,9 +1,13 @@
+mod callback_test;
+
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 
 #[tokio::main]
 async fn main() {
+    callback_test::run().await;
     let mtx = Mutex::new(0);
+
 
     tokio::join!(work(&mtx), work(&mtx));
 

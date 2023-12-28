@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
+num = { version = "0.4.1", features = [] }
