@@ -12,7 +12,6 @@ use tokio::sync::RwLock;
 
 pub type PlayerId = u32;
 
-#[warn(dead_code)]
 pub struct Player {
     tx: Option<UnboundedSender<WriterMessage>>,
     player_id: PlayerId,

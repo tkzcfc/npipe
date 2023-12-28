@@ -50,8 +50,8 @@ pub async fn run_server(
             let (tx, rx) = unbounded_channel();
             let (reader, writer) = tokio::io::split(socket);
 
-            let mut session = Session::new(tx.clone(), addr, session_id, logic);
-            session.run(rx, reader, writer).await;
+            let mut session = Session::new(tx.clone(), addr, logic);
+            session.run(session_id, rx, reader, writer).await;
 
             trace!("disconnect: {}", addr);
         });

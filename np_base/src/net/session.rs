@@ -21,8 +21,6 @@ pub enum WriterMessage {
 pub struct Session {
     pub tx: UnboundedSender<WriterMessage>,
     pub addr: SocketAddr,
-    #[allow(dead_code)]
-    session_id: u32,
     closed: bool,
     logic: Box<dyn SessionLogic>,
 }
@@ -35,13 +33,11 @@ impl Session {
     pub fn new(
         tx: UnboundedSender<WriterMessage>,
         addr: SocketAddr,
-        session_id: u32,
         logic: Box<dyn SessionLogic>,
     ) -> Session {
         Session {
             tx,
             addr,
-            session_id,
             closed: false,
             logic,
         }
@@ -62,14 +58,14 @@ impl Session {
 
     pub async fn run<S>(
         &mut self,
+        session_id: u32,
         rx: UnboundedReceiver<WriterMessage>,
         reader: ReadHalf<S>,
         writer: WriteHalf<S>,
     ) where
         S: AsyncRead + AsyncWrite + Send + 'static,
     {
-        self.logic
-            .on_session_start(self.session_id, self.tx.clone());
+        self.logic.on_session_start(session_id, self.tx.clone());
         select! {
             _ = self.poll_read(reader) => {}
             _ = Self::poll_write(rx, writer) => {}
