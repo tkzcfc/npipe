@@ -18,7 +18,7 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpSocket;
 use tokio::select;
-use tokio::time::{interval, Instant};
+use tokio::time::{interval, sleep, Instant};
 
 struct TestResult {
     qps: u32,
@@ -119,13 +119,14 @@ async fn do_test_raw_impl(tx: &Sender<u32>, addr: SocketAddr) -> io::Result<()> 
     };
 
     let mut stream = socket.connect(addr).await?;
-    let duration = Duration::from_secs(1);
+    let duration = Duration::from_secs(100);
 
     let mut result = Ok(());
 
     select! {
         _= async {
             loop {
+                sleep(Duration::from_millis(100)).await;
                 result = stream.write_all(&buf).await;
                 if result.is_err() {
                     break;
