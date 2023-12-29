@@ -1,8 +1,8 @@
-#[cfg(feature = "flexi_log")]
+#[cfg(all(feature = "flexi_log", not(feature = "env_log")))]
 static LOGGER_HANDLER: tokio::sync::OnceCell<flexi_logger::LoggerHandle> =
     tokio::sync::OnceCell::const_new();
 
-#[cfg(feature = "flexi_log")]
+#[cfg(all(feature = "flexi_log", not(feature = "env_log")))]
 pub(crate) fn install_log(syslog: bool) -> Result<(), Box<dyn std::error::Error>> {
     use anyhow::Context;
     use flexi_logger::writers::LogWriter;
@@ -98,7 +98,7 @@ pub(crate) fn install_log(syslog: bool) -> Result<(), Box<dyn std::error::Error>
     Ok(())
 }
 
-#[cfg(feature = "env_log")]
+#[cfg(all(feature = "flexi_log", feature = "env_log"))]
 pub(crate) fn install_log(syslog: bool) -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::new()
         .filter_level(log::LevelFilter::Trace)
