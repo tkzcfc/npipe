@@ -8,6 +8,7 @@ use tokio::io::{
 };
 use tokio::select;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::{broadcast, mpsc};
 use tokio::task::yield_now;
 use tokio::time::sleep;
 
@@ -23,6 +24,7 @@ pub struct Session {
     pub addr: SocketAddr,
     closed: bool,
     logic: Box<dyn SessionLogic>,
+    _shutdown_complete: mpsc::Sender<()>,
 }
 
 impl Drop for Session {
@@ -34,12 +36,14 @@ impl Session {
         tx: UnboundedSender<WriterMessage>,
         addr: SocketAddr,
         logic: Box<dyn SessionLogic>,
+        _shutdown_complete: mpsc::Sender<()>,
     ) -> Session {
         Session {
             tx,
             addr,
             closed: false,
             logic,
+            _shutdown_complete,
         }
     }
 
@@ -62,6 +66,7 @@ impl Session {
         rx: UnboundedReceiver<WriterMessage>,
         reader: ReadHalf<S>,
         writer: WriteHalf<S>,
+        mut shutdown: broadcast::Receiver<()>,
     ) where
         S: AsyncRead + AsyncWrite + Send + 'static,
     {
@@ -69,6 +74,7 @@ impl Session {
         select! {
             _ = self.poll_read(reader) => {}
             _ = Self::poll_write(rx, writer) => {}
+            _ = shutdown.recv() => {}
         }
         self.logic.on_session_close().await;
     }
