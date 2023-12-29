@@ -12,7 +12,7 @@ pub(crate) fn install_log(syslog: bool) -> Result<(), Box<dyn std::error::Error>
     use std::io::Write;
     use std::path::Path;
 
-    pub struct StdErrLog;
+    struct StdErrLog;
 
     fn get_file_name(path: Option<&str>) -> anyhow::Result<&str> {
         match path {
@@ -50,7 +50,7 @@ pub(crate) fn install_log(syslog: bool) -> Result<(), Box<dyn std::error::Error>
     }
 
     if syslog {
-        let logger = Logger::try_with_str("trace,mio=error,sqlx=error,polling=error")?
+        let logger = Logger::try_with_str("trace,sqlx=error")?
             .log_to_file_and_writer(
                 FileSpec::default()
                     .directory("logs")
@@ -73,7 +73,7 @@ pub(crate) fn install_log(syslog: bool) -> Result<(), Box<dyn std::error::Error>
             .set(logger)
             .map_err(|_| anyhow::anyhow!("logger set error"))?;
     } else {
-        let logger = Logger::try_with_str("trace, mio=error,sqlx=error,polling=error")?
+        let logger = Logger::try_with_str("trace,sqlx=error")?
             .log_to_file(
                 FileSpec::default()
                     .directory("logs")
