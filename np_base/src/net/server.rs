@@ -107,10 +107,10 @@ impl Server {
     ) -> io::Result<()> {
         let mut session_id_seed = 0;
         loop {
-            let (socket, addr) = listener.accept().await?;
+            let (stream, addr) = listener.accept().await?;
 
-            match on_stream_init_callback.call(socket).await {
-                Ok(socket) => {
+            match on_stream_init_callback.call(stream).await {
+                Ok(stream) => {
                     if session_id_seed >= u32::MAX {
                         session_id_seed = 0;
                     }
@@ -126,7 +126,7 @@ impl Server {
                         trace!("new connection: {}", addr);
 
                         let (tx, rx) = unbounded_channel();
-                        let (reader, writer) = tokio::io::split(socket);
+                        let (reader, writer) = tokio::io::split(stream);
 
                         let mut session = Session::new(tx.clone(), addr, logic, shutdown_complete);
                         session.run(session_id, rx, reader, writer, shutdown).await;
