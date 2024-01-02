@@ -5,12 +5,28 @@ use log::{info, trace};
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
-use tokio::net::TcpListener;
+use std::pin::Pin;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::select;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::{broadcast, mpsc};
 
 pub type CreateSessionLogicCallback = fn() -> Box<dyn SessionLogic>;
+
+pub trait OnStreamInitCallback {
+    fn call(&self, stream: &mut TcpStream) -> Pin<Box<dyn Future<Output = ()> + Send>>;
+}
+
+// 实现 OnStreamInitCallback 为满足特定签名的闭包。
+impl<F, Fut> OnStreamInitCallback for F
+where
+    F: Fn(&mut TcpStream) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = ()> + Send + 'static,
+{
+    fn call(&self, stream: &mut TcpStream) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+        Box::pin(self(stream))
+    }
+}
 
 struct Server {
     notify_shutdown: broadcast::Sender<()>,
@@ -35,6 +51,7 @@ pub async fn bind(addr: &str) -> io::Result<TcpListener> {
 pub async fn run_server(
     listener: TcpListener,
     on_create_session_logic_callback: CreateSessionLogicCallback,
+    on_stream_init_callback: impl OnStreamInitCallback,
     shutdown: impl Future,
 ) {
     let (notify_shutdown, _) = broadcast::channel::<()>(1);
@@ -46,7 +63,7 @@ pub async fn run_server(
     };
 
     select! {
-        res = server.run(listener, on_create_session_logic_callback) => {
+        res = server.run(listener, on_create_session_logic_callback, on_stream_init_callback) => {
             if let Err(err) = res {
                 error!("Failed to accept, {}", err);
             }
@@ -78,10 +95,13 @@ impl Server {
         &self,
         listener: TcpListener,
         on_create_session_logic_callback: CreateSessionLogicCallback,
+        on_stream_init_callback: impl OnStreamInitCallback,
     ) -> io::Result<()> {
         let mut session_id_seed = 0;
         loop {
-            let (socket, addr) = listener.accept().await?;
+            let (mut socket, addr) = listener.accept().await?;
+
+            on_stream_init_callback.call(&mut socket).await;
 
             if session_id_seed >= u32::MAX {
                 session_id_seed = 0;
