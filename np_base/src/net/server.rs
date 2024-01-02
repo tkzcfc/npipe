@@ -6,6 +6,7 @@ use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
+use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::select;
 use tokio::sync::mpsc::unbounded_channel;
@@ -13,17 +14,24 @@ use tokio::sync::{broadcast, mpsc};
 
 pub type CreateSessionLogicCallback = fn() -> Box<dyn SessionLogic>;
 
+pub type OnStreamInitReturnType = io::Result<TcpStream>;
 pub trait OnStreamInitCallback {
-    fn call(&self, stream: &mut TcpStream) -> Pin<Box<dyn Future<Output = ()> + Send>>;
+    fn call(
+        &self,
+        stream: TcpStream,
+    ) -> Pin<Box<dyn Future<Output = OnStreamInitReturnType> + Send>>;
 }
 
 // 实现 OnStreamInitCallback 为满足特定签名的闭包。
 impl<F, Fut> OnStreamInitCallback for F
 where
-    F: Fn(&mut TcpStream) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = ()> + Send + 'static,
+    F: Fn(TcpStream) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = OnStreamInitReturnType> + Send + 'static,
 {
-    fn call(&self, stream: &mut TcpStream) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+    fn call(
+        &self,
+        stream: TcpStream,
+    ) -> Pin<Box<dyn Future<Output = OnStreamInitReturnType> + Send>> {
         Box::pin(self(stream))
     }
 }
@@ -99,35 +107,69 @@ impl Server {
     ) -> io::Result<()> {
         let mut session_id_seed = 0;
         loop {
-            let (mut socket, addr) = listener.accept().await?;
+            let (socket, addr) = listener.accept().await?;
 
-            on_stream_init_callback.call(&mut socket).await;
+            match on_stream_init_callback.call(socket).await {
+                Ok(socket) => {
+                    if session_id_seed >= u32::MAX {
+                        session_id_seed = 0;
+                    }
+                    session_id_seed += 1;
 
-            if session_id_seed >= u32::MAX {
-                session_id_seed = 0;
+                    let logic = on_create_session_logic_callback();
+                    let shutdown = self.notify_shutdown.subscribe();
+                    let shutdown_complete = self.shutdown_complete_tx.clone();
+                    let session_id = session_id_seed;
+
+                    // 新连接单独起一个异步任务处理
+                    tokio::spawn(async move {
+                        trace!("new connection: {}", addr);
+
+                        let (tx, rx) = unbounded_channel();
+                        let (reader, writer) = tokio::io::split(socket);
+
+                        let mut session = Session::new(tx.clone(), addr, logic, shutdown_complete);
+                        session.run(session_id, rx, reader, writer, shutdown).await;
+
+                        trace!("disconnect: {}", addr);
+                    });
+                }
+                Err(error) => {
+                    error!("on_stream_init error:{}", error.to_string());
+                }
             }
-            session_id_seed += 1;
 
-            // const SEND_BUFFER_SIZE: usize = 262144;
-            // const RECV_BUFFER_SIZE: usize = SEND_BUFFER_SIZE * 2;
-
-            let logic = on_create_session_logic_callback();
-            let shutdown = self.notify_shutdown.subscribe();
-            let shutdown_complete = self.shutdown_complete_tx.clone();
-            let session_id = session_id_seed;
-
-            // 新连接单独起一个异步任务处理
-            tokio::spawn(async move {
-                trace!("new connection: {}", addr);
-
-                let (tx, rx) = unbounded_channel();
-                let (reader, writer) = tokio::io::split(socket);
-
-                let mut session = Session::new(tx.clone(), addr, logic, shutdown_complete);
-                session.run(session_id, rx, reader, writer, shutdown).await;
-
-                trace!("disconnect: {}", addr);
-            });
+            // if let Err(error) = on_stream_init_callback.call(socket).await {
+            //     let _ = socket.shutdown().await;
+            //     error!("on_stream_init error:{}", error.to_string());
+            //     continue;
+            // }
+            //
+            // if session_id_seed >= u32::MAX {
+            //     session_id_seed = 0;
+            // }
+            // session_id_seed += 1;
+            //
+            // // const SEND_BUFFER_SIZE: usize = 262144;
+            // // const RECV_BUFFER_SIZE: usize = SEND_BUFFER_SIZE * 2;
+            //
+            // let logic = on_create_session_logic_callback();
+            // let shutdown = self.notify_shutdown.subscribe();
+            // let shutdown_complete = self.shutdown_complete_tx.clone();
+            // let session_id = session_id_seed;
+            //
+            // // 新连接单独起一个异步任务处理
+            // tokio::spawn(async move {
+            //     trace!("new connection: {}", addr);
+            //
+            //     let (tx, rx) = unbounded_channel();
+            //     let (reader, writer) = tokio::io::split(socket);
+            //
+            //     let mut session = Session::new(tx.clone(), addr, logic, shutdown_complete);
+            //     session.run(session_id, rx, reader, writer, shutdown).await;
+            //
+            //     trace!("disconnect: {}", addr);
+            // });
         }
     }
 }

@@ -6,6 +6,7 @@ use crate::log::install_log;
 use crate::peer::Peer;
 use np_base::net::server;
 use std::{env, io};
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::signal;
 
@@ -18,8 +19,10 @@ pub async fn main() -> io::Result<()> {
     server::run_server(
         listener,
         || Box::new(Peer::new()),
-        |stream: &mut TcpStream| async {
-            // stream.set_nodelay(false);
+        |mut stream: TcpStream| async move {
+            stream.set_nodelay(false).unwrap();
+            stream.shutdown().await?;
+            Ok(stream)
         },
         signal::ctrl_c(),
     )
