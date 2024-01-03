@@ -1,8 +1,7 @@
 use bytes::BytesMut;
 use log::{debug, error};
-use std::io;
-use std::io::ErrorKind;
 use std::net::SocketAddr;
+use anyhow::anyhow;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf};
 use tokio::net::{TcpSocket, TcpStream};
 use tokio::select;
@@ -24,7 +23,7 @@ pub struct Client {
     callback: ExtractFrameCallback,
 }
 
-pub type ExtractFrameCallback = fn(buffer: &mut BytesMut) -> io::Result<Option<Vec<u8>>>;
+pub type ExtractFrameCallback = fn(buffer: &mut BytesMut) -> anyhow::Result<Option<Vec<u8>>>;
 
 impl Client {
     pub fn new(addr: SocketAddr, callback: ExtractFrameCallback) -> Client {
@@ -38,7 +37,7 @@ impl Client {
     }
 
     // 连接服务器
-    pub async fn connect(&mut self) -> Result<(), io::Error> {
+    pub async fn connect(&mut self) -> anyhow::Result<()> {
         self.disconnect();
 
         let socket = if self.addr.is_ipv4() {
@@ -97,14 +96,14 @@ impl Client {
     }
 
     // 发送消息
-    pub fn send(&self, buf: Vec<u8>, flush: bool) -> io::Result<()> {
+    pub fn send(&self, buf: Vec<u8>, flush: bool) -> anyhow::Result<()> {
         if let Some(ref tx) = self.tx {
             if let Err(error) = tx.send(ChannelMessage::DoWriteData(buf, flush)) {
                 error!("Send Disconnect error: {}", error);
             }
             return Ok(());
         }
-        Err(io::Error::new(ErrorKind::NotConnected, "Not connected"))
+        Err(anyhow!("Not connected"))
     }
 
     // 接收消息

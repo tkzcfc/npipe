@@ -6,14 +6,13 @@ use np_proto::message_map::{
     decode_message, encode_raw_message, get_message_id, get_message_size, MessageType,
 };
 use std::collections::HashMap;
-use std::io;
-use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::time::Duration;
-use tokio::time::{self, Instant};
+use tokio::time::{Instant};
+use anyhow::anyhow;
 
 pub type RecvMessageCallback = Box<dyn FnMut(i32, &MessageType) + Send + 'static>;
-pub type RequestResultCallback = Box<dyn FnMut(io::Result<&MessageType>) + Send + 'static>;
+pub type RequestResultCallback = Box<dyn FnMut(anyhow::Result<&MessageType>) + Send + 'static>;
 
 pub(crate) struct RpcClient {
     inner: Client,
@@ -35,7 +34,7 @@ impl RpcClient {
     }
 
     #[inline]
-    pub(crate) async fn connect(&mut self) -> Result<(), io::Error> {
+    pub(crate) async fn connect(&mut self) -> anyhow::Result<()> {
         self.inner.connect().await
     }
 
@@ -58,7 +57,7 @@ impl RpcClient {
 
     pub(crate) fn send_request<F>(&mut self, message: MessageType, callback: F)
     where
-        F: FnMut(io::Result<&MessageType>) + 'static + Send,
+        F: FnMut(anyhow::Result<&MessageType>) + 'static + Send,
     {
         // 防止请求序号越界
         if self.serial >= i32::MAX {
@@ -78,7 +77,7 @@ impl RpcClient {
         &self,
         serial: i32,
         message: &MessageType,
-    ) -> io::Result<()> {
+    ) -> anyhow::Result<()> {
         if let Some(message_id) = get_message_id(message) {
             let message_size = get_message_size(message);
             let mut buf = Vec::with_capacity(message_size + 12);
@@ -90,7 +89,7 @@ impl RpcClient {
 
             return self.inner.send(buf, true);
         }
-        Err(io::Error::new(ErrorKind::Other, "error message"))
+        Err(anyhow!("error message"))
     }
 
     pub(crate) fn update(&mut self) {
@@ -103,12 +102,8 @@ impl RpcClient {
                 if frame.len() < 8 {
                     self.disconnect();
 
-                    for (ref mut callback, ref time) in self.response_map.values_mut() {
-                        let err = Err(io::Error::new(
-                            io::ErrorKind::Other,
-                            "The response is illegal",
-                        ));
-                        callback(err)
+                    for (ref mut callback, ref _time) in self.response_map.values_mut() {
+                        callback(Err(anyhow!("The response is illegal")))
                     }
                     self.response_map.clear();
                     break;
@@ -163,7 +158,7 @@ impl RpcClient {
 
 // 数据粘包处理
 #[inline]
-fn try_extract_frame(buffer: &mut BytesMut) -> io::Result<Option<Vec<u8>>> {
+fn try_extract_frame(buffer: &mut BytesMut) -> anyhow::Result<Option<Vec<u8>>> {
     // 数据小于4字节
     if buffer.len() < 4 {
         return Ok(None);
@@ -174,10 +169,7 @@ fn try_extract_frame(buffer: &mut BytesMut) -> io::Result<Option<Vec<u8>>> {
 
     // 超出最大限制
     if len <= 0 || len >= 1024 * 1024 * 5 {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            String::from("bad length"),
-        ));
+        return Err(anyhow!("bad length"));
     }
 
     // 数据不够

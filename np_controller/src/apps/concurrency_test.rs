@@ -6,8 +6,6 @@ use egui_extras::{Column, TableBuilder};
 use log::error;
 use np_proto::generic;
 use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size, MessageType};
-use std::fmt::Pointer;
-use std::io;
 use std::net::SocketAddr;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Mutex;
@@ -70,7 +68,7 @@ async fn do_test(tx: Sender<u32>, addr: SocketAddr) {
 
         let message = MessageType::GenericPing(generic::Ping { ticks: 0 });
 
-        rpc.send_request(message, move |result: io::Result<&MessageType>| {
+        rpc.send_request(message, move |result: anyhow::Result<&MessageType>| {
             *isback_cloned.write().unwrap() = true;
             match result {
                 Err(error) => {
@@ -94,7 +92,7 @@ async fn do_test(tx: Sender<u32>, addr: SocketAddr) {
     tx.send(*qps.lock().unwrap()).unwrap();
 }
 
-async fn do_test_raw_impl(tx: &Sender<u32>, addr: SocketAddr) -> io::Result<()> {
+async fn do_test_raw_impl(tx: &Sender<u32>, addr: SocketAddr) -> anyhow::Result<()> {
     let message = MessageType::GenericPing(generic::Ping { ticks: 0 });
     let message_id = get_message_id(&message).unwrap();
     let message_size = get_message_size(&message);
