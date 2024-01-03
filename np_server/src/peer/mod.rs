@@ -5,13 +5,11 @@ mod handle_response;
 use crate::player::Player;
 use async_trait::async_trait;
 use byteorder::{BigEndian, ByteOrder};
-use bytes::BytesMut;
 use log::error;
 use np_base::net::session::WriterMessage;
 use np_base::net::session_logic::SessionLogic;
 use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size, MessageType};
 use np_proto::{generic, message_map};
-use std::io;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
@@ -37,7 +35,7 @@ impl Peer {
         serial: i32,
         message: &MessageType,
         flush: bool,
-    ) -> io::Result<()> {
+    ) -> anyhow::Result<()> {
         if let Some(message_id) = get_message_id(message) {
             let message_size = get_message_size(message);
             let mut buf = Vec::with_capacity(message_size + 12);
@@ -59,17 +57,21 @@ impl Peer {
     }
 
     #[inline]
-    pub(crate) async fn send_response(&self, serial: i32, message: &MessageType) -> io::Result<()> {
+    pub(crate) async fn send_response(
+        &self,
+        serial: i32,
+        message: &MessageType,
+    ) -> anyhow::Result<()> {
         self.package_and_send_message(serial, message, true).await
     }
 
     // #[inline]
-    // pub(crate) async fn send_request(&self, _message: &MessageType) -> io::Result<MessageType> {
+    // pub(crate) async fn send_request(&self, _message: &MessageType) -> anyhow::Result<MessageType> {
     //     todo!();
     // }
 
     #[inline]
-    pub(crate) async fn send_push(&self, message: &MessageType) -> io::Result<()> {
+    pub(crate) async fn send_push(&self, message: &MessageType) -> anyhow::Result<()> {
         self.package_and_send_message(0, message, true).await
     }
 
@@ -77,7 +79,7 @@ impl Peer {
         &self,
         serial: i32,
         message: MessageType,
-    ) -> io::Result<MessageType> {
+    ) -> anyhow::Result<MessageType> {
         return if serial < 0 {
             self.handle_request(message).await
         } else if serial > 0 {

@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use byteorder::{BigEndian, ByteOrder};
 use bytes::BytesMut;
 use log::error;
@@ -8,8 +9,7 @@ use np_proto::message_map::{
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::Duration;
-use tokio::time::{Instant};
-use anyhow::anyhow;
+use tokio::time::Instant;
 
 pub type RecvMessageCallback = Box<dyn FnMut(i32, &MessageType) + Send + 'static>;
 pub type RequestResultCallback = Box<dyn FnMut(anyhow::Result<&MessageType>) + Send + 'static>;

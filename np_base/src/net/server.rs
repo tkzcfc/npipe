@@ -50,7 +50,7 @@ pub async fn bind(addr: &str) -> io::Result<TcpListener> {
         Err(parse_error) => Err(std::io::Error::new(
             io::ErrorKind::InvalidInput,
             parse_error.to_string(),
-        ))
+        )),
     }
 }
 

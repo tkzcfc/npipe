@@ -1,7 +1,7 @@
+use anyhow::anyhow;
 use bytes::BytesMut;
 use log::{debug, error};
 use std::net::SocketAddr;
-use anyhow::anyhow;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf};
 use tokio::net::{TcpSocket, TcpStream};
 use tokio::select;

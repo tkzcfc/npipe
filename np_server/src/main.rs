@@ -18,9 +18,7 @@ pub async fn main() -> io::Result<()> {
     server::run_server(
         listener,
         || Box::new(Peer::new()),
-        |stream: TcpStream| async move {
-            Ok(stream)
-        },
+        |stream: TcpStream| async move { Ok(stream) },
         signal::ctrl_c(),
     )
     .await;

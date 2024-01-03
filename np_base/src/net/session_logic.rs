@@ -1,8 +1,8 @@
 use crate::net::session::WriterMessage;
+use anyhow::anyhow;
 use async_trait::async_trait;
 use byteorder::{BigEndian, ByteOrder};
 use bytes::BytesMut;
-use anyhow::anyhow;
 use tokio::sync::mpsc::UnboundedSender;
 
 #[async_trait]

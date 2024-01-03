@@ -32,7 +32,7 @@ impl PlayerManager {
     pub async fn create_player(
         &mut self,
         player_id: PlayerId,
-    ) -> Result<Arc<RwLock<Player>>, std::io::Error> {
+    ) -> anyhow::Result<Arc<RwLock<Player>>> {
         let player = Player::new(player_id);
         self.players.push(player.clone());
         self.player_map
