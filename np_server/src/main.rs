@@ -1,6 +1,7 @@
 mod log;
 mod peer;
 mod player;
+mod opts;
 
 use crate::log::install_log;
 use crate::peer::Peer;
