@@ -8,6 +8,7 @@
       <sourceFolder url="file://$MODULE_DIR$/np_server/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/np_macro/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/np_test/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/np_controller/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

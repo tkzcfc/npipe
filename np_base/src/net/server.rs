@@ -13,7 +13,7 @@ use tokio::sync::{broadcast, mpsc};
 
 pub type CreateSessionLogicCallback = fn() -> Box<dyn SessionLogic>;
 
-pub type OnStreamInitReturnType = io::Result<TcpStream>;
+pub type OnStreamInitReturnType = anyhow::Result<TcpStream>;
 pub trait OnStreamInitCallback {
     fn call(
         &self,
@@ -50,7 +50,7 @@ pub async fn bind(addr: &str) -> io::Result<TcpListener> {
         Err(parse_error) => Err(std::io::Error::new(
             io::ErrorKind::InvalidInput,
             parse_error.to_string(),
-        )),
+        ))
     }
 }
 
@@ -103,7 +103,7 @@ impl Server {
         listener: TcpListener,
         on_create_session_logic_callback: CreateSessionLogicCallback,
         on_stream_init_callback: impl OnStreamInitCallback,
-    ) -> io::Result<()> {
+    ) -> anyhow::Result<()> {
         let mut session_id_seed = 0;
         loop {
             let (stream, addr) = listener.accept().await?;
@@ -137,38 +137,6 @@ impl Server {
                     error!("on_stream_init error:{}", error.to_string());
                 }
             }
-
-            // if let Err(error) = on_stream_init_callback.call(socket).await {
-            //     let _ = socket.shutdown().await;
-            //     error!("on_stream_init error:{}", error.to_string());
-            //     continue;
-            // }
-            //
-            // if session_id_seed >= u32::MAX {
-            //     session_id_seed = 0;
-            // }
-            // session_id_seed += 1;
-            //
-            // // const SEND_BUFFER_SIZE: usize = 262144;
-            // // const RECV_BUFFER_SIZE: usize = SEND_BUFFER_SIZE * 2;
-            //
-            // let logic = on_create_session_logic_callback();
-            // let shutdown = self.notify_shutdown.subscribe();
-            // let shutdown_complete = self.shutdown_complete_tx.clone();
-            // let session_id = session_id_seed;
-            //
-            // // 新连接单独起一个异步任务处理
-            // tokio::spawn(async move {
-            //     trace!("new connection: {}", addr);
-            //
-            //     let (tx, rx) = unbounded_channel();
-            //     let (reader, writer) = tokio::io::split(socket);
-            //
-            //     let mut session = Session::new(tx.clone(), addr, logic, shutdown_complete);
-            //     session.run(session_id, rx, reader, writer, shutdown).await;
-            //
-            //     trace!("disconnect: {}", addr);
-            // });
         }
     }
 }

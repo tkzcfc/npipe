@@ -2,7 +2,7 @@ use crate::net::session::WriterMessage;
 use async_trait::async_trait;
 use byteorder::{BigEndian, ByteOrder};
 use bytes::BytesMut;
-use std::io;
+use anyhow::anyhow;
 use tokio::sync::mpsc::UnboundedSender;
 
 #[async_trait]
@@ -17,7 +17,7 @@ where
     async fn on_session_close(&mut self);
 
     // 数据粘包处理
-    fn on_try_extract_frame(&self, buffer: &mut BytesMut) -> io::Result<Option<Vec<u8>>> {
+    fn on_try_extract_frame(&self, buffer: &mut BytesMut) -> anyhow::Result<Option<Vec<u8>>> {
         // 数据小于4字节,继续读取数据
         if buffer.len() < 4 {
             return Ok(None);
@@ -29,10 +29,7 @@ where
 
         // 超出最大限制
         if len <= 0 || len >= 1024 * 1024 * 5 {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                String::from("Length too long"),
-            ));
+            return Err(anyhow!("Length too long"));
         }
 
         // 数据不够,继续读取数据
