@@ -3,7 +3,7 @@ static LOGGER_HANDLER: tokio::sync::OnceCell<flexi_logger::LoggerHandle> =
     tokio::sync::OnceCell::const_new();
 
 #[cfg(all(feature = "flexi_log", not(feature = "env_log")))]
-pub(crate) fn install_log(syslog: bool) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn install_log(syslog: bool) -> anyhow::Result<()> {
     use anyhow::Context;
     use flexi_logger::writers::LogWriter;
     use flexi_logger::{style, DeferredNow, TS_DASHES_BLANK_COLONS_DOT_BLANK};
@@ -99,7 +99,7 @@ pub(crate) fn install_log(syslog: bool) -> Result<(), Box<dyn std::error::Error>
 }
 
 #[cfg(all(feature = "flexi_log", feature = "env_log"))]
-pub(crate) fn install_log(syslog: bool) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn install_log(syslog: bool) -> anyhow::Result<()> {
     env_logger::Builder::new()
         .filter_level(log::LevelFilter::Trace)
         .filter_module("sqlx", log::LevelFilter::Error)
