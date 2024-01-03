@@ -1984,12 +1984,13 @@ dependencies = [
  "async-trait",
  "byteorder",
  "bytes",
+ "clap",
  "env_logger",
  "flexi_logger",
- "lazy_static",
  "log",
  "np_base",
  "np_proto",
+ "once_cell",
  "tokio",
 ]
 

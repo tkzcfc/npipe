@@ -1,12 +1,11 @@
 use crate::player::{Player, PlayerId};
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-lazy_static! {
-    pub static ref PLAYER_MANAGER: RwLock<PlayerManager> = RwLock::new(PlayerManager::new());
-}
+pub static PLAYER_MANAGER: Lazy<RwLock<PlayerManager>> =
+    Lazy::new(|| RwLock::new(PlayerManager::new()));
 
 pub struct PlayerManager {
     players: Vec<Arc<RwLock<Player>>>,

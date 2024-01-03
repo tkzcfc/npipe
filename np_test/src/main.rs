@@ -1,9 +1,9 @@
 mod callback_test;
 
+use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
-use std::path::PathBuf;
-use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -15,10 +15,8 @@ struct Cli {
     #[arg(short, long, value_name = "FILE")]
     config: Option<PathBuf>,
 
-
     #[arg(short, long, default_value_t = false, action = clap::ArgAction::Set)]
     debug: bool,
-
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -33,7 +31,6 @@ enum Commands {
         list: i32,
     },
 }
-
 
 #[tokio::main]
 async fn main() {
@@ -62,7 +59,7 @@ async fn main() {
     // matches just as you would the top level cmd
     match &cli.command {
         Some(Commands::Test { list }) => {
-            if *list  == 0 {
+            if *list == 0 {
                 println!("Printing testing lists...");
             } else {
                 println!("Not printing testing lists...");

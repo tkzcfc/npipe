@@ -1,5 +1,7 @@
+use clap::Parser;
+use once_cell::sync::Lazy;
 
-use clap::{Parser};
+static OPTS: Lazy<Opts> = Lazy::new(|| Opts::parse());
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
