@@ -1,10 +1,8 @@
 pub mod manager;
-
-use byteorder::BigEndian;
-use log::error;
+use crate::peer::package_and_send_message;
 use np_base::net::session::WriterMessage;
 use np_proto::generic;
-use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size, MessageType};
+use np_proto::message_map::MessageType;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
@@ -45,35 +43,8 @@ impl Player {
     }
 
     #[inline]
-    pub async fn package_and_send_message(
-        &self,
-        serial: i32,
-        message: &MessageType,
-        flush: bool,
-    ) -> anyhow::Result<()> {
-        if let Some(message_id) = get_message_id(message) {
-            let message_size = get_message_size(message);
-            let mut buf = Vec::with_capacity(message_size + 12);
-
-            byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, (8 + message_size) as u32)?;
-            byteorder::WriteBytesExt::write_i32::<BigEndian>(&mut buf, -serial)?;
-            byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, message_id)?;
-            encode_raw_message(message, &mut buf);
-
-            if let Some(ref tx) = self.tx {
-                if let Err(error) = tx.send(WriterMessage::Send(buf, flush)) {
-                    error!("Send message error: {}", error);
-                }
-            } else {
-                error!("Send message error: tx is None");
-            }
-        }
-        Ok(())
-    }
-
-    #[inline]
     pub async fn send_response(&self, serial: i32, message: &MessageType) -> anyhow::Result<()> {
-        self.package_and_send_message(serial, message, true).await
+        package_and_send_message(&self.tx, serial, message, true).await
     }
 
     // #[inline]
@@ -83,7 +54,7 @@ impl Player {
 
     #[inline]
     pub async fn send_push(&self, message: &MessageType) -> anyhow::Result<()> {
-        self.package_and_send_message(0, message, true).await
+        package_and_send_message(&self.tx, 0, message, true).await
     }
 
     #[inline]
