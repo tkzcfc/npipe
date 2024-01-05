@@ -1,4 +1,4 @@
-use crate::opts::SERVER_OPT;
+use super::opts::SERVER_OPT;
 use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming, WriteMode};
 use std::env;
 
@@ -45,7 +45,7 @@ pub(crate) fn init_logger() -> anyhow::Result<()> {
 
     LOGGER_HANDLER
         .set(logger)
-        .map_err(|_| anyhow::anyhow!("logger set error"))?;
+        .map_err(|err| anyhow::anyhow!("logger set error: {}", err))?;
 
     Ok(())
 }
