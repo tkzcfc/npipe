@@ -6,12 +6,13 @@ use crate::peer::Peer;
 use np_base::net::server;
 use tokio::net::TcpStream;
 use tokio::signal;
+use crate::global::config::GLOBAL_CONFIG;
 
 #[tokio::main]
 pub async fn main() -> anyhow::Result<()> {
     global::init_global().await?;
 
-    let listener = server::bind("0.0.0.0:8118").await?;
+    let listener = server::bind(GLOBAL_CONFIG.listen_addr.as_str()).await?;
     server::run_server(
         listener,
         || Box::new(Peer::new()),

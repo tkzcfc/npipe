@@ -8,13 +8,13 @@ pub mod config;
 pub mod logger;
 pub mod opts;
 
-static SQLX_POOL: OnceCell<MySqlPool> = OnceCell::const_new();
+static GLOBAL_DB_POOL: OnceCell<MySqlPool> = OnceCell::const_new();
 
 pub(crate) async fn init_global() -> anyhow::Result<()> {
     init_logger()?;
 
     // 初始化全局连接池
-    SQLX_POOL
+    GLOBAL_DB_POOL
         .get_or_init(|| async {
             match MySqlPoolOptions::new()
                 .max_connections(5)

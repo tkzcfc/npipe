@@ -1,4 +1,4 @@
-use super::opts::SERVER_OPT;
+use super::opts::GLOBAL_OPTS;
 use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming, WriteMode};
 use std::env;
 
@@ -19,7 +19,7 @@ static LOGGER_HANDLER: tokio::sync::OnceCell<flexi_logger::LoggerHandle> =
     tokio::sync::OnceCell::const_new();
 
 pub(crate) fn init_logger() -> anyhow::Result<()> {
-    if SERVER_OPT.backtrace {
+    if GLOBAL_OPTS.backtrace {
         env::set_var("RUST_BACKTRACE", "1");
     }
 
@@ -31,7 +31,7 @@ pub(crate) fn init_logger() -> anyhow::Result<()> {
                 .suppress_timestamp()
                 .suffix("log"),
         )
-        .duplicate_to_stdout(duplicate_level(SERVER_OPT.log_level.as_str()))
+        .duplicate_to_stdout(duplicate_level(GLOBAL_OPTS.log_level.as_str()))
         .format(flexi_logger::opt_format)
         .format_for_stdout(flexi_logger::colored_opt_format)
         .rotate(

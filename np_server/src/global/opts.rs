@@ -1,7 +1,7 @@
 use clap::Parser;
 use once_cell::sync::Lazy;
 
-pub static SERVER_OPT: Lazy<Opts> = Lazy::new(|| Opts::parse());
+pub static GLOBAL_OPTS: Lazy<Opts> = Lazy::new(|| Opts::parse());
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
