@@ -1985,7 +1985,6 @@ dependencies = [
  "byteorder",
  "bytes",
  "clap",
- "env_logger",
  "flexi_logger",
  "log",
  "np_base",

@@ -6,17 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["flexi_log"]
-flexi_log = ["flexi_logger"]
-env_log = ["env_logger"]
 
 [dependencies]
 np_base = { path = "../np_base" }
 np_proto = { path = "../np_proto" }
 tokio = { version = "1", features = ["full"] }
 log = "0.4.0"
-env_logger = { version = "0.10", optional = true }
-flexi_logger = { version = "0.27.3", features = ["async"], optional = true }
+flexi_logger = { version = "0.27.3", features = ["async"]}
 bytes = { version = "1", features = [] }
 byteorder = "1.5.0"
 async-trait = "0.1"
