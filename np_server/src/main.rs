@@ -2,11 +2,11 @@ mod global;
 mod peer;
 mod player;
 
+use crate::global::config::GLOBAL_CONFIG;
 use crate::peer::Peer;
 use np_base::net::server;
 use tokio::net::TcpStream;
 use tokio::signal;
-use crate::global::config::GLOBAL_CONFIG;
 
 #[tokio::main]
 pub async fn main() -> anyhow::Result<()> {
