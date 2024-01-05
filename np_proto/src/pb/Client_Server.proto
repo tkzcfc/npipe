@@ -19,3 +19,12 @@ message RegisterReq {
   // 密码
   string password = 2;
 }
+
+// 管理员登录
+message ManagementLoginReq {
+  enum MsgId {None = 0; Id = 1005;}
+  // 用户名
+  string username = 1;
+  // 密码
+  string password = 2;
+}
