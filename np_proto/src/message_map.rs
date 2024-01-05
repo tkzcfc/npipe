@@ -5,7 +5,9 @@ use prost::{DecodeError, Message};
 pub enum MessageType {
     None,
     ClientServerLoginReq(super::client_server::LoginReq),
+    ClientServerRegisterReq(super::client_server::RegisterReq),
     ServerClientLoginAck(super::server_client::LoginAck),
+    ServerClientRegisterAck(super::server_client::RegisterAck),
     GenericSuccess(super::generic::Success),
     GenericFail(super::generic::Fail),
     GenericError(super::generic::Error),
@@ -16,7 +18,9 @@ pub enum MessageType {
 pub fn get_message_id(message: &MessageType) -> Option<u32> {
     match message {
         MessageType::ClientServerLoginReq(_) => Some(1001u32),
+        MessageType::ClientServerRegisterReq(_) => Some(1003u32),
         MessageType::ServerClientLoginAck(_) => Some(1002u32),
+        MessageType::ServerClientRegisterAck(_) => Some(1004u32),
         MessageType::GenericSuccess(_) => Some(150001u32),
         MessageType::GenericFail(_) => Some(150002u32),
         MessageType::GenericError(_) => Some(150003u32),
@@ -32,8 +36,16 @@ pub fn decode_message(message_id: u32, bytes: &[u8]) -> Result<MessageType, Deco
             Ok(message) => Ok(MessageType::ClientServerLoginReq(message)),
             Err(err) => Err(err),
         },
+        1003u32 => match super::client_server::RegisterReq::decode(bytes) {
+            Ok(message) => Ok(MessageType::ClientServerRegisterReq(message)),
+            Err(err) => Err(err),
+        },
         1002u32 => match super::server_client::LoginAck::decode(bytes) {
             Ok(message) => Ok(MessageType::ServerClientLoginAck(message)),
+            Err(err) => Err(err),
+        },
+        1004u32 => match super::server_client::RegisterAck::decode(bytes) {
+            Ok(message) => Ok(MessageType::ServerClientRegisterAck(message)),
             Err(err) => Err(err),
         },
         150001u32 => match super::generic::Success::decode(bytes) {
@@ -63,7 +75,9 @@ pub fn decode_message(message_id: u32, bytes: &[u8]) -> Result<MessageType, Deco
 pub fn encode_message(message: &MessageType) -> Option<(u32, Vec<u8>)> {
     match message {
         MessageType::ClientServerLoginReq(msg) => Some((1001u32, msg.encode_to_vec())),
+        MessageType::ClientServerRegisterReq(msg) => Some((1003u32, msg.encode_to_vec())),
         MessageType::ServerClientLoginAck(msg) => Some((1002u32, msg.encode_to_vec())),
+        MessageType::ServerClientRegisterAck(msg) => Some((1004u32, msg.encode_to_vec())),
         MessageType::GenericSuccess(msg) => Some((150001u32, msg.encode_to_vec())),
         MessageType::GenericFail(msg) => Some((150002u32, msg.encode_to_vec())),
         MessageType::GenericError(msg) => Some((150003u32, msg.encode_to_vec())),
@@ -76,7 +90,9 @@ pub fn encode_message(message: &MessageType) -> Option<(u32, Vec<u8>)> {
 pub fn get_message_size(message: &MessageType) -> usize {
     match message {
         MessageType::ClientServerLoginReq(msg) => msg.encoded_len(),
+        MessageType::ClientServerRegisterReq(msg) => msg.encoded_len(),
         MessageType::ServerClientLoginAck(msg) => msg.encoded_len(),
+        MessageType::ServerClientRegisterAck(msg) => msg.encoded_len(),
         MessageType::GenericSuccess(msg) => msg.encoded_len(),
         MessageType::GenericFail(msg) => msg.encoded_len(),
         MessageType::GenericError(msg) => msg.encoded_len(),
@@ -89,7 +105,9 @@ pub fn get_message_size(message: &MessageType) -> usize {
 pub fn encode_raw_message(message: &MessageType, buf: &mut impl BufMut) {
     match message {
         MessageType::ClientServerLoginReq(msg) => msg.encode_raw(buf),
+        MessageType::ClientServerRegisterReq(msg) => msg.encode_raw(buf),
         MessageType::ServerClientLoginAck(msg) => msg.encode_raw(buf),
+        MessageType::ServerClientRegisterAck(msg) => msg.encode_raw(buf),
         MessageType::GenericSuccess(msg) => msg.encode_raw(buf),
         MessageType::GenericFail(msg) => msg.encode_raw(buf),
         MessageType::GenericError(msg) => msg.encode_raw(buf),

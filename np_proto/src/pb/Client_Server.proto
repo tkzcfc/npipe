@@ -10,3 +10,12 @@ message LoginReq {
   // 密码
   string password = 2;
 }
+
+// 注册请求
+message RegisterReq {
+  enum MsgId {None = 0; Id = 1003;}
+  // 用户名
+  string username = 1;
+  // 密码
+  string password = 2;
+}

@@ -44,7 +44,8 @@ impl Player {
 
     #[inline]
     pub async fn send_response(&self, serial: i32, message: &MessageType) -> anyhow::Result<()> {
-        package_and_send_message(&self.tx, serial, message, true).await
+        assert!(serial < 0);
+        package_and_send_message(&self.tx, -serial, message, true).await
     }
 
     // #[inline]

@@ -15,7 +15,7 @@ struct MessageInfo {
     id: u32,
 }
 
-const ANNOTATION_PREFIX: &'static str = "//@build_automatically_generate_code@";
+const ANNOTATION_PREFIX: &'static str = "//@build_automatically_generate_message_id@";
 
 // https://docs.rs/prost-build/latest/prost_build/
 fn main() -> io::Result<()> {

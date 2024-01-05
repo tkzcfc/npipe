@@ -1,6 +1,6 @@
 /// 通用成功
 ///
-/// @build_automatically_generate_code@  enum MsgId { None=0; Id = 150001; }
+/// @build_automatically_generate_message_id@  enum MsgId { None=0; Id = 150001; }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Success {}
@@ -8,7 +8,7 @@ pub struct Success {}
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Fail {
-    /// @build_automatically_generate_code@  enum MsgId {  None=0;Id = 150002; }
+    /// @build_automatically_generate_message_id@  enum MsgId {  None=0;Id = 150002; }
     #[prost(int32, tag = "1")]
     pub number: i32,
     #[prost(string, tag = "2")]
@@ -18,7 +18,7 @@ pub struct Fail {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Error {
-    /// @build_automatically_generate_code@  enum MsgId {  None=0;Id = 150003; }
+    /// @build_automatically_generate_message_id@  enum MsgId {  None=0;Id = 150003; }
     #[prost(int32, tag = "1")]
     pub number: i32,
     #[prost(string, tag = "2")]
@@ -28,7 +28,7 @@ pub struct Error {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Ping {
-    /// @build_automatically_generate_code@  enum MsgId {None = 0; Id = 150004;}
+    /// @build_automatically_generate_message_id@  enum MsgId {None = 0; Id = 150004;}
     #[prost(int64, tag = "1")]
     pub ticks: i64,
 }
@@ -36,7 +36,7 @@ pub struct Ping {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Pong {
-    /// @build_automatically_generate_code@  enum MsgId {None = 0; Id = 150005;}
+    /// @build_automatically_generate_message_id@  enum MsgId {None = 0; Id = 150005;}
     #[prost(int64, tag = "1")]
     pub ticks: i64,
 }
