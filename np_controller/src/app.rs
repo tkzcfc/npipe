@@ -1,7 +1,9 @@
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 enum Anchor {
-    Demo,
+    ConcurrencyTest,
     Clock,
+    ProtoTest,
 }
 
 impl std::fmt::Display for Anchor {
@@ -18,7 +20,7 @@ impl From<Anchor> for egui::WidgetText {
 
 impl Default for Anchor {
     fn default() -> Self {
-        Self::Demo
+        Self::ConcurrencyTest
     }
 }
 
@@ -34,11 +36,11 @@ enum Command {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Default, serde::Deserialize, serde::Serialize)]
-pub struct ConcurrencyTestApp {
-    logic: crate::apps::concurrency_test::ConcurrencyTest,
+pub struct ProtoTestApp {
+    logic: crate::apps::proto_test::ProtoTest,
 }
 
-impl eframe::App for ConcurrencyTestApp {
+impl eframe::App for ProtoTestApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         self.logic.ui(ctx, frame);
     }
@@ -63,11 +65,27 @@ impl eframe::App for FractalClockApp {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+
+#[derive(Default, serde::Deserialize, serde::Serialize)]
+pub struct ConcurrencyTestApp {
+    logic: crate::apps::concurrency_test::ConcurrencyTest,
+}
+
+impl eframe::App for crate::app::ConcurrencyTestApp {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.logic.ui(ctx, frame);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
 #[derive(Default, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct State {
     concurrency_test: ConcurrencyTestApp,
     clock: FractalClockApp,
+    proto_test:ProtoTestApp,
 
     selected_anchor: Anchor,
     backend_panel: super::backend_panel::BackendPanel,
@@ -97,13 +115,18 @@ impl Application {
         let vec = vec![
             (
                 "✨ Concurrency Test",
-                Anchor::Demo,
+                Anchor::ConcurrencyTest,
                 &mut self.state.concurrency_test as &mut dyn eframe::App,
             ),
             (
                 "🕑 Fractal Clock",
                 Anchor::Clock,
                 &mut self.state.clock as &mut dyn eframe::App,
+            ),
+            (
+                "🕑 Proto Test",
+                Anchor::ProtoTest,
+                &mut self.state.proto_test as &mut dyn eframe::App,
             ),
         ];
         vec.into_iter()

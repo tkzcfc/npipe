@@ -39,6 +39,11 @@ impl RpcClient {
     }
 
     #[inline]
+    pub fn reset_addr(&mut self, addr: SocketAddr) {
+        self.inner.reset_addr(addr)
+    }
+
+    #[inline]
     pub(crate) fn is_connect(&self) -> bool {
         self.inner.is_connect()
     }

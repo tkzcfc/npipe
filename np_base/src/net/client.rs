@@ -74,6 +74,13 @@ impl Client {
         Ok(())
     }
 
+    pub fn reset_addr(&mut self, addr: SocketAddr) {
+        if self.addr != addr {
+            self.addr = addr;
+            self.disconnect();
+        }
+    }
+
     // 是否处于连接状态
     #[inline]
     pub fn is_connect(&self) -> bool {
