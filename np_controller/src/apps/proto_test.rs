@@ -1,5 +1,6 @@
 use crate::apps::rpc_client::RpcClient;
 use crate::tokio_runtime;
+use egui::{Resize, Ui};
 use egui_extras::{Column, TableBuilder};
 use log::error;
 use np_proto::client_server;
@@ -18,28 +19,38 @@ enum TestStatus {
 }
 
 type TestUnitMutexType = std::sync::Mutex<TestUnit>;
-type TestUnitFunc = fn(&mut RpcClient, &mut TestUnit, Arc<TestUnitMutexType>);
 
 struct TestUnit {
     name: String,
     status: TestStatus,
-    func: TestUnitFunc,
+    logic: Box<dyn TestUnitLogic + Send>,
     start_time: Option<Instant>,
     end_time: Option<Instant>,
-    response: String,
+    param_height: f32,
+    response_height: f32,
 }
 
 impl TestUnit {
-    fn new(name: &str, func: TestUnitFunc) -> Arc<TestUnitMutexType> {
+    fn new(name: &str, logic: Box<dyn TestUnitLogic + Send>) -> Arc<TestUnitMutexType> {
         Arc::new(std::sync::Mutex::new(Self {
             name: name.into(),
             status: TestStatus::None,
-            func,
+            logic,
             start_time: None,
             end_time: None,
-            response: "".into(),
+            param_height: 20.0,
+            response_height: 20.0,
         }))
     }
+}
+
+trait TestUnitLogic {
+    fn render_parameter(&mut self, _ui: &mut Ui) {}
+    fn render_response(&mut self, _ui: &mut Ui) {}
+    fn call(&mut self, _rpc: &mut RpcClient, _unit_arc: Arc<TestUnitMutexType>) {
+        todo!()
+    }
+    fn on_response(&mut self, response: String) {}
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -64,7 +75,10 @@ impl Default for ProtoTest {
                 SocketAddr::from_str(format!("{}:{}", host, port).as_str())
                     .expect("invalid address"),
             ))),
-            test_units: vec![TestUnit::new("register", test_register)],
+            test_units: vec![
+                TestUnit::new("register", Box::new(TestRegister::default())),
+                TestUnit::new("register11", Box::new(TestRegister::default())),
+            ],
             host,
             port,
         }
@@ -110,6 +124,7 @@ impl ProtoTest {
                     .column(Column::auto())
                     .column(Column::auto())
                     .column(Column::auto())
+                    .column(Column::auto())
                     .min_scrolled_height(0.0);
 
                 table
@@ -124,16 +139,25 @@ impl ProtoTest {
                             ui.strong("status");
                         });
                         header.col(|ui| {
-                            ui.strong("response");
+                            ui.strong("time");
                         });
                         header.col(|ui| {
-                            ui.strong("time");
+                            ui.strong("parameter");
+                        });
+                        header.col(|ui| {
+                            ui.strong("response");
                         });
                     })
                     .body(|mut body| {
                         for unit_arc in &self.test_units {
                             if let Ok(mut unit) = unit_arc.try_lock() {
-                                body.row(20.0, |mut row| {
+                                let head_height = if unit.param_height > unit.response_height {
+                                    unit.param_height
+                                } else {
+                                    unit.response_height
+                                };
+
+                                body.row(head_height, |mut row| {
                                     row.col(|ui| {
                                         ui.label(unit.name.as_str());
                                     });
@@ -144,11 +168,7 @@ impl ProtoTest {
                                                     unit.status = TestStatus::Requesting;
                                                     unit.start_time = Some(Instant::now());
                                                     unit.end_time = None;
-                                                    (unit.func)(
-                                                        &mut client,
-                                                        &mut unit,
-                                                        unit_arc.clone(),
-                                                    );
+                                                    unit.logic.call(&mut client, unit_arc.clone());
                                                 }
                                                 _ => {}
                                             }
@@ -163,9 +183,6 @@ impl ProtoTest {
                                         };
                                     });
                                     row.col(|ui| {
-                                        ui.label(unit.response.as_str());
-                                    });
-                                    row.col(|ui| {
                                         if unit.end_time.is_some() && unit.end_time.is_some() {
                                             ui.label(format!(
                                                 "{}ms",
@@ -177,6 +194,20 @@ impl ProtoTest {
                                         } else {
                                             ui.label("--");
                                         }
+                                    });
+                                    row.col(|ui| match unit.status {
+                                        TestStatus::None | TestStatus::Ok => {
+                                            let response = ui.vertical(|sub_ui| {
+                                                unit.logic.render_parameter(sub_ui)
+                                            });
+                                            unit.param_height = response.response.rect.size().y;
+                                        }
+                                        _ => {}
+                                    });
+                                    row.col(|ui| {
+                                        let response = ui
+                                            .vertical(|sub_ui| unit.logic.render_response(sub_ui));
+                                        unit.response_height = response.response.rect.size().y;
                                     });
                                 });
                             }
@@ -199,24 +230,63 @@ fn to_string(result: anyhow::Result<&MessageType>) -> String {
     }
 }
 
-fn test_register(rpc: &mut RpcClient, unit: &mut TestUnit, unit_arc: Arc<TestUnitMutexType>) {
-    let msg = MessageType::ClientServerRegisterReq(client_server::RegisterReq {
-        username: "abcccccc1".into(),
-        password: "abcccccc2".into(),
-    });
+struct TestRegister {
+    response: String,
 
-    unit.response = format!("request:\n{}\n", to_string(Ok(&msg)));
+    username: String,
+    password: String,
+}
 
-    rpc.send_request(msg, move |result: anyhow::Result<&MessageType>| {
-        let mut unit = unit_arc.lock().unwrap();
+impl Default for TestRegister {
+    fn default() -> Self {
+        Self {
+            response: "".into(),
+            username: "abccccc".into(),
+            password: "aaaaaaa".into(),
+        }
+    }
+}
 
-        unit.end_time = Some(Instant::now());
-        unit.status = if result.is_err() {
-            TestStatus::Error
-        } else {
-            TestStatus::Ok
-        };
+impl TestUnitLogic for TestRegister {
+    fn render_parameter(&mut self, ui: &mut Ui) {
+        ui.label("username:");
+        ui.text_edit_singleline(&mut self.username);
 
-        unit.response = format!("{}response:\n{}", unit.response, to_string(result));
-    });
+        ui.label("password:");
+        ui.text_edit_singleline(&mut self.password);
+    }
+
+    fn render_response(&mut self, ui: &mut Ui) {
+        ui.label(self.response.as_str());
+    }
+
+    fn call(&mut self, rpc: &mut RpcClient, unit_arc: Arc<TestUnitMutexType>) {
+        let msg = MessageType::ClientServerRegisterReq(client_server::RegisterReq {
+            username: self.username.clone(),
+            password: self.password.clone(),
+        });
+
+        let request_data = to_string(Ok(&msg));
+
+        rpc.send_request(msg, move |result: anyhow::Result<&MessageType>| {
+            let mut unit = unit_arc.lock().unwrap();
+
+            unit.end_time = Some(Instant::now());
+            unit.status = if result.is_err() {
+                TestStatus::Error
+            } else {
+                TestStatus::Ok
+            };
+
+            unit.logic.on_response(format!(
+                "request:\n{}\nresponse:\n{}",
+                request_data,
+                to_string(result)
+            ));
+        });
+    }
+
+    fn on_response(&mut self, response: String) {
+        self.response = response;
+    }
 }
