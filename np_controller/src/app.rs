@@ -89,6 +89,11 @@ pub struct State {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
+fn setup_dark_theme(ctx: &egui::Context) {
+    let mut style: egui::Style = (*ctx.style()).clone();
+    style.visuals = egui::Visuals::dark();
+    ctx.set_style(style);
+}
 
 pub struct Application {
     state: State,
@@ -99,6 +104,8 @@ impl Application {
         let mut slf = Self {
             state: State::default(),
         };
+
+        setup_dark_theme(&cc.egui_ctx);
 
         if let Some(storage) = cc.storage {
             if let Some(state) = eframe::get_value(storage, eframe::APP_KEY) {
