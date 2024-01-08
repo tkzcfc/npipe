@@ -13,7 +13,7 @@ impl Peer {
     pub(crate) async fn handle_request(&self, message: MessageType) -> anyhow::Result<MessageType> {
         match message {
             MessageType::GenericPing(msg) => return self.on_ping(msg).await,
-            MessageType::ClientServerLoginReq(msg) => return self.on_login_requst(msg).await,
+            MessageType::ClientServerLoginReq(msg) => return self.on_login_request(msg).await,
             MessageType::ClientServerRegisterReq(msg) => {
                 return self.on_register_request(msg).await
             }
@@ -37,7 +37,7 @@ impl Peer {
         }))
     }
 
-    async fn on_login_requst(
+    async fn on_login_request(
         &self,
         message: client_server::LoginReq,
     ) -> anyhow::Result<MessageType> {
