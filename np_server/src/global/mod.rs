@@ -9,7 +9,7 @@ pub mod config;
 pub mod logger;
 pub mod opts;
 
-static GLOBAL_DB_POOL: OnceCell<MySqlPool> = OnceCell::const_new();
+pub(crate) static GLOBAL_DB_POOL: OnceCell<MySqlPool> = OnceCell::const_new();
 
 pub(crate) async fn init_global() -> anyhow::Result<()> {
     init_logger()?;

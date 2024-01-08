@@ -12,6 +12,7 @@ message LoginReq {
 }
 
 // 注册请求
+// return Success | Error
 message RegisterReq {
   enum MsgId {None = 0; Id = 1003;}
   // 用户名

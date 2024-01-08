@@ -9,18 +9,33 @@ use tokio::sync::RwLock;
 
 pub type PlayerId = u32;
 
+pub enum PlayerType {
+    Normal,
+    Management,
+}
+
 pub struct Player {
     tx: Option<UnboundedSender<WriterMessage>>,
+    // 玩家id
     player_id: PlayerId,
+    // 玩家类型
+    player_type: PlayerType,
+    // 会话id
     session_id: u32,
 }
 
 impl Player {
-    pub fn new(player_id: PlayerId) -> Arc<RwLock<Player>> {
+    pub fn new(player_id: PlayerId, player_type: u8) -> Arc<RwLock<Player>> {
         Arc::new(RwLock::new(Player {
             tx: None,
             player_id,
             session_id: 032,
+            player_type: {
+                match player_type {
+                    0 => PlayerType::Normal,
+                    _ => PlayerType::Management,
+                }
+            },
         }))
     }
 

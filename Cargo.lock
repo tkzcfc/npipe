@@ -2231,6 +2231,7 @@ dependencies = [
  "np_base",
  "np_proto",
  "once_cell",
+ "rand",
  "serde",
  "serde_json",
  "sqlx",

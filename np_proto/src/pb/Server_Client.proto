@@ -9,13 +9,6 @@ message LoginAck {
   int32 code = 1;
 }
 
-// 注册回复
-message RegisterAck {
-  enum MsgId {None = 0; Id = 1004;}
-  // 错误码 0成功
-  int32 code = 1;
-}
-
 // 管理员登录回复
 message ManagementLoginAck {
   enum MsgId {None = 0; Id = 1006;}

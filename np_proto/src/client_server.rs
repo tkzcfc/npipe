@@ -11,6 +11,7 @@ pub struct LoginReq {
     pub password: ::prost::alloc::string::String,
 }
 /// 注册请求
+/// return Success | Error
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RegisterReq {
