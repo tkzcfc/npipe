@@ -3,7 +3,6 @@ use crate::tokio_runtime;
 use egui_extras::{Column, TableBuilder};
 use log::error;
 use np_proto::client_server;
-use np_proto::message_map::MessageType::ClientServerRegisterReq;
 use np_proto::message_map::{serialize_to_json, MessageType};
 use std::net::SocketAddr;
 use std::str::FromStr;
@@ -19,7 +18,7 @@ enum TestStatus {
 }
 
 type TestUnitMutexType = std::sync::Mutex<TestUnit>;
-type TestUnitFunc = fn(&mut RpcClient, Arc<TestUnitMutexType>);
+type TestUnitFunc = fn(&mut RpcClient, &mut TestUnit, Arc<TestUnitMutexType>);
 
 struct TestUnit {
     name: String,
@@ -145,7 +144,11 @@ impl ProtoTest {
                                                     unit.status = TestStatus::Requesting;
                                                     unit.start_time = Some(Instant::now());
                                                     unit.end_time = None;
-                                                    (unit.func)(&mut client, unit_arc.clone());
+                                                    (unit.func)(
+                                                        &mut client,
+                                                        &mut unit,
+                                                        unit_arc.clone(),
+                                                    );
                                                 }
                                                 _ => {}
                                             }
@@ -196,19 +199,24 @@ fn to_string(result: anyhow::Result<&MessageType>) -> String {
     }
 }
 
-fn test_register(rpc: &mut RpcClient, unit: Arc<TestUnitMutexType>) {
+fn test_register(rpc: &mut RpcClient, unit: &mut TestUnit, unit_arc: Arc<TestUnitMutexType>) {
     let msg = MessageType::ClientServerRegisterReq(client_server::RegisterReq {
         username: "abcccccc1".into(),
         password: "abcccccc2".into(),
     });
 
+    unit.response = format!("request:\n{}\n", to_string(Ok(&msg)));
+
     rpc.send_request(msg, move |result: anyhow::Result<&MessageType>| {
-        unit.lock().unwrap().end_time = Some(Instant::now());
-        unit.lock().unwrap().status = if result.is_err() {
+        let mut unit = unit_arc.lock().unwrap();
+
+        unit.end_time = Some(Instant::now());
+        unit.status = if result.is_err() {
             TestStatus::Error
         } else {
             TestStatus::Ok
         };
-        unit.lock().unwrap().response = to_string(result);
+
+        unit.response = format!("{}response:\n{}", unit.response, to_string(result));
     });
 }
