@@ -125,3 +125,20 @@ pub fn encode_raw_message(message: &MessageType, buf: &mut impl BufMut) {
         _ => {}
     }
 }
+
+#[cfg(feature = "serde-serialize")]
+pub fn serialize_to_json(message: &MessageType) -> serde_json::Result<String> {
+    match message {
+        MessageType::ClientServerLoginReq(msg) => serde_json::to_string(&msg),
+        MessageType::ClientServerRegisterReq(msg) => serde_json::to_string(&msg),
+        MessageType::ClientServerManagementLoginReq(msg) => serde_json::to_string(&msg),
+        MessageType::ServerClientLoginAck(msg) => serde_json::to_string(&msg),
+        MessageType::ServerClientManagementLoginAck(msg) => serde_json::to_string(&msg),
+        MessageType::GenericSuccess(msg) => serde_json::to_string(&msg),
+        MessageType::GenericFail(msg) => serde_json::to_string(&msg),
+        MessageType::GenericError(msg) => serde_json::to_string(&msg),
+        MessageType::GenericPing(msg) => serde_json::to_string(&msg),
+        MessageType::GenericPong(msg) => serde_json::to_string(&msg),
+        _ => Ok("null".into()),
+    }
+}

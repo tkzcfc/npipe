@@ -1,4 +1,3 @@
-
 #[derive(Copy, Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 enum Anchor {
     ConcurrencyTest,
@@ -65,7 +64,6 @@ impl eframe::App for FractalClockApp {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-
 #[derive(Default, serde::Deserialize, serde::Serialize)]
 pub struct ConcurrencyTestApp {
     logic: crate::apps::concurrency_test::ConcurrencyTest,
@@ -79,13 +77,12 @@ impl eframe::App for crate::app::ConcurrencyTestApp {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-
 #[derive(Default, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct State {
     concurrency_test: ConcurrencyTestApp,
     clock: FractalClockApp,
-    proto_test:ProtoTestApp,
+    proto_test: ProtoTestApp,
 
     selected_anchor: Anchor,
     backend_panel: super::backend_panel::BackendPanel,

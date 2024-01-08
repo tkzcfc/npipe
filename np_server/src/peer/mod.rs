@@ -156,7 +156,7 @@ pub(crate) async fn package_and_send_message(
             let mut buf = Vec::with_capacity(message_size + 12);
 
             byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, (8 + message_size) as u32)?;
-            byteorder::WriteBytesExt::write_i32::<BigEndian>(&mut buf, -serial)?;
+            byteorder::WriteBytesExt::write_i32::<BigEndian>(&mut buf, serial)?;
             byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, message_id)?;
             encode_raw_message(message, &mut buf);
 

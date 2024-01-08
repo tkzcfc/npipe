@@ -5,11 +5,16 @@ edition = "2021"
 build = "build.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
+[features]
+default = ["serde-serialize"]
+serde-serialize = ["serde"]
 
 [dependencies]
 prost = "0.12"
 bytes = { version = "1.5.0", features = [] }
+config = "0.13.4"
+serde = {  version = "1.0", optional = true }
+serde_json = "1.0.109"
 
 [build-dependencies]
 prost-build = "0.12"

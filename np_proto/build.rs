@@ -151,6 +151,7 @@ fn build_code(messages: &Vec<MessageInfo>) -> String {
     let mut code_encode_message = Vec::new();
     let mut code_get_message_size = Vec::new();
     let mut code_encode_raw_message = Vec::new();
+    let mut code_serialize_to_json = Vec::new();
 
     messages.iter().for_each(|info| {
         let code = format!(
@@ -196,6 +197,12 @@ fn build_code(messages: &Vec<MessageInfo>) -> String {
             format_message_type_name(info)
         );
         code_encode_raw_message.push(code);
+
+        let code = format!(
+            r#"        MessageType::{}(msg) => serde_json::to_string(&msg),"#,
+            format_message_type_name(info)
+        );
+        code_serialize_to_json.push(code);
     });
 
     let code = format!(
@@ -242,13 +249,22 @@ pub fn encode_raw_message(message: &MessageType, buf: &mut impl BufMut) {{
         _ => {{}}
     }}
 }}
+
+#[cfg(feature = "serde-serialize")]
+pub fn serialize_to_json(message: &MessageType) -> serde_json::Result<String> {{
+    match message {{
+{}
+        _ => Ok("null".into()),
+    }}
+}}
 "#,
         code_message.join("\n"),
         code_get_message_id.join("\n"),
         code_decode_message.join("\n"),
         code_encode_message.join("\n"),
         code_get_message_size.join("\n"),
-        code_encode_raw_message.join("\n")
+        code_encode_raw_message.join("\n"),
+        code_serialize_to_json.join("\n")
     );
 
     code
@@ -327,6 +343,7 @@ fn build(
 
     Config::new()
         .out_dir(out_dir)
+        .type_attribute(".", "#[cfg_attr(feature = \"serde-serialize\", derive(serde::Serialize, serde::Deserialize))]")
         .compile_protos(&proto_file_list, &include_list)?;
 
     // 将生成的 pb.abc_def.rc重命名为abc_def.rc

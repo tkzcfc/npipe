@@ -64,6 +64,10 @@ impl RpcClient {
     where
         F: FnMut(anyhow::Result<&MessageType>) + 'static + Send,
     {
+        if !self.is_connect() {
+            error!("not connected");
+            return;
+        }
         // 防止请求序号越界
         if self.serial >= i32::MAX {
             self.serial = 0;

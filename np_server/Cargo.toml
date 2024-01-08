@@ -9,7 +9,7 @@ edition = "2021"
 
 [dependencies]
 np_base = { path = "../np_base" }
-np_proto = { path = "../np_proto" }
+np_proto = { path = "../np_proto", default-features = false }
 tokio = { version = "1", features = ["full"] }
 log = "0.4.0"
 flexi_logger = { version = "0.27.3", features = ["async"] }
