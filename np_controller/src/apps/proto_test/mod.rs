@@ -1,9 +1,11 @@
+mod test_auto_register;
+mod test_register;
+
 use crate::apps::rpc_client::RpcClient;
 use crate::tokio_runtime;
-use egui::{Resize, Ui};
+use egui::Ui;
 use egui_extras::{Column, TableBuilder};
 use log::error;
-use np_proto::client_server;
 use np_proto::message_map::{serialize_to_json, MessageType};
 use std::net::SocketAddr;
 use std::str::FromStr;
@@ -20,7 +22,7 @@ enum TestStatus {
 
 type TestUnitMutexType = std::sync::Mutex<TestUnit>;
 
-struct TestUnit {
+pub(super) struct TestUnit {
     name: String,
     status: TestStatus,
     logic: Box<dyn TestUnitLogic + Send>,
@@ -50,7 +52,9 @@ trait TestUnitLogic {
     fn call(&mut self, _rpc: &mut RpcClient, _unit_arc: Arc<TestUnitMutexType>) {
         todo!()
     }
-    fn on_response(&mut self, response: String) {}
+    fn on_response(&mut self, _response: String) -> bool {
+        true
+    }
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -76,8 +80,11 @@ impl Default for ProtoTest {
                     .expect("invalid address"),
             ))),
             test_units: vec![
-                TestUnit::new("register", Box::new(TestRegister::default())),
-                TestUnit::new("register11", Box::new(TestRegister::default())),
+                TestUnit::new("register", Box::new(test_register::Test::default())),
+                TestUnit::new(
+                    "auto register",
+                    Box::new(test_auto_register::Test::default()),
+                ),
             ],
             host,
             port,
@@ -110,6 +117,12 @@ impl ProtoTest {
                                 error!("connect failed: {}", error);
                             }
                         });
+                    }
+
+                    for unit in &self.test_units {
+                        if let Ok(mut unit) = unit.try_lock() {
+                            unit.status = TestStatus::None;
+                        }
                     }
                 }
 
@@ -227,66 +240,5 @@ fn to_string(result: anyhow::Result<&MessageType>) -> String {
             Err(err) => err.to_string(),
         },
         Err(err) => err.to_string(),
-    }
-}
-
-struct TestRegister {
-    response: String,
-
-    username: String,
-    password: String,
-}
-
-impl Default for TestRegister {
-    fn default() -> Self {
-        Self {
-            response: "".into(),
-            username: "abccccc".into(),
-            password: "aaaaaaa".into(),
-        }
-    }
-}
-
-impl TestUnitLogic for TestRegister {
-    fn render_parameter(&mut self, ui: &mut Ui) {
-        ui.label("username:");
-        ui.text_edit_singleline(&mut self.username);
-
-        ui.label("password:");
-        ui.text_edit_singleline(&mut self.password);
-    }
-
-    fn render_response(&mut self, ui: &mut Ui) {
-        ui.label(self.response.as_str());
-    }
-
-    fn call(&mut self, rpc: &mut RpcClient, unit_arc: Arc<TestUnitMutexType>) {
-        let msg = MessageType::ClientServerRegisterReq(client_server::RegisterReq {
-            username: self.username.clone(),
-            password: self.password.clone(),
-        });
-
-        let request_data = to_string(Ok(&msg));
-
-        rpc.send_request(msg, move |result: anyhow::Result<&MessageType>| {
-            let mut unit = unit_arc.lock().unwrap();
-
-            unit.end_time = Some(Instant::now());
-            unit.status = if result.is_err() {
-                TestStatus::Error
-            } else {
-                TestStatus::Ok
-            };
-
-            unit.logic.on_response(format!(
-                "request:\n{}\nresponse:\n{}",
-                request_data,
-                to_string(result)
-            ));
-        });
-    }
-
-    fn on_response(&mut self, response: String) {
-        self.response = response;
     }
 }

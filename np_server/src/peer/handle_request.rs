@@ -122,7 +122,7 @@ impl Peer {
                 continue;
             }
 
-            if sqlx::query!(
+            return if sqlx::query!(
                 "INSERT INTO users (id, username, password, type) VALUES (?, ?, ?, ?)",
                 id,
                 message.username,
@@ -135,13 +135,13 @@ impl Peer {
                 == 1
             {
                 PLAYER_MANAGER.write().await.create_player(id, 0).await;
-                return Ok(MessageType::GenericSuccess(generic::Success {}));
+                Ok(MessageType::GenericSuccess(generic::Success {}))
             } else {
-                return Ok(MessageType::GenericError(generic::Error {
+                Ok(MessageType::GenericError(generic::Error {
                     number: -3,
                     message: "sqlx error".into(),
-                }));
-            }
+                }))
+            };
         }
     }
 }

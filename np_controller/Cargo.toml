@@ -30,3 +30,4 @@ wasm-bindgen = "0.2.89"
 web-sys = "0.3.66"
 chrono = { version = "0.4.31", features = [] }
 anyhow = "1.0.79"
+rand = "0.8.5"
