@@ -2,13 +2,14 @@ mod app;
 mod apps;
 mod backend_panel;
 mod frame_history;
+mod logger;
 mod tokio_runtime;
 
 use crate::app::Application;
 use eframe::Theme;
 
 fn main() -> eframe::Result<()> {
-    env_logger::init();
+    logger::init_logger().expect("init logger error");
 
     tokio_runtime::instance();
 
