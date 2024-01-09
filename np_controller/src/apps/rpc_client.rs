@@ -60,13 +60,13 @@ impl RpcClient {
         self.on_recv_message_callback = Some(Box::new(callback));
     }
 
-    pub(crate) fn send_request<F>(&mut self, message: MessageType, callback: F)
+    pub(crate) fn send_request<F>(&mut self, message: MessageType, callback: F) -> bool
     where
         F: FnMut(anyhow::Result<&MessageType>) + 'static + Send,
     {
         if !self.is_connect() {
             error!("not connected");
-            return;
+            return false;
         }
         // 防止请求序号越界
         if self.serial >= i32::MAX {
@@ -75,10 +75,15 @@ impl RpcClient {
         self.serial += 1;
         let serial = -self.serial;
 
-        self.package_and_send_message(serial, &message).unwrap();
+        if let Err(error) = self.package_and_send_message(serial, &message) {
+            error!("Send message error: {}", error);
+            return false;
+        }
 
         self.response_map
             .insert(serial, (Box::new(callback), Instant::now()));
+
+        true
     }
 
     #[inline]
@@ -158,9 +163,15 @@ impl RpcClient {
 
         let now = Instant::now();
         if now.duration_since(self.last_clear_time) > Duration::from_secs(1) {
-            let duration = Duration::from_secs(10);
-            self.response_map
-                .retain(|_, (__, time)| now.duration_since(*time) < duration);
+            let duration = Duration::from_secs(15);
+            self.response_map.retain(|_, (callback, time)| {
+                if now.duration_since(*time) < duration {
+                    true
+                } else {
+                    callback(Err(anyhow!("timeout")));
+                    false
+                }
+            });
         }
     }
 }

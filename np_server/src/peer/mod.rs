@@ -5,7 +5,7 @@ mod handle_response;
 use crate::player::Player;
 use async_trait::async_trait;
 use byteorder::{BigEndian, ByteOrder};
-use log::error;
+use log::{error, trace};
 use np_base::net::session::WriterMessage;
 use np_base::net::session_logic::SessionLogic;
 use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size, MessageType};
@@ -13,6 +13,7 @@ use np_proto::{generic, message_map};
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
+use tokio::time::Instant;
 
 pub struct Peer {
     tx: Option<UnboundedSender<WriterMessage>>,
@@ -89,40 +90,54 @@ impl SessionLogic for Peer {
         let msg_id: u32 = BigEndian::read_u32(&frame[4..8]);
 
         match message_map::decode_message(msg_id, &frame[8..]) {
-            Ok(message) => match self.handle_message(serial, message).await {
-                Ok(msg) => {
-                    if serial < 0 {
-                        if let MessageType::None = msg {
-                            // 请求不应该不回复
-                            error!("The response to request {} is empty", msg_id);
-                            let _ = self
-                                .send_response(
-                                    serial,
-                                    &MessageType::GenericError(generic::Error {
-                                        number: generic::ErrorCode::InternalError.into(),
-                                        message: format!("response is empty"),
-                                    }),
-                                )
-                                .await;
-                        } else {
-                            let _ = self.send_response(serial, &msg).await;
+            Ok(message) => {
+                let start_time = Instant::now();
+
+                let result = self.handle_message(serial, message).await;
+
+                // 记录耗时比较长的接口
+                let ms = Instant::now().duration_since(start_time).as_millis();
+                if ms > 20 {
+                    trace!("Request {} consumes {}ms", msg_id, ms);
+                }
+
+                match result {
+                    Ok(msg) => {
+                        if serial < 0 {
+                            if let MessageType::None = msg {
+                                // 请求不应该不回复
+                                error!("The response to request {} is empty", msg_id);
+                                let _ = self
+                                    .send_response(
+                                        serial,
+                                        &MessageType::GenericError(generic::Error {
+                                            number: generic::ErrorCode::InternalError.into(),
+                                            message: format!("response is empty"),
+                                        }),
+                                    )
+                                    .await;
+                            } else {
+                                if let Err(err) = self.send_response(serial, &msg).await {
+                                    error!("Send response error: {}", err);
+                                }
+                            }
                         }
                     }
-                }
-                Err(err) => {
-                    error!("Request error: {}, message id: {}", err, msg_id);
+                    Err(err) => {
+                        error!("Request error: {}, message id: {}", err, msg_id);
 
-                    let _ = self
-                        .send_response(
-                            serial,
-                            &MessageType::GenericError(generic::Error {
-                                number: generic::ErrorCode::InternalError.into(),
-                                message: format!("{}", err),
-                            }),
-                        )
-                        .await;
+                        let _ = self
+                            .send_response(
+                                serial,
+                                &MessageType::GenericError(generic::Error {
+                                    number: generic::ErrorCode::InternalError.into(),
+                                    message: format!("{}", err),
+                                }),
+                            )
+                            .await;
+                    }
                 }
-            },
+            }
             Err(err) => {
                 error!("Protobuf parse error: {}", err);
                 let _ = self

@@ -1,4 +1,4 @@
-use super::{TestStatus, TestUnitLogic, TestUnitMutexType, to_string};
+use super::{to_string, TestStatus, TestUnitLogic, TestUnitMutexType};
 use crate::apps::rpc_client::RpcClient;
 use egui::Ui;
 use np_proto::client_server;
