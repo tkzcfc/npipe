@@ -3,7 +3,7 @@
 members = [
     "np_base",
     "np_proto",
-    "np_controller",
+    "np_test_gui",
     "np_server",
     "np_test",
 ]
