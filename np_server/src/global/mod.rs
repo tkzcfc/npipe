@@ -1,9 +1,9 @@
 use crate::global::config::GLOBAL_CONFIG;
 use crate::global::logger::init_logger;
-use log::{debug, info};
 use sqlx::mysql::MySqlPoolOptions;
-use sqlx::{MySqlPool, Row};
+use sqlx::{MySqlPool};
 use tokio::sync::OnceCell;
+use crate::player::manager::PLAYER_MANAGER;
 
 pub mod config;
 pub mod logger;
@@ -30,32 +30,8 @@ pub(crate) async fn init_global() -> anyhow::Result<()> {
         })
         .await;
 
-    let query = "SELECT id, username, password, type FROM users";
-    let rows = sqlx::query(query)
-        .fetch_all(GLOBAL_DB_POOL.get().unwrap())
-        .await?;
-    for row in rows {
-        let id: u32 = row.get("id");
-        let username: String = row.get("username");
-        let password: String = row.get("password");
-
-        debug!("id: {}, name: {}, password: {}", id, username, password);
-    }
-
-    #[derive(Debug)]
-    struct User {
-        id: u32,
-        username: String,
-        password: String,
-        r#type: u8,
-    }
-    let users: Vec<User> = sqlx::query_as!(User, "SELECT * FROM users")
-        .fetch_all(GLOBAL_DB_POOL.get().unwrap())
-        .await?;
-
-    for user in users {
-        info!("{:?}", user);
-    }
+    // 加载所有的玩家信息
+    PLAYER_MANAGER.write().await.load_all_player().await?;
 
     Ok(())
 }

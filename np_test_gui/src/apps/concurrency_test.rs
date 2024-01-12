@@ -115,14 +115,13 @@ async fn do_test_raw_impl(tx: &Sender<u32>, addr: SocketAddr) -> anyhow::Result<
     };
 
     let mut stream = socket.connect(addr).await?;
-    let duration = Duration::from_secs(100);
+    let duration = Duration::from_secs(1);
 
     let mut result = Ok(());
 
     select! {
         _= async {
             loop {
-                sleep(Duration::from_millis(100)).await;
                 result = stream.write_all(&buf).await;
                 if result.is_err() {
                     break;

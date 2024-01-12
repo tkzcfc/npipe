@@ -1,5 +1,5 @@
 [package]
-name = "np_controller"
+name = "np_test_gui"
 version = "0.1.0"
 edition = "2021"
 

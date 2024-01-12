@@ -8,7 +8,7 @@ pub(crate) fn init_logger() -> anyhow::Result<()> {
     env::set_var("RUST_BACKTRACE", "1");
 
     // 日志初始化
-    let logger = Logger::try_with_str("trace")?
+    let logger = Logger::try_with_str("trace,eframe=error,egui_glow=error,egui-winit=error,egui=error,mio=error")?
         .log_to_file(
             FileSpec::default()
                 .directory("logs")
