@@ -96,8 +96,9 @@ async fn do_test_raw_impl(tx: &Sender<u32>, addr: SocketAddr) -> anyhow::Result<
     let message = MessageType::GenericPing(generic::Ping { ticks: 0 });
     let message_id = get_message_id(&message).unwrap();
     let message_size = get_message_size(&message);
-    let mut buf = Vec::with_capacity(message_size + 12);
+    let mut buf = Vec::with_capacity(message_size + 14);
 
+    byteorder::WriteBytesExt::write_u8(&mut buf, 33u8)?;
     byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, (8 + message_size) as u32)?;
     byteorder::WriteBytesExt::write_i32::<BigEndian>(&mut buf, -1)?;
     byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, message_id)?;

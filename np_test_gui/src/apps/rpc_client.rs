@@ -94,8 +94,9 @@ impl RpcClient {
     ) -> anyhow::Result<()> {
         if let Some(message_id) = get_message_id(message) {
             let message_size = get_message_size(message);
-            let mut buf = Vec::with_capacity(message_size + 12);
+            let mut buf = Vec::with_capacity(message_size + 14);
 
+            byteorder::WriteBytesExt::write_u8(&mut buf, 33u8)?;
             byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, (8 + message_size) as u32)?;
             byteorder::WriteBytesExt::write_i32::<BigEndian>(&mut buf, serial)?;
             byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, message_id)?;
@@ -179,25 +180,32 @@ impl RpcClient {
 // 数据粘包处理
 #[inline]
 fn try_extract_frame(buffer: &mut BytesMut) -> anyhow::Result<Option<Vec<u8>>> {
-    // 数据小于4字节
-    if buffer.len() < 4 {
+    if buffer.len() > 0 {
+        if buffer[0] != 33u8 {
+            return Err(anyhow!("Bad flag"));
+        }
+    }
+    // 数据小于5字节,继续读取数据
+    if buffer.len() < 5 {
         return Ok(None);
     }
 
-    let bin = buffer.get(0..4).unwrap();
-    let len = BigEndian::read_u32(bin) as usize;
+    // 读取包长度
+    let buf = buffer.get(1..5).unwrap();
+    let len = BigEndian::read_u32(buf) as usize;
 
     // 超出最大限制
     if len <= 0 || len >= 1024 * 1024 * 5 {
-        return Err(anyhow!("bad length"));
+        return Err(anyhow!("Length too long"));
     }
 
-    // 数据不够
-    if buffer.len() < 4 + len {
+    // 数据不够,继续读取数据
+    if buffer.len() < 5 + len {
         return Ok(None);
     }
 
-    let frame = buffer.split_to(4 + len).split_off(4).to_vec();
+    // 拆出这个包的数据
+    let frame = buffer.split_to(5 + len).split_off(5).to_vec();
 
     Ok(Some(frame))
 }

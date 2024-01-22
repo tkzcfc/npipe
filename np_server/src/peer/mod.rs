@@ -168,8 +168,9 @@ pub(crate) async fn package_and_send_message(
     if let Some(ref tx) = tx {
         if let Some(message_id) = get_message_id(message) {
             let message_size = get_message_size(message);
-            let mut buf = Vec::with_capacity(message_size + 12);
+            let mut buf = Vec::with_capacity(message_size + 14);
 
+            byteorder::WriteBytesExt::write_u8(&mut buf, 33u8)?;
             byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, (8 + message_size) as u32)?;
             byteorder::WriteBytesExt::write_i32::<BigEndian>(&mut buf, serial)?;
             byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, message_id)?;
