@@ -1,9 +1,9 @@
 use crate::global::config::GLOBAL_CONFIG;
 use crate::global::logger::init_logger;
-use sqlx::mysql::MySqlPoolOptions;
-use sqlx::{MySqlPool};
-use tokio::sync::OnceCell;
 use crate::player::manager::PLAYER_MANAGER;
+use sqlx::mysql::MySqlPoolOptions;
+use sqlx::MySqlPool;
+use tokio::sync::OnceCell;
 
 pub mod config;
 pub mod logger;

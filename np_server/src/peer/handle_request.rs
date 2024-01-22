@@ -49,31 +49,51 @@ impl Peer {
             }));
         }
 
-        // 根据用户名查找用户id
-        let player_id = 100u32;
-
-        // 用户登录成功，将会话绑定到Player上
-        if let Some(player) = PLAYER_MANAGER.read().await.get_player(player_id) {
-            let mut player = player.write().await;
-            if player.is_online() {
-                player.on_terminate_old_session().await;
-            }
-            player
-                .on_connect_session(self.session_id, self.tx.clone().unwrap())
-                .await;
-            return Ok(MessageType::GenericSuccess(generic::Success {}));
+        struct Account {
+            id: u32,
+            password: String,
         }
 
-        Ok(MessageType::GenericError(generic::Error {
-            number: -2,
-            message: message.password,
-        }))
+        let account: Option<Account> = sqlx::query_as!(
+            Account,
+            "SELECT id, password FROM users WHERE username = ?",
+            message.username
+        )
+        .fetch_optional(GLOBAL_DB_POOL.get().unwrap())
+        .await?;
 
-        // 找不到玩家
-        // Ok(MessageType::GenericError(generic::Error {
-        //     number: -2,
-        //     message: "unable to find player".into(),
-        // }))
+        if let Some(account) = account {
+            // 密码错误
+            if account.password != message.password {
+                return Ok(MessageType::GenericError(generic::Error {
+                    number: -2,
+                    message: "Incorrect username or password".into(),
+                }));
+            }
+
+            // 用户登录成功，将会话绑定到Player上
+            if let Some(player) = PLAYER_MANAGER.read().await.get_player(account.id) {
+                let mut player = player.write().await;
+                if player.is_online() {
+                    player.on_terminate_old_session().await;
+                }
+                player
+                    .on_connect_session(self.session_id, self.tx.clone().unwrap())
+                    .await;
+                return Ok(MessageType::GenericSuccess(generic::Success {}));
+            }
+
+            return Ok(MessageType::GenericError(generic::Error {
+                number: -3,
+                message: "unable to find player".into(),
+            }));
+        }
+
+        // 找不到玩家，用户名无效
+        Ok(MessageType::GenericError(generic::Error {
+            number: -4,
+            message: "Incorrect username or password".into(),
+        }))
     }
 
     async fn on_register_request(
