@@ -12,7 +12,7 @@ impl Peer {
     // 收到玩家向服务器请求的消息
     pub(crate) async fn handle_request(&self, message: MessageType) -> anyhow::Result<MessageType> {
         match message {
-            MessageType::GenericPing(msg) => return self.on_ping(msg).await,
+            MessageType::GenericPing(msg) => return self.on_ping_request(msg).await,
             MessageType::ClientServerLoginReq(msg) => return self.on_login_request(msg).await,
             MessageType::ClientServerRegisterReq(msg) => {
                 return self.on_register_request(msg).await
@@ -31,7 +31,7 @@ impl Peer {
         }))
     }
 
-    async fn on_ping(&self, message: generic::Ping) -> anyhow::Result<MessageType> {
+    async fn on_ping_request(&self, message: generic::Ping) -> anyhow::Result<MessageType> {
         Ok(MessageType::GenericPong(generic::Pong {
             ticks: message.ticks,
         }))
