@@ -1,12 +1,8 @@
 use crate::player::{Player, PlayerId};
-use once_cell::sync::Lazy;
 use sqlx::Row;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-
-pub static PLAYER_MANAGER: Lazy<RwLock<PlayerManager>> =
-    Lazy::new(|| RwLock::new(PlayerManager::new()));
 
 pub struct PlayerManager {
     players: Vec<Arc<RwLock<Player>>>,
@@ -14,7 +10,7 @@ pub struct PlayerManager {
 }
 
 impl PlayerManager {
-    fn new() -> PlayerManager {
+    pub(crate) fn new() -> PlayerManager {
         PlayerManager {
             players: Vec::new(),
             player_map: HashMap::new(),

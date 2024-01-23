@@ -1,12 +1,13 @@
 use super::Peer;
 use crate::global::GLOBAL_DB_POOL;
-use crate::global::player::PLAYER_MANAGER;
+use crate::global::manager;
 use crate::utils::str::{is_valid_password, is_valid_username};
 use np_proto::generic::ErrorCode;
 use np_proto::message_map::MessageType;
 use np_proto::{client_server, generic};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
+use crate::global::manager::GLOBAL_MANAGER;
 
 impl Peer {
     // 收到玩家向服务器请求的消息
@@ -72,7 +73,7 @@ impl Peer {
             }
 
             // 用户登录成功，将会话绑定到Player上
-            if let Some(player) = PLAYER_MANAGER.read().await.get_player(account.id) {
+            if let Some(player) = GLOBAL_MANAGER.player_manager.read().await.get_player(account.id) {
                 let mut player = player.write().await;
                 if player.is_online() {
                     player.on_terminate_old_session().await;
@@ -138,7 +139,7 @@ impl Peer {
 
             // 随机新的玩家id
             let id: u32 = rng.gen_range(10000000..99999999);
-            if PLAYER_MANAGER.read().await.contain(id) {
+            if GLOBAL_MANAGER.player_manager.read().await.contain(id) {
                 continue;
             }
 
@@ -154,7 +155,7 @@ impl Peer {
             .rows_affected()
                 == 1
             {
-                PLAYER_MANAGER.write().await.create_player(id, 0).await;
+                GLOBAL_MANAGER.player_manager.write().await.create_player(id, 0).await;
                 Ok(MessageType::GenericSuccess(generic::Success {}))
             } else {
                 Ok(MessageType::GenericError(generic::Error {

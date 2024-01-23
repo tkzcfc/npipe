@@ -1,14 +1,14 @@
 use crate::global::config::GLOBAL_CONFIG;
 use crate::global::logger::init_logger;
-use crate::global::player::PLAYER_MANAGER;
 use sqlx::mysql::MySqlPoolOptions;
 use sqlx::MySqlPool;
 use tokio::sync::OnceCell;
+use crate::global::manager::GLOBAL_MANAGER;
 
 pub mod config;
 pub mod logger;
 pub mod opts;
-pub mod player;
+pub mod manager;
 
 pub(crate) static GLOBAL_DB_POOL: OnceCell<MySqlPool> = OnceCell::const_new();
 
@@ -31,8 +31,11 @@ pub(crate) async fn init_global() -> anyhow::Result<()> {
         })
         .await;
 
+    // 加载所有通道信息
+
+
     // 加载所有的玩家信息
-    PLAYER_MANAGER.write().await.load_all_player().await?;
+    GLOBAL_MANAGER.player_manager.write().await.load_all_player().await?;
 
     Ok(())
 }
