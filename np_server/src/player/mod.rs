@@ -1,4 +1,3 @@
-pub mod manager;
 use crate::peer::package_and_send_message;
 use np_base::net::session::WriterMessage;
 use np_proto::generic;

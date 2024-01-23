@@ -5,7 +5,6 @@ mod utils;
 
 use crate::global::config::GLOBAL_CONFIG;
 use crate::peer::Peer;
-use crate::player::manager::PLAYER_MANAGER;
 use np_base::net::server;
 use tokio::net::TcpStream;
 use tokio::signal;

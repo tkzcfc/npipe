@@ -1,6 +1,6 @@
 use crate::global::config::GLOBAL_CONFIG;
 use crate::global::logger::init_logger;
-use crate::player::manager::PLAYER_MANAGER;
+use crate::global::player::PLAYER_MANAGER;
 use sqlx::mysql::MySqlPoolOptions;
 use sqlx::MySqlPool;
 use tokio::sync::OnceCell;
@@ -8,6 +8,7 @@ use tokio::sync::OnceCell;
 pub mod config;
 pub mod logger;
 pub mod opts;
+pub mod player;
 
 pub(crate) static GLOBAL_DB_POOL: OnceCell<MySqlPool> = OnceCell::const_new();
 

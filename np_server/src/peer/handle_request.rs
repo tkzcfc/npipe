@@ -1,6 +1,6 @@
 use super::Peer;
 use crate::global::GLOBAL_DB_POOL;
-use crate::player::manager::PLAYER_MANAGER;
+use crate::global::player::PLAYER_MANAGER;
 use crate::utils::str::{is_valid_password, is_valid_username};
 use np_proto::generic::ErrorCode;
 use np_proto::message_map::MessageType;
