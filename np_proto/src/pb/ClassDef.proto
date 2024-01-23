@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package PB.ClassDef;
+
+// 通道端点
+message ChannelPoint {
+    // 地址
+    string addr = 1;
+}
+
+// 通道
+message Channel {
+    // 起点（入口）
+    ChannelPoint source = 1;
+    // 终点（出口）
+    ChannelPoint endpoint = 2;
+    // 通道id
+    int32 id = 3;
+    // 是否启用
+    bool enabled = 4;
+    // 发送方id
+    uint32 sender = 5;
+    // 接收方id
+    uint32 receiver = 6;
+}

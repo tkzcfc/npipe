@@ -33,6 +33,7 @@ fn main() -> io::Result<()> {
     let proto_file_list = [
         "src/pb/Client_Server.proto",
         "src/pb/Server_Client.proto",
+        "src/pb/ClassDef.proto",
         "src/pb/Generic.proto",
     ];
     let include_list = ["src/pb"];

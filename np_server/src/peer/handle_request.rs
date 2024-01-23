@@ -56,7 +56,7 @@ impl Peer {
 
         let account: Option<Account> = sqlx::query_as!(
             Account,
-            "SELECT id, password FROM users WHERE username = ?",
+            "SELECT id, password FROM user WHERE username = ?",
             message.username
         )
         .fetch_optional(GLOBAL_DB_POOL.get().unwrap())
@@ -110,7 +110,7 @@ impl Peer {
 
         // 执行查询以检查用户名是否存在
         let record = sqlx::query!(
-            "SELECT EXISTS(SELECT 1 FROM users WHERE username = ?) as 'exists'",
+            "SELECT EXISTS(SELECT 1 FROM user WHERE username = ?) as 'exists'",
             message.username
         )
         .fetch_one(GLOBAL_DB_POOL.get().unwrap())
@@ -143,7 +143,7 @@ impl Peer {
             }
 
             return if sqlx::query!(
-                "INSERT INTO users (id, username, password, type) VALUES (?, ?, ?, ?)",
+                "INSERT INTO user (id, username, password, type) VALUES (?, ?, ?, ?)",
                 id,
                 message.username,
                 message.password,

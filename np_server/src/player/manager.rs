@@ -22,7 +22,7 @@ impl PlayerManager {
     }
 
     pub async fn load_all_player(&mut self) -> anyhow::Result<()> {
-        let query = "SELECT id, type FROM users";
+        let query = "SELECT id, type FROM user";
         let rows = sqlx::query(query)
             .fetch_all(crate::global::GLOBAL_DB_POOL.get().unwrap())
             .await?;
