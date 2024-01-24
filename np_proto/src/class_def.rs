@@ -19,8 +19,8 @@ pub struct Channel {
     #[prost(message, optional, tag = "2")]
     pub endpoint: ::core::option::Option<ChannelPoint>,
     /// 通道id
-    #[prost(int32, tag = "3")]
-    pub id: i32,
+    #[prost(uint32, tag = "3")]
+    pub id: u32,
     /// 是否启用
     #[prost(bool, tag = "4")]
     pub enabled: bool,

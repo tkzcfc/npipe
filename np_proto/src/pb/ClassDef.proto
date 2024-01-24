@@ -15,7 +15,7 @@ message Channel {
     // 终点（出口）
     ChannelPoint endpoint = 2;
     // 通道id
-    int32 id = 3;
+    uint32 id = 3;
     // 是否启用
     bool enabled = 4;
     // 发送方id
