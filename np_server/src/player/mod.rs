@@ -18,6 +18,7 @@ pub struct Player {
     // 玩家id
     player_id: PlayerId,
     // 玩家类型
+    #[allow(dead_code)]
     player_type: PlayerType,
     // 会话id
     session_id: u32,
@@ -46,6 +47,7 @@ impl Player {
 
     // 获取会话id
     #[inline]
+    #[allow(dead_code)]
     pub fn get_session_id(&self) -> u32 {
         self.session_id
     }
@@ -57,6 +59,7 @@ impl Player {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub async fn send_response(&self, serial: i32, message: &MessageType) -> anyhow::Result<()> {
         assert!(serial < 0);
         package_and_send_message(&self.tx, -serial, message, true).await
@@ -68,6 +71,7 @@ impl Player {
     // }
 
     #[inline]
+    #[allow(dead_code)]
     pub async fn send_push(&self, message: &MessageType) -> anyhow::Result<()> {
         package_and_send_message(&self.tx, 0, message, true).await
     }
@@ -118,7 +122,7 @@ impl Player {
     }
 
     // 玩家收到消息
-    pub async fn handle_request(&mut self, message: MessageType) -> anyhow::Result<MessageType> {
+    pub async fn handle_request(&mut self, _message: MessageType) -> anyhow::Result<MessageType> {
         // 客户端请求的消息，服务器未实现
         Ok(MessageType::GenericError(generic::Error {
             number: generic::ErrorCode::InterfaceAbsent.into(),

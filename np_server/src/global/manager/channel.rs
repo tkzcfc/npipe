@@ -1,4 +1,5 @@
 use crate::global::GLOBAL_DB_POOL;
+use anyhow::anyhow;
 
 #[derive(Debug)]
 pub struct Channel {
@@ -36,6 +37,7 @@ impl ChannelManager {
         Ok(())
     }
 
+    /// 增加通道
     pub async fn add_channel(&mut self, mut channel: Channel) -> anyhow::Result<()> {
         let channel_id = sqlx::query!(
                 "INSERT INTO channel (source, endpoint, enabled, sender, receiver, description) VALUES (?, ?, ?, ?, ?, ?)",
@@ -54,7 +56,52 @@ impl ChannelManager {
         Ok(())
     }
 
-    pub async fn delete_channel(&mut self, channel_id: u32) {
+    /// 删除通道
+    pub async fn delete_channel(&mut self, channel_id: u32) -> anyhow::Result<()> {
+        if sqlx::query!("DELETE FROM channel WHERE id = ?", channel_id)
+            .execute(GLOBAL_DB_POOL.get().unwrap())
+            .await?
+            .rows_affected()
+            == 1
+        {
+            if let Some(index) = self.channels.iter().position(|it| it.id == channel_id) {
+                self.channels.remove(index);
+            }
+            return Ok(());
+        }
+        Err(anyhow!(format!(
+            "Unable to find channel_id: {}",
+            channel_id
+        )))
+    }
 
+    /// 更新通道
+    pub async fn update_channel(&mut self, channel: Channel) -> anyhow::Result<()> {
+        if let Some(index) = self.channels.iter().position(|it| it.id == channel.id) {
+            if sqlx::query!(
+                "UPDATE channel SET source = ?, endpoint = ?, enabled = ?, sender = ?, receiver = ?, description = ? WHERE id = ?",
+                channel.source,
+                channel.endpoint,
+                channel.enabled,
+                channel.sender,
+                channel.receiver,
+                channel.description,
+                channel.id
+            ).execute(GLOBAL_DB_POOL.get().unwrap())
+                .await?
+                .rows_affected() == 1 {
+                self.channels[index] = channel;
+                return Ok(());
+            }
+            return Err(anyhow!(format!(
+                "Data update failed, channel_id: {}",
+                channel.id
+            )));
+        }
+
+        Err(anyhow!(format!(
+            "Unable to find channel_id: {}",
+            channel.id
+        )))
     }
 }

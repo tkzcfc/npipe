@@ -1,5 +1,4 @@
 use super::Peer;
-use crate::global::manager;
 use crate::global::manager::GLOBAL_MANAGER;
 use crate::global::GLOBAL_DB_POOL;
 use crate::utils::str::{is_valid_password, is_valid_username};

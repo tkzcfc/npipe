@@ -46,6 +46,7 @@ impl Peer {
     // }
 
     #[inline]
+    #[allow(dead_code)]
     pub(crate) async fn send_push(&self, message: &MessageType) -> anyhow::Result<()> {
         package_and_send_message(&self.tx, 0, message, true).await
     }
