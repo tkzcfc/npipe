@@ -36,11 +36,11 @@ pub async fn run_web_server() -> anyhow::Result<()> {
 pub async fn main() -> anyhow::Result<()> {
     global::init_global().await?;
 
-    let mut result: anyhow::Result<()> = Ok(());
+    let result: anyhow::Result<()>;
 
     select! {
-        r = run_tcp_server() => { result = r },
-        r = run_web_server() => { result = r },
+        r1 = run_tcp_server() => { result = r1 },
+        r2 = run_web_server() => { result = r2 },
     }
 
     result
