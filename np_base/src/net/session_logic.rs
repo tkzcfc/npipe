@@ -10,13 +10,13 @@ pub trait SessionLogic
 where
     Self: Sync + Send,
 {
-    // 会话开始
+    /// 会话开始
     fn on_session_start(&mut self, session_id: u32, tx: UnboundedSender<WriterMessage>);
 
-    // 会话关闭
+    /// 会话关闭
     async fn on_session_close(&mut self);
 
-    // 数据粘包处理
+    /// 数据粘包处理
     fn on_try_extract_frame(&self, buffer: &mut BytesMut) -> anyhow::Result<Option<Vec<u8>>> {
         if buffer.len() > 0 {
             if buffer[0] != 33u8 {
@@ -48,6 +48,6 @@ where
         Ok(Some(frame))
     }
 
-    // 收到一个完整的消息包
+    /// 收到一个完整的消息包
     async fn on_recv_frame(&self, frame: Vec<u8>) -> bool;
 }

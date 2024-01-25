@@ -36,7 +36,7 @@ impl Client {
         }
     }
 
-    // 连接服务器
+    /// 连接服务器
     pub async fn connect(&mut self) -> anyhow::Result<()> {
         self.disconnect();
 
@@ -81,13 +81,13 @@ impl Client {
         }
     }
 
-    // 是否处于连接状态
+    /// 是否处于连接状态
     #[inline]
     pub fn is_connect(&self) -> bool {
         !self.closed
     }
 
-    // 断开连接
+    /// 断开连接
     pub fn disconnect(&mut self) {
         self.closed = true;
 
@@ -102,7 +102,7 @@ impl Client {
         }
     }
 
-    // 发送消息
+    /// 发送消息
     pub fn send(&self, buf: Vec<u8>, flush: bool) -> anyhow::Result<()> {
         if let Some(ref tx) = self.tx {
             if let Err(error) = tx.send(ChannelMessage::DoWriteData(buf, flush)) {
@@ -113,7 +113,7 @@ impl Client {
         Err(anyhow!("Not connected"))
     }
 
-    // 接收消息
+    /// 接收消息
     pub fn try_recv(&mut self) -> Option<Vec<u8>> {
         if let Some(ref mut rx) = self.rx {
             if let Ok(channel_message) = rx.try_recv() {

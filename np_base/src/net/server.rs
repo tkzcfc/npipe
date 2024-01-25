@@ -21,7 +21,7 @@ pub trait OnStreamInitCallback {
     ) -> Pin<Box<dyn Future<Output = OnStreamInitReturnType> + Send>>;
 }
 
-// 实现 OnStreamInitCallback 为满足特定签名的闭包。
+/// 实现 OnStreamInitCallback 为满足特定签名的闭包。
 impl<F, Fut> OnStreamInitCallback for F
 where
     F: Fn(TcpStream) -> Fut + Send + Sync + 'static,
@@ -54,7 +54,7 @@ pub async fn bind(addr: &str) -> io::Result<TcpListener> {
     }
 }
 
-// Start TCP Server
+/// Start TCP Server
 pub async fn run_server(
     listener: TcpListener,
     on_create_session_logic_callback: CreateSessionLogicCallback,

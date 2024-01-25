@@ -9,6 +9,8 @@ pub struct Config {
     pub database_url: String,
     // 服务器监听地址
     pub listen_addr: String,
+    /// web监听地址
+    pub web_addr: String,
 }
 
 pub static GLOBAL_CONFIG: Lazy<Config> = Lazy::new(|| {

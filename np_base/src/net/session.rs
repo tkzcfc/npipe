@@ -47,13 +47,13 @@ impl Session {
         }
     }
 
-    // 是否关闭会话
+    /// 是否关闭会话
     #[inline]
     pub fn is_closed(&self) -> bool {
         self.closed || self.tx.is_closed()
     }
 
-    // 关闭会话
+    /// 关闭会话
     #[inline]
     pub fn close_session(&mut self) {
         self.closed = true;
@@ -79,7 +79,7 @@ impl Session {
         self.logic.on_session_close().await;
     }
 
-    // 循环写入数据
+    /// 循环写入数据
     async fn poll_write<S>(mut rx: UnboundedReceiver<WriterMessage>, writer: WriteHalf<S>)
     where
         S: AsyncRead + AsyncWrite + Send + 'static,
@@ -123,7 +123,7 @@ impl Session {
         rx.close();
     }
 
-    // 循环读取数据
+    /// 循环读取数据
     async fn poll_read<S>(&mut self, mut reader: ReadHalf<S>)
     where
         S: AsyncRead + AsyncWrite + Send + 'static,
