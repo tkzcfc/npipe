@@ -9,5 +9,10 @@ pub struct LoginReq {
 #[derive(Serialize, Deserialize)]
 pub struct LoginAck {
     pub msg: String,
-    pub token: String,
+    pub code: i32,
+}
+
+
+#[derive(Serialize, Deserialize)]
+pub struct LogoutAck {
 }

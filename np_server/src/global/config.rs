@@ -5,12 +5,14 @@ use std::io::BufReader;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
-    // 数据库地址
+    /// 数据库地址
     pub database_url: String,
-    // 服务器监听地址
+    /// 服务器监听地址
     pub listen_addr: String,
     /// web监听地址
     pub web_addr: String,
+    /// web目录
+    pub web_base_dir: String,
 }
 
 pub static GLOBAL_CONFIG: Lazy<Config> = Lazy::new(|| {

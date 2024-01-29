@@ -27,7 +27,7 @@ pub async fn run_tcp_server() -> anyhow::Result<()> {
 pub async fn run_web_server() -> anyhow::Result<()> {
     let addr = GLOBAL_CONFIG.web_addr.parse::<SocketAddr>();
     return match addr {
-        Ok(addr) => web::run_http_server(&addr).await,
+        Ok(addr) => web::run_http_server(&addr, GLOBAL_CONFIG.web_base_dir.clone()).await,
         Err(parse_error) => Err(anyhow!(parse_error.to_string())),
     };
 }

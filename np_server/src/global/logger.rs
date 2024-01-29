@@ -24,7 +24,7 @@ pub(crate) fn init_logger() -> anyhow::Result<()> {
     }
 
     // 日志初始化
-    let logger = Logger::try_with_str("trace,sqlx=error")?
+    let logger = Logger::try_with_str("trace,sqlx=error,actix-files=error,actix-web=error,actix-server=error")?
         .log_to_file(
             FileSpec::default()
                 .directory("logs")

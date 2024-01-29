@@ -1,7 +1,14 @@
 mod proto;
 
 use crate::global::GLOBAL_DB_POOL;
-use actix_web::{error, get, web, App, Error, HttpResponse, HttpServer, Responder};
+use actix_cors::Cors;
+use actix_identity::{Identity, IdentityMiddleware};
+use actix_session::{config::PersistentSession, storage::CookieSessionStore, SessionMiddleware, SessionExt};
+use actix_web::{
+    cookie::{time::Duration, Key},
+    error, middleware, web, App, Error, HttpMessage, HttpRequest, HttpResponse, HttpServer,
+    Responder,
+};
 use log::info;
 use std::net::SocketAddr;
 
@@ -9,21 +16,32 @@ fn map_db_err(err: sqlx::Error) -> Error {
     error::ErrorInternalServerError(format!("sqlx error:{}", err.to_string()))
 }
 
-#[get("/hello/{name}")]
-async fn greet(name: web::Path<String>) -> impl Responder {
-    format!("Hello {}!", name)
+async fn test_auth(identity: Option<Identity>) -> actix_web::Result<impl Responder> {
+    let id = match identity.map(|id| id.id()) {
+        None => "anonymous".to_owned(),
+        Some(Ok(id)) => id,
+        Some(Err(err)) => return Err(error::ErrorInternalServerError(err)),
+    };
+
+    Ok(format!("Hello {id}"))
 }
 
-async fn index_login(body: web::Bytes) -> anyhow::Result<HttpResponse, Error> {
-    let req = serde_json::from_slice::<proto::LoginReq>(&body)?;
+async fn logout(id: Identity) -> actix_web::Result<HttpResponse, Error> {
+    id.logout();
+    Ok(HttpResponse::Ok().json(proto::LogoutAck {}))
+}
+
+async fn login(request: HttpRequest, body: String) -> actix_web::Result<HttpResponse, Error> {
+    let req = serde_json::from_str::<proto::LoginReq>(&body)?;
 
     struct Result {
         r#type: u8,
+        id: u32
     }
 
     let result: Option<Result> = sqlx::query_as!(
         Result,
-        "SELECT type FROM user WHERE username = ? AND password = ?",
+        "SELECT type, id FROM user WHERE username = ? AND password = ?",
         req.username,
         req.password
     )
@@ -33,33 +51,58 @@ async fn index_login(body: web::Bytes) -> anyhow::Result<HttpResponse, Error> {
 
     if let Some(result) = result {
         if result.r#type == 1 {
-            // 生成token
+            Identity::login(&request.extensions(), format!("{}", result.id))?;
+            // 登录成功
             Ok(HttpResponse::Ok().json(proto::LoginAck {
-                token: "".into(),
-                msg: "Not an administrator account".into(),
+                code: 0,
+                msg: "Success".into(),
             }))
         } else {
             // 不是管理员
             Ok(HttpResponse::Ok().json(proto::LoginAck {
-                token: "".into(),
+                code: -1,
                 msg: "Not an administrator account".into(),
             }))
         }
     } else {
         // 账号或密码错误
         Ok(HttpResponse::Ok().json(proto::LoginAck {
-            token: "".into(),
+            code: -2,
             msg: "Incorrect username or password".into(),
         }))
     }
 }
 
-pub async fn run_http_server(addr: &SocketAddr) -> anyhow::Result<()> {
+pub async fn run_http_server(addr: &SocketAddr, web_base_dir: String) -> anyhow::Result<()> {
     info!("HttpServer listening: {}", addr);
-    HttpServer::new(|| {
+
+    let secret_key = Key::generate();
+
+    HttpServer::new(move || {
         App::new()
-            .service(greet)
-            .service(web::resource("/api/login").route(web::post().to(index_login)))
+            // 添加 Cors 中间件，并允许所有跨域请求
+            .wrap(
+                Cors::default()
+                    .allow_any_origin()
+                    .allow_any_method()
+                    .allow_any_header(),
+            )
+            .service(web::resource("/api/login").route(web::post().to(login)))
+            .service(web::resource("/api/logout").route(web::post().to(logout)))
+            .service(web::resource("/api/test_auth").route(web::post().to(test_auth)))
+            .service(
+                actix_files::Files::new("/", web_base_dir.as_str()).index_file("index.html"),
+            )
+            .wrap(IdentityMiddleware::default())
+            .wrap(
+                SessionMiddleware::builder(CookieSessionStore::default(), secret_key.clone())
+                    .cookie_name("auth-example".to_owned())
+                    .cookie_secure(false)
+                    .session_lifecycle(PersistentSession::default().session_ttl(Duration::minutes(60)))
+                    .build(),
+            )
+            .wrap(middleware::NormalizePath::trim())
+            .wrap(middleware::Logger::default())
     })
     .bind(addr)?
     .run()
