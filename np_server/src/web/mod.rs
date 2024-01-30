@@ -3,9 +3,7 @@ mod proto;
 use crate::global::GLOBAL_DB_POOL;
 use actix_cors::Cors;
 use actix_identity::{Identity, IdentityMiddleware};
-use actix_session::{
-    config::PersistentSession, storage::CookieSessionStore, SessionExt, SessionMiddleware,
-};
+use actix_session::{config::PersistentSession, storage::CookieSessionStore, SessionMiddleware};
 use actix_web::{
     cookie::{time::Duration, Key},
     error, middleware, web, App, Error, HttpMessage, HttpRequest, HttpResponse, HttpServer,
@@ -42,7 +40,17 @@ async fn test_auth(identity: Option<Identity>) -> actix_web::Result<impl Respond
         Some(Err(err)) => return Err(error::ErrorInternalServerError(err)),
     };
 
-    Ok(format!("Hello {id}"))
+    if id == "anonymous" {
+        Ok(HttpResponse::Ok().json(proto::GeneralResponse {
+            code: 10086,
+            msg: "Session expired, please log in again.".into(),
+        }))
+    } else {
+        Ok(HttpResponse::Ok().json(proto::GeneralResponse {
+            code: 0,
+            msg: format!("hello {}", id),
+        }))
+    }
 }
 
 async fn logout(id: Identity) -> actix_web::Result<HttpResponse, Error> {
@@ -119,12 +127,11 @@ pub async fn run_http_server(addr: &SocketAddr, web_base_dir: String) -> anyhow:
                     .cookie_name("auth-id".to_owned())
                     .cookie_secure(false)
                     .session_lifecycle(
-                        PersistentSession::default().session_ttl(Duration::minutes(60)),
+                        PersistentSession::default().session_ttl(Duration::minutes(1)),
                     )
                     .build(),
             )
             .wrap(middleware::NormalizePath::trim())
-            .wrap(middleware::Logger::default())
     })
     .bind(addr)?
     .run()
