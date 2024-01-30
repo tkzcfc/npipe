@@ -7,12 +7,7 @@ pub struct LoginReq {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct LoginAck {
+pub struct GeneralResponse {
     pub msg: String,
     pub code: i32,
-}
-
-
-#[derive(Serialize, Deserialize)]
-pub struct LogoutAck {
 }

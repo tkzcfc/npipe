@@ -24,24 +24,26 @@ pub(crate) fn init_logger() -> anyhow::Result<()> {
     }
 
     // 日志初始化
-    let logger = Logger::try_with_str("trace,sqlx=error,actix-files=error,actix-web=error,actix-server=error")?
-        .log_to_file(
-            FileSpec::default()
-                .directory("logs")
-                .suppress_timestamp()
-                .suffix("log"),
-        )
-        .duplicate_to_stdout(duplicate_level(GLOBAL_OPTS.log_level.as_str()))
-        .format(flexi_logger::opt_format)
-        .format_for_stdout(flexi_logger::colored_opt_format)
-        .rotate(
-            Criterion::AgeOrSize(Age::Day, 1024 * 1024 * 5),
-            Naming::Numbers,
-            Cleanup::KeepLogFiles(30),
-        )
-        .print_message()
-        .write_mode(WriteMode::Async)
-        .start()?;
+    let logger = Logger::try_with_str(
+        "trace,sqlx=error,actix-files=error,actix-web=error,actix-server=error",
+    )?
+    .log_to_file(
+        FileSpec::default()
+            .directory("logs")
+            .suppress_timestamp()
+            .suffix("log"),
+    )
+    .duplicate_to_stdout(duplicate_level(GLOBAL_OPTS.log_level.as_str()))
+    .format(flexi_logger::opt_format)
+    .format_for_stdout(flexi_logger::colored_opt_format)
+    .rotate(
+        Criterion::AgeOrSize(Age::Day, 1024 * 1024 * 5),
+        Naming::Numbers,
+        Cleanup::KeepLogFiles(30),
+    )
+    .print_message()
+    .write_mode(WriteMode::Async)
+    .start()?;
 
     LOGGER_HANDLER
         .set(logger)

@@ -3,7 +3,9 @@ mod proto;
 use crate::global::GLOBAL_DB_POOL;
 use actix_cors::Cors;
 use actix_identity::{Identity, IdentityMiddleware};
-use actix_session::{config::PersistentSession, storage::CookieSessionStore, SessionMiddleware, SessionExt};
+use actix_session::{
+    config::PersistentSession, storage::CookieSessionStore, SessionExt, SessionMiddleware,
+};
 use actix_web::{
     cookie::{time::Duration, Key},
     error, middleware, web, App, Error, HttpMessage, HttpRequest, HttpResponse, HttpServer,
@@ -14,6 +16,23 @@ use std::net::SocketAddr;
 
 fn map_db_err(err: sqlx::Error) -> Error {
     error::ErrorInternalServerError(format!("sqlx error:{}", err.to_string()))
+}
+
+fn authentication(identity: Option<Identity>) -> Option<actix_web::Result<HttpResponse, Error>> {
+    let id = match identity.map(|id| id.id()) {
+        None => "anonymous".to_owned(),
+        Some(Ok(id)) => id,
+        Some(Err(err)) => return Some(Err(error::ErrorInternalServerError(err))),
+    };
+
+    if id == "anonymous" {
+        Some(Ok(HttpResponse::Ok().json(proto::GeneralResponse {
+            code: 10086,
+            msg: "Session expired, please log in again.".into(),
+        })))
+    } else {
+        None
+    }
 }
 
 async fn test_auth(identity: Option<Identity>) -> actix_web::Result<impl Responder> {
@@ -28,7 +47,10 @@ async fn test_auth(identity: Option<Identity>) -> actix_web::Result<impl Respond
 
 async fn logout(id: Identity) -> actix_web::Result<HttpResponse, Error> {
     id.logout();
-    Ok(HttpResponse::Ok().json(proto::LogoutAck {}))
+    Ok(HttpResponse::Ok().json(proto::GeneralResponse {
+        code: 10086,
+        msg: "Session expired, please log in again.".into(),
+    }))
 }
 
 async fn login(request: HttpRequest, body: String) -> actix_web::Result<HttpResponse, Error> {
@@ -36,7 +58,7 @@ async fn login(request: HttpRequest, body: String) -> actix_web::Result<HttpResp
 
     struct Result {
         r#type: u8,
-        id: u32
+        id: u32,
     }
 
     let result: Option<Result> = sqlx::query_as!(
@@ -53,20 +75,20 @@ async fn login(request: HttpRequest, body: String) -> actix_web::Result<HttpResp
         if result.r#type == 1 {
             Identity::login(&request.extensions(), format!("{}", result.id))?;
             // 登录成功
-            Ok(HttpResponse::Ok().json(proto::LoginAck {
+            Ok(HttpResponse::Ok().json(proto::GeneralResponse {
                 code: 0,
                 msg: "Success".into(),
             }))
         } else {
             // 不是管理员
-            Ok(HttpResponse::Ok().json(proto::LoginAck {
+            Ok(HttpResponse::Ok().json(proto::GeneralResponse {
                 code: -1,
                 msg: "Not an administrator account".into(),
             }))
         }
     } else {
         // 账号或密码错误
-        Ok(HttpResponse::Ok().json(proto::LoginAck {
+        Ok(HttpResponse::Ok().json(proto::GeneralResponse {
             code: -2,
             msg: "Incorrect username or password".into(),
         }))
@@ -90,15 +112,15 @@ pub async fn run_http_server(addr: &SocketAddr, web_base_dir: String) -> anyhow:
             .service(web::resource("/api/login").route(web::post().to(login)))
             .service(web::resource("/api/logout").route(web::post().to(logout)))
             .service(web::resource("/api/test_auth").route(web::post().to(test_auth)))
-            .service(
-                actix_files::Files::new("/", web_base_dir.as_str()).index_file("index.html"),
-            )
+            .service(actix_files::Files::new("/", web_base_dir.as_str()).index_file("index.html"))
             .wrap(IdentityMiddleware::default())
             .wrap(
                 SessionMiddleware::builder(CookieSessionStore::default(), secret_key.clone())
-                    .cookie_name("auth-example".to_owned())
+                    .cookie_name("auth-id".to_owned())
                     .cookie_secure(false)
-                    .session_lifecycle(PersistentSession::default().session_ttl(Duration::minutes(60)))
+                    .session_lifecycle(
+                        PersistentSession::default().session_ttl(Duration::minutes(60)),
+                    )
                     .build(),
             )
             .wrap(middleware::NormalizePath::trim())
