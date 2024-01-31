@@ -129,7 +129,7 @@ impl PlayerManager {
 
             // 随机新的玩家id
             let id: u32 = rng.gen_range(10000000..99999999);
-            if GLOBAL_MANAGER.player_manager.read().await.contain(id) {
+            if self.contain(id) {
                 continue;
             }
 
@@ -145,12 +145,7 @@ impl PlayerManager {
             .rows_affected()
                 == 1
             {
-                GLOBAL_MANAGER
-                    .player_manager
-                    .write()
-                    .await
-                    .create_player(id, 0)
-                    .await;
+                self.create_player(id, 0).await;
                 Ok((0, "".into()))
             } else {
                 Ok((-4, "sqlx error".into()))
