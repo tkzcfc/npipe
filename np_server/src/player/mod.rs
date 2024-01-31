@@ -77,6 +77,7 @@ impl Player {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub fn flush(&self) {
         if let Some(ref tx) = self.tx {
             let _ = tx.send(WriterMessage::Flush);
@@ -84,6 +85,7 @@ impl Player {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub fn close_session(&mut self) {
         if let Some(ref tx) = self.tx {
             let _ = tx.send(WriterMessage::Close);
@@ -109,6 +111,7 @@ impl Player {
     }
 
     // 玩家离线
+    #[allow(dead_code)]
     pub async fn on_disconnect_session(&mut self) {
         self.reset_session_info();
     }

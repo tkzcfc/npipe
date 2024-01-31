@@ -1,5 +1,7 @@
 mod proto;
 
+use crate::global::manager::channel::Channel;
+use crate::global::manager::GLOBAL_MANAGER;
 use crate::global::GLOBAL_DB_POOL;
 use actix_cors::Cors;
 use actix_identity::{Identity, IdentityMiddleware};
@@ -11,6 +13,48 @@ use actix_web::{
 };
 use log::info;
 use std::net::SocketAddr;
+
+/// http server
+pub async fn run_http_server(addr: &SocketAddr, web_base_dir: String) -> anyhow::Result<()> {
+    info!("HttpServer listening: {}", addr);
+
+    let secret_key = Key::generate();
+
+    HttpServer::new(move || {
+        App::new()
+            // 添加 Cors 中间件，并允许所有跨域请求
+            .wrap(
+                Cors::default()
+                    .allow_any_origin()
+                    .allow_any_method()
+                    .allow_any_header(),
+            )
+            .service(web::resource("/api/login").route(web::post().to(login)))
+            .service(web::resource("/api/logout").route(web::post().to(logout)))
+            .service(web::resource("/api/test_auth").route(web::post().to(test_auth)))
+            .service(web::resource("/api/player_list").route(web::post().to(player_list)))
+            .service(web::resource("/api/channel_list").route(web::post().to(channel_list)))
+            .service(web::resource("/api/remove_channel").route(web::post().to(remove_channel)))
+            .service(web::resource("/api/add_channel").route(web::post().to(add_channel)))
+            .service(web::resource("/api/update_channel").route(web::post().to(update_channel)))
+            .service(actix_files::Files::new("/", web_base_dir.as_str()).index_file("index.html"))
+            .wrap(IdentityMiddleware::default())
+            .wrap(
+                SessionMiddleware::builder(CookieSessionStore::default(), secret_key.clone())
+                    .cookie_name("auth-id".to_owned())
+                    .cookie_secure(false)
+                    .session_lifecycle(
+                        PersistentSession::default().session_ttl(Duration::minutes(1)),
+                    )
+                    .build(),
+            )
+            .wrap(middleware::NormalizePath::trim())
+    })
+    .bind(addr)?
+    .run()
+    .await?;
+    Ok(())
+}
 
 fn map_db_err(err: sqlx::Error) -> Error {
     error::ErrorInternalServerError(format!("sqlx error:{}", err.to_string()))
@@ -103,38 +147,160 @@ async fn login(request: HttpRequest, body: String) -> actix_web::Result<HttpResp
     }
 }
 
-pub async fn run_http_server(addr: &SocketAddr, web_base_dir: String) -> anyhow::Result<()> {
-    info!("HttpServer listening: {}", addr);
+async fn player_list(
+    identity: Option<Identity>,
+    body: String,
+) -> actix_web::Result<impl Responder> {
+    if let Some(result) = authentication(identity) {
+        return result;
+    }
 
-    let secret_key = Key::generate();
+    struct Data {
+        pub id: u32,
+        pub username: String,
+    }
 
-    HttpServer::new(move || {
-        App::new()
-            // 添加 Cors 中间件，并允许所有跨域请求
-            .wrap(
-                Cors::default()
-                    .allow_any_origin()
-                    .allow_any_method()
-                    .allow_any_header(),
-            )
-            .service(web::resource("/api/login").route(web::post().to(login)))
-            .service(web::resource("/api/logout").route(web::post().to(logout)))
-            .service(web::resource("/api/test_auth").route(web::post().to(test_auth)))
-            .service(actix_files::Files::new("/", web_base_dir.as_str()).index_file("index.html"))
-            .wrap(IdentityMiddleware::default())
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), secret_key.clone())
-                    .cookie_name("auth-id".to_owned())
-                    .cookie_secure(false)
-                    .session_lifecycle(
-                        PersistentSession::default().session_ttl(Duration::minutes(1)),
-                    )
-                    .build(),
-            )
-            .wrap(middleware::NormalizePath::trim())
-    })
-    .bind(addr)?
-    .run()
-    .await?;
-    Ok(())
+    let datas: Vec<Data> = sqlx::query_as!(Data, "SELECT id, username FROM user WHERE type = ?", 0)
+        .fetch_all(GLOBAL_DB_POOL.get().unwrap())
+        .await
+        .map_err(map_db_err)?;
+
+    let mut players: Vec<proto::PlayerListItem> = Vec::new();
+
+    for data in datas {
+        let online = if let Some(p) = GLOBAL_MANAGER
+            .player_manager
+            .read()
+            .await
+            .get_player(data.id)
+        {
+            p.read().await.is_online()
+        } else {
+            false
+        };
+
+        players.push(proto::PlayerListItem {
+            id: data.id,
+            username: data.username,
+            online,
+        })
+    }
+
+    Ok(HttpResponse::Ok().json(proto::PlayerListResponse { players }))
+}
+
+async fn channel_list(identity: Option<Identity>) -> actix_web::Result<impl Responder> {
+    if let Some(result) = authentication(identity) {
+        return result;
+    }
+
+    let channels: Vec<proto::ChannelListItem> = sqlx::query_as!(
+        proto::ChannelListItem,
+        "SELECT id, source, endpoint, enabled, sender, receiver, description FROM channel"
+    )
+    .fetch_all(GLOBAL_DB_POOL.get().unwrap())
+    .await
+    .map_err(map_db_err)?;
+
+    Ok(HttpResponse::Ok().json(proto::ChannelListResponse { channels }))
+}
+
+async fn remove_channel(
+    identity: Option<Identity>,
+    body: String,
+) -> actix_web::Result<impl Responder> {
+    if let Some(result) = authentication(identity) {
+        return result;
+    }
+
+    let req = serde_json::from_str::<proto::ChannelRemoveReq>(&body)?;
+    if let Err(err) = GLOBAL_MANAGER
+        .channel_manager
+        .write()
+        .await
+        .delete_channel(req.id)
+        .await
+    {
+        Ok(HttpResponse::Ok().json(proto::GeneralResponse {
+            code: -1,
+            msg: err.to_string(),
+        }))
+    } else {
+        Ok(HttpResponse::Ok().json(proto::GeneralResponse {
+            code: 0,
+            msg: "Success".into(),
+        }))
+    }
+}
+
+async fn add_channel(
+    identity: Option<Identity>,
+    body: String,
+) -> actix_web::Result<impl Responder> {
+    if let Some(result) = authentication(identity) {
+        return result;
+    }
+
+    let req = serde_json::from_str::<proto::ChannelAddReq>(&body)?;
+    if let Err(err) = GLOBAL_MANAGER
+        .channel_manager
+        .write()
+        .await
+        .add_channel(Channel {
+            source: req.source,
+            endpoint: req.endpoint,
+            id: req.id,
+            enabled: req.enabled,
+            sender: req.sender,
+            receiver: req.receiver,
+            description: req.description,
+        })
+        .await
+    {
+        Ok(HttpResponse::Ok().json(proto::GeneralResponse {
+            code: -1,
+            msg: err.to_string(),
+        }))
+    } else {
+        Ok(HttpResponse::Ok().json(proto::GeneralResponse {
+            code: 0,
+            msg: "Success".into(),
+        }))
+    }
+}
+
+async fn update_channel(
+    identity: Option<Identity>,
+    body: String,
+) -> actix_web::Result<impl Responder> {
+    if let Some(result) = authentication(identity) {
+        return result;
+    }
+
+    let req = serde_json::from_str::<proto::ChannelUpdateReq>(&body)?;
+    if let Err(err) = GLOBAL_MANAGER
+        .channel_manager
+        .write()
+        .await
+        .update_channel(Channel {
+            source: req.source,
+            endpoint: req.endpoint,
+            id: req.id,
+            enabled: req.enabled,
+            sender: req.sender,
+            receiver: req.receiver,
+            description: req.description,
+        })
+        .await
+    {
+        Ok(HttpResponse::Ok().json(proto::GeneralResponse {
+            code: -1,
+            msg: err.to_string(),
+        }))
+    } else {
+        Ok(HttpResponse::Ok().json(proto::GeneralResponse {
+            code: 0,
+            msg: "Success".into(),
+        }))
+    }
 }
