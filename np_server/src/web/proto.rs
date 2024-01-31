@@ -19,6 +19,7 @@ pub struct GeneralResponse {
 pub struct PlayerListItem {
     pub id: u32,
     pub username: String,
+    pub password: String,
     pub online: bool,
 }
 
@@ -26,6 +27,27 @@ pub struct PlayerListItem {
 #[derive(Serialize, Deserialize)]
 pub struct PlayerListResponse {
     pub players: Vec<PlayerListItem>,
+}
+
+/// 删除玩家
+#[derive(Serialize, Deserialize)]
+pub struct PlayerRemoveReq {
+    pub id: u32,
+}
+
+/// 添加玩家
+#[derive(Serialize, Deserialize)]
+pub struct PlayerAddReq {
+    pub username: String,
+    pub password: String,
+}
+
+/// 更新玩家
+#[derive(Serialize, Deserialize)]
+pub struct PlayerUpdateReq {
+    pub id: u32,
+    pub username: String,
+    pub password: String,
 }
 
 /// 通道列表子项
@@ -52,9 +74,9 @@ pub struct ChannelRemoveReq {
     pub id: u32,
 }
 
-/// 修改通道请求
+/// 新增通道请求
 #[derive(Serialize, Deserialize)]
-pub struct ChannelUpdateReq {
+pub struct ChannelAddReq {
     pub id: u32,
     pub source: String,
     pub endpoint: String,
@@ -64,9 +86,9 @@ pub struct ChannelUpdateReq {
     pub description: String,
 }
 
-/// 新增通道请求
+/// 修改通道请求
 #[derive(Serialize, Deserialize)]
-pub struct ChannelAddReq {
+pub struct ChannelUpdateReq {
     pub id: u32,
     pub source: String,
     pub endpoint: String,

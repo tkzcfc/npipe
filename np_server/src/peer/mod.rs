@@ -113,7 +113,7 @@ impl SessionLogic for Peer {
                                         serial,
                                         &MessageType::GenericError(generic::Error {
                                             number: generic::ErrorCode::InternalError.into(),
-                                            message: format!("response is empty"),
+                                            message: "response is empty".to_string(),
                                         }),
                                     )
                                     .await;

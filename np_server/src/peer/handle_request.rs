@@ -1,12 +1,8 @@
 use super::Peer;
 use crate::global::manager::GLOBAL_MANAGER;
 use crate::global::GLOBAL_DB_POOL;
-use crate::utils::str::{is_valid_password, is_valid_username};
-use np_proto::generic::ErrorCode;
 use np_proto::message_map::MessageType;
 use np_proto::{client_server, generic};
-use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
 
 impl Peer {
     // 收到玩家向服务器请求的消息
@@ -105,73 +101,19 @@ impl Peer {
         &self,
         message: client_server::RegisterReq,
     ) -> anyhow::Result<MessageType> {
-        // 参数长度越界检查
-        if !is_valid_username(&message.username) || !is_valid_password(&message.password) {
-            return Ok(MessageType::GenericError(generic::Error {
-                number: -1,
-                message: "Bad parameter".into(),
-            }));
-        }
-
-        // 执行查询以检查用户名是否存在
-        let record = sqlx::query!(
-            "SELECT EXISTS(SELECT 1 FROM user WHERE username = ?) as 'exists'",
-            message.username
-        )
-        .fetch_one(GLOBAL_DB_POOL.get().unwrap())
-        .await?;
-
-        // 用户已存在
-        if record.exists != 0 {
-            return Ok(MessageType::GenericError(generic::Error {
-                number: -2,
-                message: "User already exists".into(),
-            }));
-        }
-
-        let mut rng = StdRng::from_entropy();
-        let mut count = 0;
-        loop {
-            count += 1;
-            // 循环次数过多
-            if count > 10000 {
-                return Ok(MessageType::GenericError(generic::Error {
-                    number: ErrorCode::InternalError.into(),
-                    message: "Too many cycles".into(),
-                }));
-            }
-
-            // 随机新的玩家id
-            let id: u32 = rng.gen_range(10000000..99999999);
-            if GLOBAL_MANAGER.player_manager.read().await.contain(id) {
-                continue;
-            }
-
-            return if sqlx::query!(
-                "INSERT INTO user (id, username, password, type) VALUES (?, ?, ?, ?)",
-                id,
-                message.username,
-                message.password,
-                0
-            )
-            .execute(GLOBAL_DB_POOL.get().unwrap())
-            .await?
-            .rows_affected()
-                == 1
-            {
-                GLOBAL_MANAGER
-                    .player_manager
-                    .write()
-                    .await
-                    .create_player(id, 0)
-                    .await;
-                Ok(MessageType::GenericSuccess(generic::Success {}))
-            } else {
-                Ok(MessageType::GenericError(generic::Error {
-                    number: -3,
-                    message: "sqlx error".into(),
-                }))
-            };
+        let (code, msg) = GLOBAL_MANAGER
+            .player_manager
+            .write()
+            .await
+            .add_player(&message.username, &message.password)
+            .await?;
+        if code == 0 {
+            Ok(MessageType::GenericSuccess(generic::Success {}))
+        } else {
+            Ok(MessageType::GenericError(generic::Error {
+                number: code,
+                message: msg,
+            }))
         }
     }
 }

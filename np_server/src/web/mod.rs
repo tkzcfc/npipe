@@ -1,8 +1,10 @@
 mod proto;
 
 use crate::global::manager::channel::Channel;
+use crate::global::manager::player::PlayerDbData;
 use crate::global::manager::GLOBAL_MANAGER;
 use crate::global::GLOBAL_DB_POOL;
+use crate::utils::str::{is_valid_password, is_valid_username};
 use actix_cors::Cors;
 use actix_identity::{Identity, IdentityMiddleware};
 use actix_session::{config::PersistentSession, storage::CookieSessionStore, SessionMiddleware};
@@ -33,6 +35,9 @@ pub async fn run_http_server(addr: &SocketAddr, web_base_dir: String) -> anyhow:
             .service(web::resource("/api/logout").route(web::post().to(logout)))
             .service(web::resource("/api/test_auth").route(web::post().to(test_auth)))
             .service(web::resource("/api/player_list").route(web::post().to(player_list)))
+            .service(web::resource("/api/remove_player").route(web::post().to(remove_player)))
+            .service(web::resource("/api/add_player").route(web::post().to(add_player)))
+            .service(web::resource("/api/update_player").route(web::post().to(update_player)))
             .service(web::resource("/api/channel_list").route(web::post().to(channel_list)))
             .service(web::resource("/api/remove_channel").route(web::post().to(remove_channel)))
             .service(web::resource("/api/add_channel").route(web::post().to(add_channel)))
@@ -147,23 +152,25 @@ async fn login(request: HttpRequest, body: String) -> actix_web::Result<HttpResp
     }
 }
 
-async fn player_list(
-    identity: Option<Identity>,
-    body: String,
-) -> actix_web::Result<impl Responder> {
+async fn player_list(identity: Option<Identity>) -> actix_web::Result<impl Responder> {
     if let Some(result) = authentication(identity) {
         return result;
     }
 
     struct Data {
-        pub id: u32,
-        pub username: String,
+        id: u32,
+        username: String,
+        password: String,
     }
 
-    let datas: Vec<Data> = sqlx::query_as!(Data, "SELECT id, username FROM user WHERE type = ?", 0)
-        .fetch_all(GLOBAL_DB_POOL.get().unwrap())
-        .await
-        .map_err(map_db_err)?;
+    let datas: Vec<Data> = sqlx::query_as!(
+        Data,
+        "SELECT id, username, password FROM user WHERE type = ?",
+        0
+    )
+    .fetch_all(GLOBAL_DB_POOL.get().unwrap())
+    .await
+    .map_err(map_db_err)?;
 
     let mut players: Vec<proto::PlayerListItem> = Vec::new();
 
@@ -182,11 +189,100 @@ async fn player_list(
         players.push(proto::PlayerListItem {
             id: data.id,
             username: data.username,
+            password: data.password,
             online,
         })
     }
 
     Ok(HttpResponse::Ok().json(proto::PlayerListResponse { players }))
+}
+
+async fn remove_player(
+    identity: Option<Identity>,
+    body: String,
+) -> actix_web::Result<impl Responder> {
+    if let Some(result) = authentication(identity) {
+        return result;
+    }
+
+    let req = serde_json::from_str::<proto::PlayerRemoveReq>(&body)?;
+
+    if let Err(err) = GLOBAL_MANAGER
+        .player_manager
+        .write()
+        .await
+        .delete_player(req.id)
+        .await
+    {
+        Ok(HttpResponse::Ok().json(proto::GeneralResponse {
+            code: -1,
+            msg: err.to_string(),
+        }))
+    } else {
+        Ok(HttpResponse::Ok().json(proto::GeneralResponse {
+            code: 0,
+            msg: "Success".into(),
+        }))
+    }
+}
+
+async fn add_player(identity: Option<Identity>, body: String) -> actix_web::Result<impl Responder> {
+    if let Some(result) = authentication(identity) {
+        return result;
+    }
+
+    let req = serde_json::from_str::<proto::PlayerAddReq>(&body)?;
+
+    return match GLOBAL_MANAGER
+        .player_manager
+        .write()
+        .await
+        .add_player(&req.username, &req.password)
+        .await
+    {
+        Ok((code, msg)) => Ok(HttpResponse::Ok().json(proto::GeneralResponse { code, msg })),
+        Err(err) => Err(error::ErrorInternalServerError(err.to_string())),
+    };
+}
+
+async fn update_player(
+    identity: Option<Identity>,
+    body: String,
+) -> actix_web::Result<impl Responder> {
+    if let Some(result) = authentication(identity) {
+        return result;
+    }
+
+    let req = serde_json::from_str::<proto::PlayerUpdateReq>(&body)?;
+
+    // 参数长度越界检查
+    if !is_valid_username(&req.username) || !is_valid_password(&req.password) {
+        return Ok(HttpResponse::Ok().json(proto::GeneralResponse {
+            code: -1,
+            msg: "Bad parameter".into(),
+        }));
+    }
+
+    match GLOBAL_MANAGER
+        .player_manager
+        .read()
+        .await
+        .update_player(PlayerDbData {
+            username: req.username,
+            password: req.password,
+            id: req.id,
+        })
+        .await
+    {
+        Ok(()) => Ok(HttpResponse::Ok().json(proto::GeneralResponse {
+            code: 0,
+            msg: "Success".into(),
+        })),
+        Err(err) => Ok(HttpResponse::Ok().json(proto::GeneralResponse {
+            code: -2,
+            msg: err.to_string(),
+        })),
+    }
 }
 
 async fn channel_list(identity: Option<Identity>) -> actix_web::Result<impl Responder> {

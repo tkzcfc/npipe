@@ -85,7 +85,6 @@ impl Player {
     }
 
     #[inline]
-    #[allow(dead_code)]
     pub fn close_session(&mut self) {
         if let Some(ref tx) = self.tx {
             let _ = tx.send(WriterMessage::Close);
