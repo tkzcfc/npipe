@@ -181,7 +181,7 @@ async fn player_list(
     }
 
     // 分页查询玩家数据
-    let datas: Vec<Data> = sqlx::query_as!(
+    let data_list: Vec<Data> = sqlx::query_as!(
         Data,
         "SELECT id, username, password FROM user WHERE type = ? LIMIT ? OFFSET ?",
         0,
@@ -202,7 +202,7 @@ async fn player_list(
 
     let mut players: Vec<proto::PlayerListItem> = Vec::new();
 
-    for data in datas {
+    for data in data_list {
         let online = if let Some(p) = GLOBAL_MANAGER
             .player_manager
             .read()
