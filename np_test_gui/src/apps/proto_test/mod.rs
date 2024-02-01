@@ -235,10 +235,7 @@ impl ProtoTest {
 
 fn to_string(result: anyhow::Result<&MessageType>) -> String {
     match result {
-        Ok(response) => match serialize_to_json(response) {
-            Ok(s) => s,
-            Err(err) => err.to_string(),
-        },
+        Ok(response) => serialize_to_json(response).unwrap_or_else(|err| err.to_string()),
         Err(err) => err.to_string(),
     }
 }

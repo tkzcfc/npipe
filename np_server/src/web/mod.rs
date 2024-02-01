@@ -152,10 +152,27 @@ async fn login(request: HttpRequest, body: String) -> actix_web::Result<HttpResp
     }
 }
 
-async fn player_list(identity: Option<Identity>) -> actix_web::Result<impl Responder> {
+async fn player_list(
+    identity: Option<Identity>,
+    body: String,
+) -> actix_web::Result<impl Responder> {
     if let Some(result) = authentication(identity) {
         return result;
     }
+
+    let req = serde_json::from_str::<proto::PlayerListRequest>(&body)?;
+
+    let page_number = if req.page_number == 0 {
+        1
+    } else {
+        req.page_number
+    };
+    let page_size = if req.page_size <= 0 || req.page_size > 100 {
+        1
+    } else {
+        req.page_size
+    };
+    let offset = (page_number - 1) * page_size;
 
     struct Data {
         id: u32,
@@ -163,14 +180,25 @@ async fn player_list(identity: Option<Identity>) -> actix_web::Result<impl Respo
         password: String,
     }
 
+    // 分页查询玩家数据
     let datas: Vec<Data> = sqlx::query_as!(
         Data,
-        "SELECT id, username, password FROM user WHERE type = ?",
-        0
+        "SELECT id, username, password FROM user WHERE type = ? LIMIT ? OFFSET ?",
+        0,
+        page_size,
+        offset
     )
     .fetch_all(GLOBAL_DB_POOL.get().unwrap())
     .await
     .map_err(map_db_err)?;
+
+    // 查询玩家总条数
+    let count_query = "SELECT COUNT(*) FROM users WHERE type = ?";
+    let total_count: i64 = sqlx::query_scalar(count_query)
+        .bind(0)
+        .fetch_one(GLOBAL_DB_POOL.get().unwrap())
+        .await
+        .map_err(map_db_err)?;
 
     let mut players: Vec<proto::PlayerListItem> = Vec::new();
 
@@ -194,7 +222,10 @@ async fn player_list(identity: Option<Identity>) -> actix_web::Result<impl Respo
         })
     }
 
-    Ok(HttpResponse::Ok().json(proto::PlayerListResponse { players }))
+    Ok(HttpResponse::Ok().json(proto::PlayerListResponse {
+        players,
+        total_count: total_count as u32,
+    }))
 }
 
 async fn remove_player(

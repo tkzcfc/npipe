@@ -1,4 +1,3 @@
-use crate::global::manager::GLOBAL_MANAGER;
 use crate::global::GLOBAL_DB_POOL;
 use crate::player::{Player, PlayerId};
 use crate::utils::str::{is_valid_password, is_valid_username};
