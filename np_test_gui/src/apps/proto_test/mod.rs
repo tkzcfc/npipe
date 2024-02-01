@@ -1,4 +1,5 @@
 mod test_auto_register;
+mod test_login;
 mod test_register;
 
 use crate::apps::rpc_client::RpcClient;
@@ -80,6 +81,7 @@ impl Default for ProtoTest {
                     .expect("invalid address"),
             ))),
             test_units: vec![
+                TestUnit::new("login", Box::new(test_login::Test::default())),
                 TestUnit::new("register", Box::new(test_register::Test::default())),
                 TestUnit::new(
                     "auto register",

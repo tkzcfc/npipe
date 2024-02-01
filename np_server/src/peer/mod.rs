@@ -52,7 +52,7 @@ impl Peer {
     }
 
     pub async fn handle_message(
-        &self,
+        &mut self,
         serial: i32,
         message: MessageType,
     ) -> anyhow::Result<MessageType> {
@@ -77,11 +77,15 @@ impl SessionLogic for Peer {
 
     // 会话关闭回调
     async fn on_session_close(&mut self) {
-        self.tx = None;
+        self.tx.take();
+        // 清退对应玩家
+        if let Some(player) = self.player.take() {
+            player.write().await.on_disconnect_session().await;
+        }
     }
 
     // 收到一个完整的消息包
-    async fn on_recv_frame(&self, frame: Vec<u8>) -> bool {
+    async fn on_recv_frame(&mut self, frame: Vec<u8>) -> bool {
         if frame.len() < 8 {
             return false;
         }

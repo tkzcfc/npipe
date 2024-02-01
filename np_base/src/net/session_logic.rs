@@ -49,5 +49,5 @@ where
     }
 
     /// 收到一个完整的消息包
-    async fn on_recv_frame(&self, frame: Vec<u8>) -> bool;
+    async fn on_recv_frame(&mut self, frame: Vec<u8>) -> bool;
 }

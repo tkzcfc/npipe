@@ -35,6 +35,7 @@ pub struct PlayerListItem {
 #[derive(Serialize, Deserialize)]
 pub struct PlayerListResponse {
     pub players: Vec<PlayerListItem>,
+    pub cur_page_number: u32,
     pub total_count: u32,
 }
 

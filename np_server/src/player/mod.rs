@@ -29,7 +29,7 @@ impl Player {
         Arc::new(RwLock::new(Player {
             tx: None,
             player_id,
-            session_id: 032,
+            session_id: 0,
             player_type: {
                 match player_type {
                     0 => PlayerType::Normal,

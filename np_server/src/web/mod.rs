@@ -162,17 +162,13 @@ async fn player_list(
 
     let req = serde_json::from_str::<proto::PlayerListRequest>(&body)?;
 
-    let page_number = if req.page_number == 0 {
-        1
-    } else {
-        req.page_number
-    };
+    let page_number = req.page_number;
     let page_size = if req.page_size <= 0 || req.page_size > 100 {
         1
     } else {
         req.page_size
     };
-    let offset = (page_number - 1) * page_size;
+    let offset = page_number * page_size;
 
     struct Data {
         id: u32,
@@ -193,7 +189,7 @@ async fn player_list(
     .map_err(map_db_err)?;
 
     // 查询玩家总条数
-    let count_query = "SELECT COUNT(*) FROM users WHERE type = ?";
+    let count_query = "SELECT COUNT(*) FROM user WHERE type = ?";
     let total_count: i64 = sqlx::query_scalar(count_query)
         .bind(0)
         .fetch_one(GLOBAL_DB_POOL.get().unwrap())
@@ -224,6 +220,7 @@ async fn player_list(
 
     Ok(HttpResponse::Ok().json(proto::PlayerListResponse {
         players,
+        cur_page_number: req.page_number,
         total_count: total_count as u32,
     }))
 }

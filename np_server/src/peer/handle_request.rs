@@ -6,7 +6,7 @@ use np_proto::{client_server, generic};
 
 impl Peer {
     // 收到玩家向服务器请求的消息
-    pub(crate) async fn handle_request(&self, message: MessageType) -> anyhow::Result<MessageType> {
+    pub(crate) async fn handle_request(&mut self, message: MessageType) -> anyhow::Result<MessageType> {
         match message {
             MessageType::GenericPing(msg) => return self.on_ping_request(msg).await,
             MessageType::ClientServerLoginReq(msg) => return self.on_login_request(msg).await,
@@ -34,7 +34,7 @@ impl Peer {
     }
 
     async fn on_login_request(
-        &self,
+        &mut self,
         message: client_server::LoginReq,
     ) -> anyhow::Result<MessageType> {
         if self.player.is_some() {
@@ -74,6 +74,7 @@ impl Peer {
                 .await
                 .get_player(account.id)
             {
+                self.player = Some(player.clone());
                 let mut player = player.write().await;
                 if player.is_online() {
                     player.on_terminate_old_session().await;
