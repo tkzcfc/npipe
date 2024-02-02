@@ -49,7 +49,7 @@ pub async fn run_http_server(addr: &SocketAddr, web_base_dir: String) -> anyhow:
                     .cookie_name("auth-id".to_owned())
                     .cookie_secure(false)
                     .session_lifecycle(
-                        PersistentSession::default().session_ttl(Duration::minutes(1)),
+                        PersistentSession::default().session_ttl(Duration::minutes(60)),
                     )
                     .build(),
             )
