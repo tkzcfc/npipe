@@ -6,7 +6,10 @@ use np_proto::{client_server, generic};
 
 impl Peer {
     // 收到玩家向服务器请求的消息
-    pub(crate) async fn handle_request(&mut self, message: MessageType) -> anyhow::Result<MessageType> {
+    pub(crate) async fn handle_request(
+        &mut self,
+        message: MessageType,
+    ) -> anyhow::Result<MessageType> {
         match message {
             MessageType::GenericPing(msg) => return self.on_ping_request(msg).await,
             MessageType::ClientServerLoginReq(msg) => return self.on_login_request(msg).await,

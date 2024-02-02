@@ -18,12 +18,12 @@ pub struct GeneralResponse {
 #[derive(Serialize, Deserialize)]
 pub struct PlayerListRequest {
     // 页码  从1开始
-    pub page_number: u32,
-    pub page_size: u32,
+    pub page_number: usize,
+    pub page_size: usize,
 }
 
 /// 玩家列表子项
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct PlayerListItem {
     pub id: u32,
     pub username: String,
@@ -32,11 +32,11 @@ pub struct PlayerListItem {
 }
 
 /// 玩家列表回复
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct PlayerListResponse {
     pub players: Vec<PlayerListItem>,
-    pub cur_page_number: u32,
-    pub total_count: u32,
+    pub cur_page_number: usize,
+    pub total_count: usize,
 }
 
 /// 删除玩家
@@ -60,22 +60,32 @@ pub struct PlayerUpdateReq {
     pub password: String,
 }
 
-/// 通道列表子项
+/// 玩家列表回复
 #[derive(Serialize, Deserialize)]
+pub struct ChannelListRequest {
+    // 页码  从1开始
+    pub page_number: usize,
+    pub page_size: usize,
+}
+
+/// 通道列表子项
+#[derive(Serialize, Deserialize, Clone)]
 pub struct ChannelListItem {
     pub id: u32,
     pub source: String,
     pub endpoint: String,
-    pub enabled: u8,
+    pub enabled: bool,
     pub sender: u32,
     pub receiver: u32,
     pub description: String,
 }
 
 /// 通道列表回复
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct ChannelListResponse {
     pub channels: Vec<ChannelListItem>,
+    pub cur_page_number: usize,
+    pub total_count: usize,
 }
 
 /// 删除通道请求
@@ -87,7 +97,6 @@ pub struct ChannelRemoveReq {
 /// 新增通道请求
 #[derive(Serialize, Deserialize)]
 pub struct ChannelAddReq {
-    pub id: u32,
     pub source: String,
     pub endpoint: String,
     pub enabled: u8,

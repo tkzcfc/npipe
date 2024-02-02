@@ -181,8 +181,8 @@ async fn player_list(
         Data,
         "SELECT id, username, password FROM user WHERE type = ? LIMIT ? OFFSET ?",
         0,
-        page_size,
-        offset
+        page_size as u32,
+        offset as u32
     )
     .fetch_all(GLOBAL_DB_POOL.get().unwrap())
     .await
@@ -221,7 +221,7 @@ async fn player_list(
     Ok(HttpResponse::Ok().json(proto::PlayerListResponse {
         players,
         cur_page_number: req.page_number,
-        total_count: total_count as u32,
+        total_count: total_count as usize,
     }))
 }
 
@@ -313,20 +313,70 @@ async fn update_player(
     }
 }
 
-async fn channel_list(identity: Option<Identity>) -> actix_web::Result<impl Responder> {
+async fn channel_list(
+    identity: Option<Identity>,
+    body: String,
+) -> actix_web::Result<impl Responder> {
     if let Some(result) = authentication(identity) {
         return result;
     }
 
-    let channels: Vec<proto::ChannelListItem> = sqlx::query_as!(
-        proto::ChannelListItem,
-        "SELECT id, source, endpoint, enabled, sender, receiver, description FROM channel"
-    )
-    .fetch_all(GLOBAL_DB_POOL.get().unwrap())
-    .await
-    .map_err(map_db_err)?;
+    let req = serde_json::from_str::<proto::PlayerListRequest>(&body)?;
+    let page_number = req.page_number;
+    let page_size = if req.page_size <= 0 || req.page_size > 100 {
+        1
+    } else {
+        req.page_size
+    };
+    let offset = page_number * page_size;
 
-    Ok(HttpResponse::Ok().json(proto::ChannelListResponse { channels }))
+    struct Data {
+        id: u32,
+        source: String,
+        endpoint: String,
+        enabled: u8,
+        sender: u32,
+        receiver: u32,
+        description: String,
+    }
+    // 分页查询数据
+    let data_list: Vec<Data> = sqlx::query_as!(
+        Data,
+        "SELECT id, source, endpoint, enabled, sender, receiver, description FROM channel LIMIT ? OFFSET ?",
+        page_size as u32,
+        offset as u32
+    )
+        .fetch_all(GLOBAL_DB_POOL.get().unwrap())
+        .await
+        .map_err(map_db_err)?;
+
+    // 查询总条数
+    let count_query = "SELECT COUNT(*) FROM channel";
+    let total_count: i64 = sqlx::query_scalar(count_query)
+        .bind(0)
+        .fetch_one(GLOBAL_DB_POOL.get().unwrap())
+        .await
+        .map_err(map_db_err)?;
+
+    let mut channels: Vec<proto::ChannelListItem> = Vec::new();
+
+    for data in data_list {
+        channels.push(proto::ChannelListItem {
+            id: data.id,
+            source: data.source,
+            endpoint: data.endpoint,
+            enabled: data.enabled != 0,
+            sender: data.sender,
+            receiver: data.receiver,
+            description: data.description,
+        })
+    }
+
+    Ok(HttpResponse::Ok().json(proto::ChannelListResponse {
+        channels,
+        cur_page_number: req.page_number,
+        total_count: total_count as usize,
+    }))
 }
 
 async fn remove_channel(
@@ -373,7 +423,7 @@ async fn add_channel(
         .add_channel(Channel {
             source: req.source,
             endpoint: req.endpoint,
-            id: req.id,
+            id: 0,
             enabled: req.enabled,
             sender: req.sender,
             receiver: req.receiver,
