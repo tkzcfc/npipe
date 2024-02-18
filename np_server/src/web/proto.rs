@@ -62,7 +62,7 @@ pub struct PlayerUpdateReq {
 
 /// 玩家列表回复
 #[derive(Serialize, Deserialize)]
-pub struct ChannelListRequest {
+pub struct TunnelListRequest {
     // 页码  从1开始
     pub page_number: usize,
     pub page_size: usize,
@@ -70,7 +70,7 @@ pub struct ChannelListRequest {
 
 /// 通道列表子项
 #[derive(Serialize, Deserialize, Clone)]
-pub struct ChannelListItem {
+pub struct TunnelListItem {
     pub id: u32,
     pub source: String,
     pub endpoint: String,
@@ -82,21 +82,21 @@ pub struct ChannelListItem {
 
 /// 通道列表回复
 #[derive(Serialize, Deserialize, Clone)]
-pub struct ChannelListResponse {
-    pub channels: Vec<ChannelListItem>,
+pub struct TunnelListResponse {
+    pub tunnels: Vec<TunnelListItem>,
     pub cur_page_number: usize,
     pub total_count: usize,
 }
 
 /// 删除通道请求
 #[derive(Serialize, Deserialize)]
-pub struct ChannelRemoveReq {
+pub struct TunnelRemoveReq {
     pub id: u32,
 }
 
 /// 新增通道请求
 #[derive(Serialize, Deserialize)]
-pub struct ChannelAddReq {
+pub struct TunnelAddReq {
     pub source: String,
     pub endpoint: String,
     pub enabled: u8,
@@ -107,7 +107,7 @@ pub struct ChannelAddReq {
 
 /// 修改通道请求
 #[derive(Serialize, Deserialize)]
-pub struct ChannelUpdateReq {
+pub struct TunnelUpdateReq {
     pub id: u32,
     pub source: String,
     pub endpoint: String,

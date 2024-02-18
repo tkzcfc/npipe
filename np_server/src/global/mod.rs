@@ -33,10 +33,10 @@ pub(crate) async fn init_global() -> anyhow::Result<()> {
 
     // 加载所有通道信息
     GLOBAL_MANAGER
-        .channel_manager
+        .tunnel_manager
         .write()
         .await
-        .load_all_channel()
+        .load_all_tunnel()
         .await?;
 
     // 加载所有的玩家信息

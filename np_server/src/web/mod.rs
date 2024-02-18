@@ -1,6 +1,6 @@
 mod proto;
 
-use crate::global::manager::channel::Channel;
+use crate::global::manager::tunnel::Tunnel;
 use crate::global::manager::player::PlayerDbData;
 use crate::global::manager::GLOBAL_MANAGER;
 use crate::global::GLOBAL_DB_POOL;
@@ -38,10 +38,10 @@ pub async fn run_http_server(addr: &SocketAddr, web_base_dir: String) -> anyhow:
             .service(web::resource("/api/remove_player").route(web::post().to(remove_player)))
             .service(web::resource("/api/add_player").route(web::post().to(add_player)))
             .service(web::resource("/api/update_player").route(web::post().to(update_player)))
-            .service(web::resource("/api/channel_list").route(web::post().to(channel_list)))
-            .service(web::resource("/api/remove_channel").route(web::post().to(remove_channel)))
-            .service(web::resource("/api/add_channel").route(web::post().to(add_channel)))
-            .service(web::resource("/api/update_channel").route(web::post().to(update_channel)))
+            .service(web::resource("/api/tunnel_list").route(web::post().to(tunnel_list)))
+            .service(web::resource("/api/remove_tunnel").route(web::post().to(remove_tunnel)))
+            .service(web::resource("/api/add_tunnel").route(web::post().to(add_tunnel)))
+            .service(web::resource("/api/update_tunnel").route(web::post().to(update_tunnel)))
             .service(actix_files::Files::new("/", web_base_dir.as_str()).index_file("index.html"))
             .wrap(IdentityMiddleware::default())
             .wrap(
@@ -313,7 +313,7 @@ async fn update_player(
     }
 }
 
-async fn channel_list(
+async fn tunnel_list(
     identity: Option<Identity>,
     body: String,
 ) -> actix_web::Result<impl Responder> {
@@ -342,7 +342,7 @@ async fn channel_list(
     // 分页查询数据
     let data_list: Vec<Data> = sqlx::query_as!(
         Data,
-        "SELECT id, source, endpoint, enabled, sender, receiver, description FROM channel LIMIT ? OFFSET ?",
+        "SELECT id, source, endpoint, enabled, sender, receiver, description FROM tunnel LIMIT ? OFFSET ?",
         page_size as u32,
         offset as u32
     )
@@ -351,17 +351,17 @@ async fn channel_list(
         .map_err(map_db_err)?;
 
     // 查询总条数
-    let count_query = "SELECT COUNT(*) FROM channel";
+    let count_query = "SELECT COUNT(*) FROM tunnel";
     let total_count: i64 = sqlx::query_scalar(count_query)
         .bind(0)
         .fetch_one(GLOBAL_DB_POOL.get().unwrap())
         .await
         .map_err(map_db_err)?;
 
-    let mut channels: Vec<proto::ChannelListItem> = Vec::new();
+    let mut tunnels: Vec<proto::TunnelListItem> = Vec::new();
 
     for data in data_list {
-        channels.push(proto::ChannelListItem {
+        tunnels.push(proto::TunnelListItem {
             id: data.id,
             source: data.source,
             endpoint: data.endpoint,
@@ -372,14 +372,14 @@ async fn channel_list(
         })
     }
 
-    Ok(HttpResponse::Ok().json(proto::ChannelListResponse {
-        channels,
+    Ok(HttpResponse::Ok().json(proto::TunnelListResponse {
+        tunnels,
         cur_page_number: req.page_number,
         total_count: total_count as usize,
     }))
 }
 
-async fn remove_channel(
+async fn remove_tunnel(
     identity: Option<Identity>,
     body: String,
 ) -> actix_web::Result<impl Responder> {
@@ -387,12 +387,12 @@ async fn remove_channel(
         return result;
     }
 
-    let req = serde_json::from_str::<proto::ChannelRemoveReq>(&body)?;
+    let req = serde_json::from_str::<proto::TunnelRemoveReq>(&body)?;
     if let Err(err) = GLOBAL_MANAGER
-        .channel_manager
+        .tunnel_manager
         .write()
         .await
-        .delete_channel(req.id)
+        .delete_tunnel(req.id)
         .await
     {
         Ok(HttpResponse::Ok().json(proto::GeneralResponse {
@@ -407,7 +407,7 @@ async fn remove_channel(
     }
 }
 
-async fn add_channel(
+async fn add_tunnel(
     identity: Option<Identity>,
     body: String,
 ) -> actix_web::Result<impl Responder> {
@@ -415,12 +415,12 @@ async fn add_channel(
         return result;
     }
 
-    let req = serde_json::from_str::<proto::ChannelAddReq>(&body)?;
+    let req = serde_json::from_str::<proto::TunnelAddReq>(&body)?;
     if let Err(err) = GLOBAL_MANAGER
-        .channel_manager
+        .tunnel_manager
         .write()
         .await
-        .add_channel(Channel {
+        .add_tunnel(Tunnel {
             source: req.source,
             endpoint: req.endpoint,
             id: 0,
@@ -443,7 +443,7 @@ async fn add_channel(
     }
 }
 
-async fn update_channel(
+async fn update_tunnel(
     identity: Option<Identity>,
     body: String,
 ) -> actix_web::Result<impl Responder> {
@@ -451,12 +451,12 @@ async fn update_channel(
         return result;
     }
 
-    let req = serde_json::from_str::<proto::ChannelUpdateReq>(&body)?;
+    let req = serde_json::from_str::<proto::TunnelUpdateReq>(&body)?;
     if let Err(err) = GLOBAL_MANAGER
-        .channel_manager
+        .tunnel_manager
         .write()
         .await
-        .update_channel(Channel {
+        .update_tunnel(Tunnel {
             source: req.source,
             endpoint: req.endpoint,
             id: req.id,

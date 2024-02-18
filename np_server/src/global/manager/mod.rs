@@ -1,21 +1,21 @@
 use self::player::PlayerManager;
-use crate::global::manager::channel::ChannelManager;
 use once_cell::sync::Lazy;
 use tokio::sync::RwLock;
+use self::tunnel::TunnelManager;
 
-pub mod channel;
+pub mod tunnel;
 pub mod player;
 
 pub struct GlobalManager {
     pub player_manager: RwLock<PlayerManager>,
-    pub channel_manager: RwLock<ChannelManager>,
+    pub tunnel_manager: RwLock<TunnelManager>,
 }
 
 impl GlobalManager {
     fn new() -> Self {
         Self {
             player_manager: RwLock::new(PlayerManager::new()),
-            channel_manager: RwLock::new(ChannelManager::new()),
+            tunnel_manager: RwLock::new(TunnelManager::new()),
         }
     }
 }
