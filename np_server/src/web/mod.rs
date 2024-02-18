@@ -1,7 +1,7 @@
 mod proto;
 
-use crate::global::manager::tunnel::Tunnel;
 use crate::global::manager::player::PlayerDbData;
+use crate::global::manager::tunnel::Tunnel;
 use crate::global::manager::GLOBAL_MANAGER;
 use crate::global::GLOBAL_DB_POOL;
 use crate::utils::str::{is_valid_password, is_valid_username};
@@ -407,10 +407,7 @@ async fn remove_tunnel(
     }
 }
 
-async fn add_tunnel(
-    identity: Option<Identity>,
-    body: String,
-) -> actix_web::Result<impl Responder> {
+async fn add_tunnel(identity: Option<Identity>, body: String) -> actix_web::Result<impl Responder> {
     if let Some(result) = authentication(identity) {
         return result;
     }

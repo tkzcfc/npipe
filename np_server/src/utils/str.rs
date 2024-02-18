@@ -70,7 +70,7 @@ pub fn get_tunnel_address_port(addr: &str) -> Option<u16> {
             Some(value)
         } else {
             None
-        }
+        };
     }
     None
 }

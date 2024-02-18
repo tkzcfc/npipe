@@ -1,10 +1,10 @@
 use self::player::PlayerManager;
+use self::tunnel::TunnelManager;
 use once_cell::sync::Lazy;
 use tokio::sync::RwLock;
-use self::tunnel::TunnelManager;
 
-pub mod tunnel;
 pub mod player;
+pub mod tunnel;
 
 pub struct GlobalManager {
     pub player_manager: RwLock<PlayerManager>,

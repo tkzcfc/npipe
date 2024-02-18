@@ -1,5 +1,7 @@
 use crate::global::GLOBAL_DB_POOL;
-use crate::utils::str::{is_valid_tunnel_endpoint_address, is_valid_tunnel_source_address};
+use crate::utils::str::{
+    get_tunnel_address_port, is_valid_tunnel_endpoint_address, is_valid_tunnel_source_address,
+};
 use anyhow::anyhow;
 
 #[derive(Debug)]
@@ -46,6 +48,15 @@ impl TunnelManager {
             return Err(anyhow!("Address format error"));
         }
 
+        // 端口冲突检测
+        if self.port_conflict_detection(
+            tunnel.sender,
+            get_tunnel_address_port(&tunnel.source),
+            None,
+        ) {
+            return Err(anyhow!("Port Conflict"));
+        }
+
         let tunnel_id = sqlx::query!(
                 "INSERT INTO tunnel (source, endpoint, enabled, sender, receiver, description) VALUES (?, ?, ?, ?, ?, ?)",
                 tunnel.source,
@@ -76,19 +87,26 @@ impl TunnelManager {
             }
             return Ok(());
         }
-        Err(anyhow!(format!(
-            "Unable to find tunnel_id: {}",
-            tunnel_id
-        )))
+        Err(anyhow!(format!("Unable to find tunnel_id: {}", tunnel_id)))
     }
 
     /// 更新通道
     pub async fn update_tunnel(&mut self, tunnel: Tunnel) -> anyhow::Result<()> {
+        // 地址合法性检测
         if !is_valid_tunnel_source_address(&tunnel.source)
             || !is_valid_tunnel_endpoint_address(&tunnel.endpoint)
         {
             return Err(anyhow!("Address format error"));
         }
+        // 端口冲突检测
+        if self.port_conflict_detection(
+            tunnel.sender,
+            get_tunnel_address_port(&tunnel.source),
+            Some(tunnel.id),
+        ) {
+            return Err(anyhow!("Port Conflict"));
+        }
+
         if let Some(index) = self.tunnels.iter().position(|it| it.id == tunnel.id) {
             if sqlx::query!(
                 "UPDATE tunnel SET source = ?, endpoint = ?, enabled = ?, sender = ?, receiver = ?, description = ? WHERE id = ?",
@@ -111,11 +129,23 @@ impl TunnelManager {
             )));
         }
 
-        Err(anyhow!(format!(
-            "Unable to find tunnel_id: {}",
-            tunnel.id
-        )))
+        Err(anyhow!(format!("Unable to find tunnel_id: {}", tunnel.id)))
     }
 
-
+    /// 检测端口是否冲突
+    fn port_conflict_detection(
+        &self,
+        sender: u32,
+        port: Option<u16>,
+        tunnel_id: Option<u32>,
+    ) -> bool {
+        self.tunnels
+            .iter()
+            .position(|x| {
+                x.sender == sender
+                    && tunnel_id != Some(x.id)
+                    && get_tunnel_address_port(&x.source) == port
+            })
+            .is_some()
+    }
 }
