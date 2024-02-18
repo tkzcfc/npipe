@@ -11,6 +11,6 @@ pub struct Opts {
     pub backtrace: bool,
 
     /// Set log level
-    #[arg(long, default_value = "debug")]
+    #[arg(long, default_value = "warn")]
     pub log_level: String,
 }
