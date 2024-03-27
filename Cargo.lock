@@ -2738,6 +2738,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "np_client"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "num",
+ "tokio",
+]
+
+[[package]]
 name = "np_proto"
 version = "0.1.0"
 dependencies = [

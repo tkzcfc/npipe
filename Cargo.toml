@@ -6,4 +6,5 @@ members = [
     "np_test_gui",
     "np_server",
     "np_test",
+    "np_client",
 ]
