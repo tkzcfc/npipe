@@ -6,6 +6,7 @@ use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
+use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::select;
 use tokio::sync::mpsc::unbounded_channel;
@@ -91,8 +92,15 @@ pub async fn run_server(
     // 此处必须将 shutdown_complete_tx 并销毁，否则会一直卡在shutdown_complete_rx.recv().await
     drop(shutdown_complete_tx);
 
-    // 等待会话关闭清理逻辑全部完成
-    let _ = shutdown_complete_rx.recv().await;
+    // 等待服务器优雅退出任务
+    let wait_task = async {
+        let _ = shutdown_complete_rx.recv().await;
+    };
+
+    // 设置超时时间，无法优雅退出则强制退出
+    if let Err(_) = tokio::time::timeout(Duration::from_secs(600), wait_task).await {
+        error!("Exit timeout, forced exit");
+    }
 
     info!("Shutdown finish");
 }
