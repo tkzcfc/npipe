@@ -7,14 +7,14 @@ mod web;
 use crate::global::config::GLOBAL_CONFIG;
 use crate::peer::Peer;
 use anyhow::anyhow;
-use np_base::net::server;
+use np_base::net::tcp_server;
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
 use tokio::{select, signal};
 
 pub async fn run_tcp_server() -> anyhow::Result<()> {
-    let listener = server::bind(GLOBAL_CONFIG.listen_addr.as_str()).await?;
-    server::run_server(
+    let listener = tcp_server::bind(GLOBAL_CONFIG.listen_addr.as_str()).await?;
+    tcp_server::run_server(
         listener,
         || Box::new(Peer::new()),
         |stream: TcpStream| async move { Ok(stream) },
