@@ -1,5 +1,5 @@
 use crate::peer::package_and_send_message;
-use np_base::net::session::WriterMessage;
+use np_base::net::tcp_session::WriterMessage;
 use np_proto::generic;
 use np_proto::message_map::MessageType;
 use std::sync::Arc;

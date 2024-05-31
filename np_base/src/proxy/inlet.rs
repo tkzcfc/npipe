@@ -1,6 +1,6 @@
-use crate::net::session::WriterMessage;
+use crate::net::tcp_session::WriterMessage;
 use crate::net::session_logic::SessionLogic;
-use crate::net::tcp_server;
+use crate::net::{tcp_server, udp_server};
 use async_trait::async_trait;
 use bytes::BytesMut;
 use std::net::SocketAddr;
@@ -35,15 +35,12 @@ impl Inlet {
         self.stop().await;
 
         let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
-
-        self.shutdown_tx = Option::Some(shutdown_tx);
-
-        let addr = listen_addr.parse::<SocketAddr>()?;
         let worker_notify = self.notify.clone();
 
         match self.proxy {
             InletProxyType::TCP => {
-                let listener = TcpListener::bind(addr).await?;
+                let listener = tcp_server::bind(&listen_addr).await?;
+                self.shutdown_tx = Some(shutdown_tx);
                 tokio::spawn(async move {
                     tcp_server::run_server(
                         listener,
@@ -58,16 +55,19 @@ impl Inlet {
                 });
             }
             InletProxyType::UDP => {
-                let udpsocket = UdpSocket::bind(addr).await?;
+                let socket = udp_server::bind(&listen_addr).await?;
+                self.shutdown_tx = Some(shutdown_tx);
                 tokio::spawn(async move {
                     // 循环读取中...
                     let mut buf = [0; 1024];
-                    let recv_task = async { loop {
-                        // 接收数据
-                        if let Ok((len, addr)) = udpsocket.recv_from(&mut buf).await {
-                            println!("Received {} bytes from {}", len, addr);
+                    let recv_task = async {
+                        loop {
+                            // 接收数据
+                            if let Ok((len, addr)) = socket.recv_from(&mut buf).await {
+                                println!("Received {} bytes from {}", len, addr);
+                            }
                         }
-                    }};
+                    };
 
                     select! {
                         _= recv_task => {},

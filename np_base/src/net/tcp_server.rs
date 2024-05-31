@@ -1,4 +1,4 @@
-use crate::net::session::Session;
+use crate::net::tcp_session::Session;
 use crate::net::session_logic::SessionLogic;
 use log::error;
 use log::{info, trace};
@@ -45,7 +45,7 @@ pub async fn bind(addr: &str) -> io::Result<TcpListener> {
     let addr = addr.parse::<SocketAddr>();
     match addr {
         Ok(addr) => {
-            info!("Start listening: {}", addr);
+            info!("TCP Server start listening: {}", addr);
             TcpListener::bind(addr).await
         }
         Err(parse_error) => Err(std::io::Error::new(
@@ -73,11 +73,11 @@ pub async fn run_server(
     select! {
         res = server.run(listener, on_create_session_logic_callback, on_stream_init_callback) => {
             if let Err(err) = res {
-                error!("Failed to accept, {}", err);
+                error!("TCP Server failed to accept, {}", err);
             }
         },
         _ = shutdown => {
-            info!("Shutting down");
+            info!("TCP Server shutting down");
         }
     }
 
@@ -99,10 +99,10 @@ pub async fn run_server(
 
     // 设置超时时间，无法优雅退出则强制退出
     if let Err(_) = tokio::time::timeout(Duration::from_secs(600), wait_task).await {
-        error!("Exit timeout, forced exit");
+        error!("TCP Server exit timeout, forced exit");
     }
 
-    info!("Shutdown finish");
+    info!("TCP Server shutdown finish");
 }
 
 impl Server {
@@ -130,7 +130,7 @@ impl Server {
 
                     // 新连接单独起一个异步任务处理
                     tokio::spawn(async move {
-                        trace!("new connection: {}", addr);
+                        trace!("TCP Server new connection: {}", addr);
 
                         let (tx, rx) = unbounded_channel();
                         let (reader, writer) = tokio::io::split(stream);
@@ -138,11 +138,11 @@ impl Server {
                         let mut session = Session::new(tx.clone(), addr, logic, shutdown_complete);
                         session.run(session_id, rx, reader, writer, shutdown).await;
 
-                        trace!("disconnect: {}", addr);
+                        trace!("TCP Server disconnect: {}", addr);
                     });
                 }
                 Err(error) => {
-                    error!("on_stream_init error:{}", error.to_string());
+                    error!("TCP Server on_stream_init error:{}", error.to_string());
                 }
             }
         }
