@@ -1,4 +1,4 @@
-use crate::net::session_logic::SessionLogic;
+use crate::net::session_delegate::SessionDelegate;
 use bytes::BytesMut;
 use log::{debug, error};
 use std::net::SocketAddr;
@@ -23,7 +23,7 @@ pub(crate) struct TcpSession {
     tx: UnboundedSender<WriterMessage>,
     addr: SocketAddr,
     closed: bool,
-    logic: Box<dyn SessionLogic>,
+    logic: Box<dyn SessionDelegate>,
 }
 
 impl Drop for TcpSession {
@@ -34,7 +34,7 @@ impl TcpSession {
     pub fn new(
         tx: UnboundedSender<WriterMessage>,
         addr: SocketAddr,
-        logic: Box<dyn SessionLogic>,
+        logic: Box<dyn SessionDelegate>,
     ) -> Self {
         Self {
             tx,

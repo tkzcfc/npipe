@@ -1,4 +1,4 @@
-use crate::net::session_logic::SessionLogic;
+use crate::net::session_delegate::SessionDelegate;
 use crate::net::tcp_session::WriterMessage;
 use crate::net::{tcp_server, udp_server};
 use async_trait::async_trait;
@@ -98,7 +98,7 @@ impl InletSession {
 }
 
 #[async_trait]
-impl SessionLogic for InletSession {
+impl SessionDelegate for InletSession {
     fn on_session_start(&mut self, _session_id: u32, _tx: UnboundedSender<WriterMessage>) {}
 
     async fn on_session_close(&mut self) {}

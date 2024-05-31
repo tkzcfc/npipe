@@ -1,4 +1,4 @@
-use crate::net::tcp_server::CreateSessionLogicCallback;
+use crate::net::tcp_server::CreateSessionDelegateCallback;
 use crate::net::tcp_session::WriterMessage;
 use log::{error, info, trace};
 use std::cell::RefCell;
@@ -30,7 +30,7 @@ pub async fn bind(addr: &str) -> io::Result<UdpSocket> {
 
 pub async fn run_server(
     socket: UdpSocket,
-    on_create_session_logic_callback: CreateSessionLogicCallback,
+    on_create_session_delegate_callback: CreateSessionDelegateCallback,
     shutdown: impl Future,
 ) {
     let (notify_shutdown, receiver_shutdown) = broadcast::channel::<()>(1);
@@ -55,7 +55,7 @@ pub async fn run_server(
                     session_id_seed += 1;
                     let session_id = session_id_seed;
 
-                    let logic = on_create_session_logic_callback();
+                    let logic = on_create_session_delegate_callback();
 
                     // 通知会话结束
                     let shutdown = receiver_shutdown.resubscribe();

@@ -6,7 +6,7 @@ use bytes::BytesMut;
 use tokio::sync::mpsc::UnboundedSender;
 
 #[async_trait]
-pub trait SessionLogic
+pub trait SessionDelegate
 where
     Self: Sync + Send,
 {

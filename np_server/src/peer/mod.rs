@@ -6,7 +6,7 @@ use crate::player::Player;
 use async_trait::async_trait;
 use byteorder::{BigEndian, ByteOrder};
 use log::{error, trace};
-use np_base::net::session_logic::SessionLogic;
+use np_base::net::session_delegate::SessionDelegate;
 use np_base::net::tcp_session::WriterMessage;
 use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size, MessageType};
 use np_proto::{generic, message_map};
@@ -69,7 +69,7 @@ impl Peer {
 }
 
 #[async_trait]
-impl SessionLogic for Peer {
+impl SessionDelegate for Peer {
     fn on_session_start(&mut self, session_id: u32, tx: UnboundedSender<WriterMessage>) {
         self.tx = Some(tx);
         self.session_id = session_id;

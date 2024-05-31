@@ -1,4 +1,4 @@
-use crate::net::session_logic::SessionLogic;
+use crate::net::session_delegate::SessionDelegate;
 use crate::net::tcp_session::WriterMessage;
 use log::error;
 use std::net::SocketAddr;
@@ -11,7 +11,7 @@ use tokio::task::yield_now;
 use tokio::time::sleep;
 
 
-async fn poll_read(logic: &mut Box<dyn SessionLogic>, mut udp_recv_receiver: UnboundedReceiver<(Vec<u8>)>) {
+async fn poll_read(logic: &mut Box<dyn SessionDelegate>, mut udp_recv_receiver: UnboundedReceiver<(Vec<u8>)>) {
     while let Some(data) = udp_recv_receiver.recv().await {
         if !logic.on_recv_frame(data).await {
             break;
@@ -63,7 +63,7 @@ async fn poll_write(
 pub async fn run(
     session_id: u32,
     addr: SocketAddr,
-    mut logic: Box<dyn SessionLogic>,
+    mut logic: Box<dyn SessionDelegate>,
     udp_recv_receiver: UnboundedReceiver<(Vec<u8>)>,
     mut shutdown: broadcast::Receiver<()>,
     socket: Arc<Mutex<UdpSocket>>,

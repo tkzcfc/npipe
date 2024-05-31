@@ -1,4 +1,4 @@
-use crate::net::session_logic::SessionLogic;
+use crate::net::session_delegate::SessionDelegate;
 use crate::net::tcp_session::TcpSession;
 use log::error;
 use log::{info, trace};
@@ -12,7 +12,7 @@ use tokio::select;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::{broadcast, mpsc};
 
-pub type CreateSessionLogicCallback = fn() -> Box<dyn SessionLogic>;
+pub type CreateSessionDelegateCallback = fn() -> Box<dyn SessionDelegate>;
 
 pub type OnStreamInitReturnType = anyhow::Result<TcpStream>;
 pub trait OnStreamInitCallback {
@@ -58,7 +58,7 @@ pub async fn bind(addr: &str) -> io::Result<TcpListener> {
 /// Start TCP Server
 pub async fn run_server(
     listener: TcpListener,
-    on_create_session_logic_callback: CreateSessionLogicCallback,
+    on_create_session_delegate_callback: CreateSessionDelegateCallback,
     on_stream_init_callback: impl OnStreamInitCallback,
     shutdown: impl Future,
 ) {
@@ -71,7 +71,7 @@ pub async fn run_server(
     };
 
     select! {
-        res = server.run(listener, on_create_session_logic_callback, on_stream_init_callback) => {
+        res = server.run(listener, on_create_session_delegate_callback, on_stream_init_callback) => {
             if let Err(err) = res {
                 error!("TCP Server failed to accept, {}", err);
             }
@@ -109,7 +109,7 @@ impl Server {
     async fn run(
         &self,
         listener: TcpListener,
-        on_create_session_logic_callback: CreateSessionLogicCallback,
+        on_create_session_delegate_callback: CreateSessionDelegateCallback,
         on_stream_init_callback: impl OnStreamInitCallback,
     ) -> anyhow::Result<()> {
         let mut session_id_seed = 0;
@@ -121,7 +121,7 @@ impl Server {
                     session_id_seed += 1;
                     let session_id = session_id_seed;
 
-                    let logic = on_create_session_logic_callback();
+                    let logic = on_create_session_delegate_callback();
                     let shutdown = self.notify_shutdown.subscribe();
                     let shutdown_complete = self.shutdown_complete_tx.clone();
 
