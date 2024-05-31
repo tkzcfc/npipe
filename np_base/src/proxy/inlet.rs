@@ -1,5 +1,5 @@
-use crate::net::tcp_session::WriterMessage;
 use crate::net::session_logic::SessionLogic;
+use crate::net::tcp_session::WriterMessage;
 use crate::net::{tcp_server, udp_server};
 use async_trait::async_trait;
 use bytes::BytesMut;
@@ -58,21 +58,21 @@ impl Inlet {
                 let socket = udp_server::bind(&listen_addr).await?;
                 self.shutdown_tx = Some(shutdown_tx);
                 tokio::spawn(async move {
-                    // 循环读取中...
-                    let mut buf = [0; 1024];
-                    let recv_task = async {
-                        loop {
-                            // 接收数据
-                            if let Ok((len, addr)) = socket.recv_from(&mut buf).await {
-                                println!("Received {} bytes from {}", len, addr);
-                            }
-                        }
-                    };
-
-                    select! {
-                        _= recv_task => {},
-                        _= shutdown_rx.recv() => {}
-                    };
+                    // // 循环读取中...
+                    // let mut buf = [0; 1024];
+                    // let recv_task = async {
+                    //     loop {
+                    //         // 接收数据
+                    //         if let Ok((len, addr)) = socket.recv_from(&mut buf).await {
+                    //             println!("Received {} bytes from {}", len, addr);
+                    //         }
+                    //     }
+                    // };
+                    //
+                    // select! {
+                    //     _= recv_task => {},
+                    //     _= shutdown_rx.recv() => {}
+                    // };
                     worker_notify.notify_one();
                 });
             }

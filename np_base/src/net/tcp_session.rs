@@ -7,8 +7,8 @@ use tokio::io::{
     AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf,
 };
 use tokio::select;
+use tokio::sync::broadcast;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tokio::sync::{broadcast, mpsc};
 use tokio::task::yield_now;
 use tokio::time::sleep;
 
@@ -19,31 +19,28 @@ pub enum WriterMessage {
     Send(Vec<u8>, bool),
 }
 
-pub struct Session {
-    pub tx: UnboundedSender<WriterMessage>,
-    pub addr: SocketAddr,
+pub(crate) struct TcpSession {
+    tx: UnboundedSender<WriterMessage>,
+    addr: SocketAddr,
     closed: bool,
     logic: Box<dyn SessionLogic>,
-    _shutdown_complete: mpsc::Sender<()>,
 }
 
-impl Drop for Session {
+impl Drop for TcpSession {
     fn drop(&mut self) {}
 }
 
-impl Session {
+impl TcpSession {
     pub fn new(
         tx: UnboundedSender<WriterMessage>,
         addr: SocketAddr,
         logic: Box<dyn SessionLogic>,
-        _shutdown_complete: mpsc::Sender<()>,
-    ) -> Session {
-        Session {
+    ) -> Self {
+        Self {
             tx,
             addr,
             closed: false,
             logic,
-            _shutdown_complete,
         }
     }
 

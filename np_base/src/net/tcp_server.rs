@@ -1,5 +1,5 @@
-use crate::net::tcp_session::Session;
 use crate::net::session_logic::SessionLogic;
+use crate::net::tcp_session::TcpSession;
 use log::error;
 use log::{info, trace};
 use std::future::Future;
@@ -87,7 +87,7 @@ pub async fn run_server(
         shutdown_complete_tx,
     } = server;
 
-    // 销毁notify_shutdown 是为了触发 session.rc run函数中shutdown.recv()返回
+    // 销毁notify_shutdown 是为了触发 tcp_session run函数中shutdown.recv()返回
     drop(notify_shutdown);
     // 此处必须将 shutdown_complete_tx 并销毁，否则会一直卡在shutdown_complete_rx.recv().await
     drop(shutdown_complete_tx);
@@ -118,24 +118,22 @@ impl Server {
 
             match on_stream_init_callback.call(stream).await {
                 Ok(stream) => {
-                    if session_id_seed >= u32::MAX {
-                        session_id_seed = 0;
-                    }
                     session_id_seed += 1;
+                    let session_id = session_id_seed;
 
                     let logic = on_create_session_logic_callback();
                     let shutdown = self.notify_shutdown.subscribe();
                     let shutdown_complete = self.shutdown_complete_tx.clone();
-                    let session_id = session_id_seed;
 
                     // 新连接单独起一个异步任务处理
                     tokio::spawn(async move {
+                        let _shutdown_complete = shutdown_complete;
                         trace!("TCP Server new connection: {}", addr);
 
                         let (tx, rx) = unbounded_channel();
                         let (reader, writer) = tokio::io::split(stream);
 
-                        let mut session = Session::new(tx.clone(), addr, logic, shutdown_complete);
+                        let mut session = TcpSession::new(tx.clone(), addr, logic);
                         session.run(session_id, rx, reader, writer, shutdown).await;
 
                         trace!("TCP Server disconnect: {}", addr);
