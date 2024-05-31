@@ -11,20 +11,20 @@ use tokio::task::yield_now;
 use tokio::time::sleep;
 
 
-async fn poll_read(logic: &mut Box<dyn SessionDelegate>, mut udp_recv_receiver: UnboundedReceiver<(Vec<u8>)>) {
+async fn poll_read(delegate: &mut Box<dyn SessionDelegate>, mut udp_recv_receiver: UnboundedReceiver<(Vec<u8>)>) {
     while let Some(data) = udp_recv_receiver.recv().await {
-        if !logic.on_recv_frame(data).await {
+        if !delegate.on_recv_frame(data).await {
             break;
         }
     }
 }
 
 async fn poll_write(
-    mut logic_receiver: UnboundedReceiver<WriterMessage>,
+    mut delegate_receiver: UnboundedReceiver<WriterMessage>,
     socket: Arc<Mutex<UdpSocket>>,
     addr: SocketAddr,
 ) {
-    while let Some(message) = logic_receiver.recv().await {
+    while let Some(message) = delegate_receiver.recv().await {
         match message {
             WriterMessage::Close => break,
             WriterMessage::CloseDelayed(duration) => {
@@ -48,7 +48,7 @@ async fn poll_write(
         yield_now().await;
     }
 
-    logic_receiver.close();
+    delegate_receiver.close();
 }
 
 /// run
@@ -63,18 +63,18 @@ async fn poll_write(
 pub async fn run(
     session_id: u32,
     addr: SocketAddr,
-    mut logic: Box<dyn SessionDelegate>,
+    mut delegate: Box<dyn SessionDelegate>,
     udp_recv_receiver: UnboundedReceiver<(Vec<u8>)>,
     mut shutdown: broadcast::Receiver<()>,
     socket: Arc<Mutex<UdpSocket>>,
 ) {
-    let (logic_sender, logic_receiver) = unbounded_channel::<WriterMessage>();
-    logic.on_session_start(session_id, logic_sender);
+    let (delegate_sender, delegate_receiver) = unbounded_channel::<WriterMessage>();
+    delegate.on_session_start(session_id, delegate_sender);
     select! {
-            _= poll_read(&mut logic, udp_recv_receiver) => {},
-            _= poll_write(logic_receiver, socket, addr) => {},
+            _= poll_read(&mut delegate, udp_recv_receiver) => {},
+            _= poll_write(delegate_receiver, socket, addr) => {},
             _ = shutdown.recv() => {}
         }
 
-    logic.on_session_close().await;
+    delegate.on_session_close().await;
 }
