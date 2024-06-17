@@ -23,7 +23,7 @@ pub(crate) struct TcpSession {
     tx: UnboundedSender<WriterMessage>,
     addr: SocketAddr,
     closed: bool,
-    logic: Box<dyn SessionDelegate>,
+    delegate: Box<dyn SessionDelegate>,
 }
 
 impl Drop for TcpSession {
@@ -34,13 +34,13 @@ impl TcpSession {
     pub fn new(
         tx: UnboundedSender<WriterMessage>,
         addr: SocketAddr,
-        logic: Box<dyn SessionDelegate>,
+        delegate: Box<dyn SessionDelegate>,
     ) -> Self {
         Self {
             tx,
             addr,
             closed: false,
-            logic,
+            delegate,
         }
     }
 
@@ -67,13 +67,13 @@ impl TcpSession {
     ) where
         S: AsyncRead + AsyncWrite + Send + 'static,
     {
-        self.logic.on_session_start(session_id, self.tx.clone());
+        self.delegate.on_session_start(session_id, self.tx.clone());
         select! {
             _ = self.poll_read(reader) => {}
             _ = Self::poll_write(rx, writer) => {}
             _ = shutdown.recv() => {}
         }
-        self.logic.on_session_close().await;
+        self.delegate.on_session_close().await;
     }
 
     /// 循环写入数据
@@ -143,11 +143,11 @@ impl TcpSession {
                         }
 
                         // 处理数据粘包
-                        match self.logic.on_try_extract_frame(&mut buffer) {
+                        match self.delegate.on_try_extract_frame(&mut buffer) {
                             Ok(result) => {
                                 if let Some(frame) = result {
                                     // 收到完整消息
-                                    if !self.logic.on_recv_frame(frame).await {
+                                    if !self.delegate.on_recv_frame(frame).await {
                                         // 消息处理失败
                                         self.close_session();
                                         return;

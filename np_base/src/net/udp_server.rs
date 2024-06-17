@@ -41,7 +41,7 @@ pub async fn run_server(
         let mut session_id_seed = 0;
         let hashmap: Arc<Mutex<HashMap<SocketAddr, UnboundedSender<Vec<u8>>>>> =
             Arc::new(Mutex::new(HashMap::new()));
-        let mut buf = [0; 65535]; // 最大允许的UDP数据报大小
+        let mut buf = [0; 65535]; // 最大允许的UDP数据包大小
         let socket = Arc::new(Mutex::new(socket));
         loop {
             // 接收数据
@@ -58,7 +58,7 @@ pub async fn run_server(
                     session_id_seed += 1;
                     let session_id = session_id_seed;
 
-                    let logic = on_create_session_delegate_callback();
+                    let delegate = on_create_session_delegate_callback();
 
                     // 通知会话结束
                     let shutdown = receiver_shutdown.resubscribe();
@@ -80,7 +80,7 @@ pub async fn run_server(
                         udp_session::run(
                             session_id,
                             addr,
-                            logic,
+                            delegate,
                             udp_recv_receiver,
                             shutdown,
                             socket_cloned,
@@ -99,7 +99,6 @@ pub async fn run_server(
 
     select! {
     _= recv_task => {
-        // error!("Failed to accept, {}", err);
     },
     _ = shutdown => {
         info!("UDP Server shutting down");

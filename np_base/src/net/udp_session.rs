@@ -12,7 +12,7 @@ use tokio::time::sleep;
 
 async fn poll_read(
     delegate: &mut Box<dyn SessionDelegate>,
-    mut udp_recv_receiver: UnboundedReceiver<(Vec<u8>)>,
+    mut udp_recv_receiver: UnboundedReceiver<Vec<u8>>,
 ) {
     while let Some(data) = udp_recv_receiver.recv().await {
         if !delegate.on_recv_frame(data).await {
@@ -55,23 +55,28 @@ async fn poll_write(
 
 /// run
 ///
-/// [`logic_receiver`] 接收logic发送的各种(写/关闭等)指令
+/// [`session_id`] 会话id
 ///
-/// [`udp_recv_receiver`] 接收udp收到的数据
+/// [`addr`] UDP发送端地址
+///
+/// [`delegate`] 会话代理
+///
+/// [`udp_recv_receiver`] 无界通道接收端，接收udp收到的数据
 ///
 /// [`shutdown`] 监听退出消息
 ///
-/// [`socket`] 写操作对象
+/// [`socket`] UdpSocket对象，用于写入udp数据
 pub async fn run(
     session_id: u32,
     addr: SocketAddr,
     mut delegate: Box<dyn SessionDelegate>,
-    udp_recv_receiver: UnboundedReceiver<(Vec<u8>)>,
+    udp_recv_receiver: UnboundedReceiver<Vec<u8>>,
     mut shutdown: broadcast::Receiver<()>,
     socket: Arc<Mutex<UdpSocket>>,
 ) {
     let (delegate_sender, delegate_receiver) = unbounded_channel::<WriterMessage>();
     delegate.on_session_start(session_id, delegate_sender);
+
     select! {
         _= poll_read(&mut delegate, udp_recv_receiver) => {},
         _= poll_write(delegate_receiver, socket, addr) => {},

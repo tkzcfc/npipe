@@ -121,7 +121,7 @@ impl Server {
                     session_id_seed += 1;
                     let session_id = session_id_seed;
 
-                    let logic = on_create_session_delegate_callback();
+                    let delegate = on_create_session_delegate_callback();
                     let shutdown = self.notify_shutdown.subscribe();
                     let shutdown_complete = self.shutdown_complete_tx.clone();
 
@@ -133,7 +133,7 @@ impl Server {
                         let (tx, rx) = unbounded_channel();
                         let (reader, writer) = tokio::io::split(stream);
 
-                        let mut session = TcpSession::new(tx.clone(), addr, logic);
+                        let mut session = TcpSession::new(tx.clone(), addr, delegate);
                         session.run(session_id, rx, reader, writer, shutdown).await;
 
                         trace!("TCP Server disconnect: {}", addr);
