@@ -1,5 +1,8 @@
 /// 登录回复
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serde-serialize",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct LoginAck {
@@ -15,7 +18,10 @@ pub struct LoginAck {
     pub channel_list: ::prost::alloc::vec::Vec<super::class_def::Channel>,
 }
 /// 管理员登录回复
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serde-serialize",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ManagementLoginAck {
@@ -25,7 +31,10 @@ pub struct ManagementLoginAck {
     pub code: i32,
 }
 /// 修改通道通知
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serde-serialize",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ModifyChannelNtf {
@@ -38,7 +47,10 @@ pub struct ModifyChannelNtf {
     pub channel: ::core::option::Option<super::class_def::Channel>,
 }
 /// 向通道发送消息
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serde-serialize",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SendMessageToChannel {
@@ -51,7 +63,10 @@ pub struct SendMessageToChannel {
     pub data: ::prost::alloc::vec::Vec<u8>,
 }
 /// 从通道收到消息
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serde-serialize",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RecvMessageFromChannel {
