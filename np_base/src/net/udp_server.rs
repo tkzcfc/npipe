@@ -1,7 +1,8 @@
 use crate::net::tcp_server::CreateSessionDelegateCallback;
-use crate::net::tcp_session::WriterMessage;
+
 use log::{error, info, trace};
-use std::cell::RefCell;
+
+use crate::net::udp_session;
 use std::collections::HashMap;
 use std::future::Future;
 use std::io;
@@ -10,9 +11,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::select;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::{broadcast, mpsc, Mutex};
-use crate::net::udp_session;
 
 pub async fn bind(addr: &str) -> io::Result<UdpSocket> {
     let addr = addr.parse::<SocketAddr>();
@@ -39,7 +39,8 @@ pub async fn run_server(
     // 循环读取中...
     let recv_task = async {
         let mut session_id_seed = 0;
-        let hashmap: Arc<Mutex<HashMap<SocketAddr, UnboundedSender<Vec<u8>>>>> = Arc::new(Mutex::new(HashMap::new()));
+        let hashmap: Arc<Mutex<HashMap<SocketAddr, UnboundedSender<Vec<u8>>>>> =
+            Arc::new(Mutex::new(HashMap::new()));
         let mut buf = [0; 65535]; // 最大允许的UDP数据报大小
         let socket = Arc::new(Mutex::new(socket));
         loop {
@@ -48,7 +49,9 @@ pub async fn run_server(
                 if let Some(sender) = hashmap.lock().await.get(&addr) {
                     let received_data = Vec::from(&buf[..len]);
                     if let Err(err) = sender.send(received_data) {
-                        error!("Unable to process received data, data address: {addr}, error: {err}");
+                        error!(
+                            "Unable to process received data, data address: {addr}, error: {err}"
+                        );
                     }
                 } else {
                     // 新的会话id
@@ -74,7 +77,15 @@ pub async fn run_server(
                         // 持有引用
                         let _shutdown_complete = shutdown_complete;
                         trace!("UDP Server new connection: {}", addr);
-                        udp_session::run(session_id, addr, logic, udp_recv_receiver, shutdown, socket_cloned).await;
+                        udp_session::run(
+                            session_id,
+                            addr,
+                            logic,
+                            udp_recv_receiver,
+                            shutdown,
+                            socket_cloned,
+                        )
+                        .await;
                         hashmap_cloned.lock().await.remove(&addr);
                         trace!("UDP Server disconnect: {}", addr);
                     });

@@ -10,8 +10,10 @@ use tokio::sync::{broadcast, Mutex};
 use tokio::task::yield_now;
 use tokio::time::sleep;
 
-
-async fn poll_read(delegate: &mut Box<dyn SessionDelegate>, mut udp_recv_receiver: UnboundedReceiver<(Vec<u8>)>) {
+async fn poll_read(
+    delegate: &mut Box<dyn SessionDelegate>,
+    mut udp_recv_receiver: UnboundedReceiver<(Vec<u8>)>,
+) {
     while let Some(data) = udp_recv_receiver.recv().await {
         if !delegate.on_recv_frame(data).await {
             break;
@@ -71,10 +73,10 @@ pub async fn run(
     let (delegate_sender, delegate_receiver) = unbounded_channel::<WriterMessage>();
     delegate.on_session_start(session_id, delegate_sender);
     select! {
-            _= poll_read(&mut delegate, udp_recv_receiver) => {},
-            _= poll_write(delegate_receiver, socket, addr) => {},
-            _ = shutdown.recv() => {}
-        }
+        _= poll_read(&mut delegate, udp_recv_receiver) => {},
+        _= poll_write(delegate_receiver, socket, addr) => {},
+        _ = shutdown.recv() => {}
+    }
 
     delegate.on_session_close().await;
 }

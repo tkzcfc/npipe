@@ -105,7 +105,9 @@ pub fn encode_message(message: &MessageType) -> Option<(u32, Vec<u8>)> {
         MessageType::ServerClientManagementLoginAck(msg) => Some((1006u32, msg.encode_to_vec())),
         MessageType::ServerClientModifyChannelNtf(msg) => Some((1008u32, msg.encode_to_vec())),
         MessageType::ServerClientSendMessageToChannel(msg) => Some((1010u32, msg.encode_to_vec())),
-        MessageType::ServerClientRecvMessageFromChannel(msg) => Some((1012u32, msg.encode_to_vec())),
+        MessageType::ServerClientRecvMessageFromChannel(msg) => {
+            Some((1012u32, msg.encode_to_vec()))
+        }
         MessageType::GenericSuccess(msg) => Some((150001u32, msg.encode_to_vec())),
         MessageType::GenericFail(msg) => Some((150002u32, msg.encode_to_vec())),
         MessageType::GenericError(msg) => Some((150003u32, msg.encode_to_vec())),
