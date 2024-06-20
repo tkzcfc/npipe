@@ -1,13 +1,11 @@
 use crate::net::session_delegate::SessionDelegate;
 use crate::net::tcp_session::WriterMessage;
 use crate::net::{tcp_server, udp_server};
+use anyhow::anyhow;
 use async_trait::async_trait;
 use bytes::BytesMut;
-use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::net::UdpSocket;
-use tokio::net::{TcpListener, TcpStream};
-use tokio::select;
+use tokio::net::TcpStream;
 use tokio::sync::mpsc::{Sender, UnboundedSender};
 use tokio::sync::{mpsc, Notify};
 
@@ -17,27 +15,30 @@ pub enum InletProxyType {
 }
 
 pub struct Inlet {
-    proxy: InletProxyType,
+    inlet_proxy_type: InletProxyType,
     shutdown_tx: Option<Sender<()>>,
     notify: Arc<Notify>,
 }
 
 impl Inlet {
-    pub fn new(proxy: InletProxyType) -> Self {
+    pub fn new(inlet_proxy_type: InletProxyType) -> Self {
         Self {
-            proxy,
+            inlet_proxy_type,
             shutdown_tx: None,
             notify: Arc::new(Notify::new()),
         }
     }
 
     pub async fn start(&mut self, listen_addr: String) -> anyhow::Result<()> {
-        self.stop().await;
+        // 重复调用启动函数
+        if self.shutdown_tx.is_some() {
+            return Err(anyhow!("Repeated start"));
+        }
 
         let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
         let worker_notify = self.notify.clone();
 
-        match self.proxy {
+        match self.inlet_proxy_type {
             InletProxyType::TCP => {
                 let listener = tcp_server::bind(&listen_addr).await?;
                 self.shutdown_tx = Some(shutdown_tx);
@@ -58,21 +59,10 @@ impl Inlet {
                 let socket = udp_server::bind(&listen_addr).await?;
                 self.shutdown_tx = Some(shutdown_tx);
                 tokio::spawn(async move {
-                    // // 循环读取中...
-                    // let mut buf = [0; 1024];
-                    // let recv_task = async {
-                    //     loop {
-                    //         // 接收数据
-                    //         if let Ok((len, addr)) = socket.recv_from(&mut buf).await {
-                    //             println!("Received {} bytes from {}", len, addr);
-                    //         }
-                    //     }
-                    // };
-                    //
-                    // select! {
-                    //     _= recv_task => {},
-                    //     _= shutdown_rx.recv() => {}
-                    // };
+                    udp_server::run_server(socket, || Box::new(InletSession::new()), async move {
+                        let _ = shutdown_rx.recv().await;
+                    })
+                    .await;
                     worker_notify.notify_one();
                 });
             }
@@ -84,8 +74,13 @@ impl Inlet {
     pub async fn stop(&mut self) {
         if self.shutdown_tx.is_some() {
             self.shutdown_tx.take();
+            // 等待退出完毕
             self.notify.notified().await;
         }
+    }
+
+    pub fn running(&self) -> bool {
+        self.shutdown_tx.is_some()
     }
 }
 

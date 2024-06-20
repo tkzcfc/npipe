@@ -1,4 +1,5 @@
 mod inlet;
+mod outlet;
 
 #[cfg(test)]
 mod tests {
@@ -13,6 +14,7 @@ mod tests {
 
         sleep(Duration::from_secs(1)).await;
 
+        inlet.stop().await;
         inlet.start("0.0.0.0:4000".into()).await.unwrap();
         sleep(Duration::from_secs(1)).await;
 
