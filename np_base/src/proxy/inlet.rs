@@ -1,6 +1,7 @@
 use crate::net::session_delegate::SessionDelegate;
 use crate::net::tcp_session::WriterMessage;
 use crate::net::{tcp_server, udp_server};
+use crate::proxy::r#type::{OutputFuncType, SenderMap};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use bytes::BytesMut;
@@ -14,8 +15,6 @@ pub enum InletProxyType {
     TCP,
     UDP,
 }
-
-type SenderMap = Arc<Mutex<HashMap<u32, UnboundedSender<WriterMessage>>>>;
 
 pub struct Inlet {
     inlet_proxy_type: InletProxyType,
@@ -34,7 +33,11 @@ impl Inlet {
         }
     }
 
-    pub async fn start(&mut self, listen_addr: String) -> anyhow::Result<()> {
+    pub async fn start(
+        &mut self,
+        listen_addr: String,
+        on_output_callback: OutputFuncType,
+    ) -> anyhow::Result<()> {
         // 重复调用启动函数
         if self.shutdown_tx.is_some() {
             return Err(anyhow!("Repeated start"));
@@ -44,11 +47,12 @@ impl Inlet {
         let worker_notify = self.notify.clone();
         let sender_map = self.sender_map.clone();
 
-        let create_session_delegate_func = Box::new(
-            move || -> Box<dyn crate::net::session_delegate::SessionDelegate> {
-                Box::new(InletSession::new(sender_map.clone()))
-            },
-        );
+        let create_session_delegate_func = Box::new(move || -> Box<dyn SessionDelegate> {
+            Box::new(InletSession::new(
+                sender_map.clone(),
+                on_output_callback.clone(),
+            ))
+        });
 
         match self.inlet_proxy_type {
             InletProxyType::TCP => {
@@ -95,30 +99,47 @@ impl Inlet {
         self.shutdown_tx.is_some()
     }
 
-    pub async fn send_to(session_id: u32) {}
+    pub async fn send_to(&self, session_id: u32, message: WriterMessage) -> anyhow::Result<()> {
+        if let Some(sender) = self.sender_map.lock().await.get(&session_id) {
+            sender.send(message)?
+        }
+        Err(anyhow!("invalid session: {session_id}"))
+    }
 }
 
 struct InletSession {
     sender_map: SenderMap,
+    session_id: u32,
+    on_output_callback: OutputFuncType,
 }
 
 impl InletSession {
-    pub fn new(sender_map: SenderMap) -> Self {
-        Self { sender_map }
+    pub fn new(sender_map: SenderMap, on_output_callback: OutputFuncType) -> Self {
+        Self {
+            sender_map,
+            session_id: 0,
+            on_output_callback,
+        }
     }
 }
 
 #[async_trait]
 impl SessionDelegate for InletSession {
-    async fn on_session_start(&mut self, _session_id: u32, _tx: UnboundedSender<WriterMessage>) {}
+    async fn on_session_start(&mut self, session_id: u32, tx: UnboundedSender<WriterMessage>) {
+        self.session_id = session_id;
+        self.sender_map.lock().await.insert(session_id, tx);
+    }
 
-    async fn on_session_close(&mut self) {}
+    async fn on_session_close(&mut self) {
+        self.sender_map.lock().await.remove(&self.session_id);
+    }
 
     fn on_try_extract_frame(&self, buffer: &mut BytesMut) -> anyhow::Result<Option<Vec<u8>>> {
         Ok(Some(buffer.to_vec()))
     }
 
-    async fn on_recv_frame(&mut self, _frame: Vec<u8>) -> bool {
+    async fn on_recv_frame(&mut self, frame: Vec<u8>) -> bool {
+        let _ = (self.on_output_callback)(WriterMessage::Send(frame, true)).await;
         true
     }
 }
