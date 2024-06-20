@@ -21,7 +21,9 @@ pub(crate) type SenderMap = Arc<Mutex<HashMap<u32, InputSenderType>>>;
 
 #[cfg(test)]
 mod tests {
+    use crate::net::WriterMessage;
     use crate::proxy::inlet::{Inlet, InletProxyType};
+    use crate::proxy::OutputFuncType;
     use std::sync::Arc;
     use std::time::Duration;
     use tokio::time::sleep;

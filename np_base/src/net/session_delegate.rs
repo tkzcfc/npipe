@@ -29,6 +29,9 @@ where
     async fn on_session_close(&mut self);
 
     /// 数据粘包处理
+    ///
+    /// 注意：这个函数只能使用消耗 buffer 数据的函数，否则框架会一直循环调用本函数来驱动处理消息
+    ///
     fn on_try_extract_frame(&self, buffer: &mut BytesMut) -> anyhow::Result<Option<Vec<u8>>> {
         if buffer.len() > 0 {
             if buffer[0] != 33u8 {
@@ -46,7 +49,7 @@ where
 
         // 超出最大限制
         if len <= 0 || len >= 1024 * 1024 * 5 {
-            return Err(anyhow!("Length too long"));
+            return Err(anyhow!("Message too long"));
         }
 
         // 数据不够,继续读取数据
