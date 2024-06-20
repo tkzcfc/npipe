@@ -1,7 +1,8 @@
 use crate::net::session_delegate::SessionDelegate;
-use crate::net::tcp_session::WriterMessage;
+use crate::net::WriterMessage;
 use crate::net::{tcp_server, udp_server};
-use crate::proxy::r#type::{OutputFuncType, SenderMap};
+use crate::proxy::OutputFuncType;
+use crate::proxy::SenderMap;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use bytes::BytesMut;

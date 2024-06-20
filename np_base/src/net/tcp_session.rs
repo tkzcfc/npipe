@@ -1,177 +1,130 @@
 use crate::net::session_delegate::SessionDelegate;
+use crate::net::WriterMessage;
 use bytes::BytesMut;
 use log::{debug, error};
 use std::net::SocketAddr;
-use std::time::Duration;
 use tokio::io::{
     AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf,
 };
+use tokio::net::TcpStream;
 use tokio::select;
 use tokio::sync::broadcast;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 use tokio::task::yield_now;
 use tokio::time::sleep;
 
-pub enum WriterMessage {
-    Close,
-    Flush,
-    CloseDelayed(Duration),
-    Send(Vec<u8>, bool),
-}
-
-pub(crate) struct TcpSession {
-    tx: UnboundedSender<WriterMessage>,
+pub async fn run(
+    session_id: u32,
     addr: SocketAddr,
-    closed: bool,
-    delegate: Box<dyn SessionDelegate>,
+    mut delegate: Box<dyn SessionDelegate>,
+    mut shutdown: broadcast::Receiver<()>,
+    stream: TcpStream,
+) {
+    let (reader, writer) = tokio::io::split(stream);
+    let (delegate_sender, delegate_receiver) = unbounded_channel::<WriterMessage>();
+
+    delegate.on_session_start(session_id, delegate_sender).await;
+    select! {
+        _ = poll_read(addr, &mut delegate, reader) => {}
+        _ = poll_write(delegate_receiver, writer) => {}
+        _ = shutdown.recv() => {}
+    }
+    delegate.on_session_close().await;
 }
 
-impl Drop for TcpSession {
-    fn drop(&mut self) {}
-}
+/// 循环写入数据
+async fn poll_write<S>(
+    mut delegate_receiver: UnboundedReceiver<WriterMessage>,
+    writer: WriteHalf<S>,
+) where
+    S: AsyncRead + AsyncWrite + Send + 'static,
+{
+    let mut writer = BufWriter::new(writer);
 
-impl TcpSession {
-    pub fn new(
-        tx: UnboundedSender<WriterMessage>,
-        addr: SocketAddr,
-        delegate: Box<dyn SessionDelegate>,
-    ) -> Self {
-        Self {
-            tx,
-            addr,
-            closed: false,
-            delegate,
-        }
-    }
+    while let Some(message) = delegate_receiver.recv().await {
+        match message {
+            WriterMessage::Close => break,
+            WriterMessage::CloseDelayed(duration) => {
+                sleep(duration).await;
+                break;
+            }
+            WriterMessage::Send(data, flush) => {
+                if data.is_empty() {
+                    yield_now().await;
+                    continue;
+                }
 
-    /// 是否关闭会话
-    #[inline]
-    pub fn is_closed(&self) -> bool {
-        self.closed || self.tx.is_closed()
-    }
-
-    /// 关闭会话
-    #[inline]
-    pub fn close_session(&mut self) {
-        self.closed = true;
-        let _ = self.tx.send(WriterMessage::Close);
-    }
-
-    pub async fn run<S>(
-        &mut self,
-        session_id: u32,
-        rx: UnboundedReceiver<WriterMessage>,
-        reader: ReadHalf<S>,
-        writer: WriteHalf<S>,
-        mut shutdown: broadcast::Receiver<()>,
-    ) where
-        S: AsyncRead + AsyncWrite + Send + 'static,
-    {
-        self.delegate
-            .on_session_start(session_id, self.tx.clone())
-            .await;
-        select! {
-            _ = self.poll_read(reader) => {}
-            _ = Self::poll_write(rx, writer) => {}
-            _ = shutdown.recv() => {}
-        }
-        self.delegate.on_session_close().await;
-    }
-
-    /// 循环写入数据
-    async fn poll_write<S>(mut rx: UnboundedReceiver<WriterMessage>, writer: WriteHalf<S>)
-    where
-        S: AsyncRead + AsyncWrite + Send + 'static,
-    {
-        let mut writer = BufWriter::new(writer);
-
-        while let Some(message) = rx.recv().await {
-            match message {
-                WriterMessage::Close => break,
-                WriterMessage::CloseDelayed(duration) => {
-                    sleep(duration).await;
+                if let Err(error) = writer.write_all(&data).await {
+                    error!("Error when write_all {:?}", error);
                     break;
                 }
-                WriterMessage::Send(data, flush) => {
-                    if data.is_empty() {
-                        yield_now().await;
-                        continue;
-                    }
 
-                    if let Err(error) = writer.write_all(&data).await {
-                        error!("Error when write_all {:?}", error);
-                        break;
-                    }
-
-                    if flush {
-                        if let Err(error) = writer.flush().await {
-                            error!("Error when flushing {:?}", error);
-                        }
-                    }
-                }
-                WriterMessage::Flush => {
+                if flush {
                     if let Err(error) = writer.flush().await {
                         error!("Error when flushing {:?}", error);
                     }
                 }
             }
-
-            yield_now().await;
+            WriterMessage::Flush => {
+                if let Err(error) = writer.flush().await {
+                    error!("Error when flushing {:?}", error);
+                }
+            }
         }
-
-        rx.close();
     }
 
-    /// 循环读取数据
-    async fn poll_read<S>(&mut self, mut reader: ReadHalf<S>)
-    where
-        S: AsyncRead + AsyncWrite + Send + 'static,
-    {
-        let mut buffer = BytesMut::with_capacity(1024);
+    delegate_receiver.close();
+}
 
-        loop {
-            match reader.read_buf(&mut buffer).await {
-                // n为0表示对端已经关闭连接。
-                Ok(n) if n == 0 => {
-                    debug!("Socket[{}] closed.", self.addr);
-                    // 客户端主动断开
-                    self.close_session();
-                    return;
-                }
-                Ok(_n) => {
-                    loop {
-                        if self.is_closed() {
-                            return;
-                        }
+/// 循环读取数据
+async fn poll_read<S>(
+    addr: SocketAddr,
+    delegate: &mut Box<dyn SessionDelegate>,
+    mut reader: ReadHalf<S>,
+) where
+    S: AsyncRead + AsyncWrite + Send + 'static,
+{
+    let mut buffer = BytesMut::with_capacity(1024);
 
-                        // 处理数据粘包
-                        match self.delegate.on_try_extract_frame(&mut buffer) {
-                            Ok(result) => {
-                                if let Some(frame) = result {
-                                    // 收到完整消息
-                                    if !self.delegate.on_recv_frame(frame).await {
-                                        // 消息处理失败
-                                        self.close_session();
-                                        return;
-                                    }
-                                } else {
-                                    break;
+    loop {
+        match reader.read_buf(&mut buffer).await {
+            // n为0表示对端已经关闭连接。
+            Ok(n) if n == 0 => {
+                // 客户端主动断开
+                debug!("Socket[{}] closed.", addr);
+                return;
+            }
+            // 正常收到数据
+            Ok(_n) => {
+                // 循环解包
+                loop {
+                    // 处理数据粘包
+                    match delegate.on_try_extract_frame(&mut buffer) {
+                        Ok(result) => {
+                            if let Some(frame) = result {
+                                // 收到完整消息
+                                if !delegate.on_recv_frame(frame).await {
+                                    // 消息处理失败
+                                    error!("Socket [{}] message processing failed", addr);
+                                    return;
                                 }
+                            } else {
+                                // 消息包接收还未完成
+                                break;
                             }
-                            Err(error) => {
-                                error!("Try extract frame error {}", error);
-                                self.close_session();
-                                return;
-                            }
+                        }
+                        Err(error) => {
+                            // 消息解包错误
+                            error!("Socket [{}] Try extract frame error {}", addr, error);
+                            return;
                         }
                     }
                 }
-                Err(e) => {
-                    error!("Failed to read from socket[{}]: {}", self.addr, e);
-                    // socket读错误
-                    self.close_session();
-                    return;
-                }
+            }
+            Err(e) => {
+                // socket读错误
+                error!("Failed to read from socket[{}]: {}", addr, e);
+                return;
             }
         }
     }

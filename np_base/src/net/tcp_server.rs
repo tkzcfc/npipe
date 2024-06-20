@@ -1,5 +1,5 @@
-use crate::net::session_delegate::{CreateSessionDelegateCallback, SessionDelegate};
-use crate::net::tcp_session::TcpSession;
+use crate::net::session_delegate::CreateSessionDelegateCallback;
+use crate::net::tcp_session;
 use log::error;
 use log::{info, trace};
 use std::future::Future;
@@ -9,7 +9,6 @@ use std::pin::Pin;
 use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::select;
-use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::{broadcast, mpsc};
 
 pub type OnStreamInitReturnType = anyhow::Result<TcpStream>;
@@ -125,16 +124,13 @@ impl Server {
 
                     // 新连接单独起一个异步任务处理
                     tokio::spawn(async move {
-                        let _shutdown_complete = shutdown_complete;
                         trace!("TCP Server new connection: {}", addr);
 
-                        let (tx, rx) = unbounded_channel();
-                        let (reader, writer) = tokio::io::split(stream);
-
-                        let mut session = TcpSession::new(tx.clone(), addr, delegate);
-                        session.run(session_id, rx, reader, writer, shutdown).await;
+                        tcp_session::run(session_id, addr, delegate, shutdown, stream).await;
 
                         trace!("TCP Server disconnect: {}", addr);
+                        // 反向通知此会话结束
+                        drop(shutdown_complete);
                     });
                 }
                 Err(error) => {

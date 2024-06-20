@@ -72,8 +72,6 @@ pub async fn run_server(
                     let hashmap_cloned = hashmap.clone();
                     // 新连接单独起一个异步任务处理
                     tokio::spawn(async move {
-                        // 持有引用
-                        let _shutdown_complete = shutdown_complete;
                         trace!("UDP Server new connection: {}", addr);
                         udp_session::run(
                             session_id,
@@ -86,6 +84,8 @@ pub async fn run_server(
                         .await;
                         hashmap_cloned.lock().await.remove(&addr);
                         trace!("UDP Server disconnect: {}", addr);
+                        // 反向通知会话结束
+                        drop(shutdown_complete);
                     });
                 }
 

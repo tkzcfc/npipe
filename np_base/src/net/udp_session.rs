@@ -1,5 +1,5 @@
 use crate::net::session_delegate::SessionDelegate;
-use crate::net::tcp_session::WriterMessage;
+use crate::net::WriterMessage;
 use log::error;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -46,8 +46,6 @@ async fn poll_write(
             }
             WriterMessage::Flush => {}
         }
-
-        yield_now().await;
     }
 
     delegate_receiver.close();
