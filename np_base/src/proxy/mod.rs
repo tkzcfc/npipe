@@ -10,8 +10,11 @@ pub mod inlet;
 pub mod outlet;
 
 // 输出函数类型
-pub type OutputFuncType =
-    Arc<dyn Fn(WriterMessage) -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync>;
+pub type OutputFuncType = Arc<
+    dyn Fn(WriterMessage) -> Pin<Box<dyn Future<Output = anyhow::Result<bool>> + Send>>
+        + Send
+        + Sync,
+>;
 
 // 输入通道发送端类型
 pub type InputSenderType = UnboundedSender<WriterMessage>;
@@ -24,6 +27,7 @@ mod tests {
     use crate::net::WriterMessage;
     use crate::proxy::inlet::{Inlet, InletProxyType};
     use crate::proxy::OutputFuncType;
+    use anyhow::anyhow;
     use std::sync::Arc;
     use std::time::Duration;
     use tokio::time::sleep;
@@ -38,9 +42,10 @@ mod tests {
             let value_cloned = value.clone();
             Box::pin(async move {
                 if let WriterMessage::Send(frame, _) = message {
-                    return frame.len() > *value_cloned;
+                    Ok(frame.len() > *value_cloned)
+                } else {
+                    Err(anyhow!("bad message"))
                 }
-                return false;
             })
         });
 

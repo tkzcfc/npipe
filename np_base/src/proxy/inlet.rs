@@ -9,6 +9,7 @@ use bytes::BytesMut;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use log::error;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{Sender, UnboundedSender};
 use tokio::sync::{mpsc, Mutex, Notify};
@@ -150,7 +151,12 @@ impl SessionDelegate for InletSession {
     }
 
     async fn on_recv_frame(&mut self, frame: Vec<u8>) -> bool {
-        let _ = (self.on_output_callback)(WriterMessage::Send(frame, true)).await;
-        true
+        if let Err(err) = (self.on_output_callback)(WriterMessage::Send(frame, true)).await {
+            error!("Message processing error: {err}");
+            false
+        }
+        else {
+            true
+        }
     }
 }

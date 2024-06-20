@@ -30,12 +30,7 @@ fn main() -> io::Result<()> {
     }
 
     // 需要导出的协议文件列表
-    let proto_file_list = [
-        "src/pb/Client_Server.proto",
-        "src/pb/Server_Client.proto",
-        "src/pb/ClassDef.proto",
-        "src/pb/Generic.proto",
-    ];
+    let proto_file_list = ["src/pb/Client_Server.proto", "src/pb/Server_Client.proto", "src/pb/ClassDef.proto", "src/pb/Generic.proto"];
     let include_list = ["src/pb"];
     let out_dir = Path::new("src");
 
@@ -130,19 +125,11 @@ fn format_package_name(message_info: &MessageInfo) -> String {
 }
 
 fn format_message_full_type(message_info: &MessageInfo) -> String {
-    format!(
-        "super::{}::{}",
-        format_package_name(message_info),
-        to_upper_camel(&message_info.name)
-    )
+    format!("super::{}::{}", format_package_name(message_info), to_upper_camel(&message_info.name))
 }
 
 fn format_message_type_name(message_info: &MessageInfo) -> String {
-    format!(
-        "{}{}",
-        to_upper_camel(&format_package_name(message_info)),
-        to_upper_camel(&message_info.name)
-    )
+    format!("{}{}", to_upper_camel(&format_package_name(message_info)), to_upper_camel(&message_info.name))
 }
 
 fn build_code(messages: &Vec<MessageInfo>) -> String {
@@ -155,18 +142,10 @@ fn build_code(messages: &Vec<MessageInfo>) -> String {
     let mut code_serialize_to_json = Vec::new();
 
     messages.iter().for_each(|info| {
-        let code = format!(
-            "    {}({}),",
-            format_message_type_name(info),
-            format_message_full_type(info)
-        );
+        let code = format!("    {}({}),", format_message_type_name(info), format_message_full_type(info));
         code_message.push(code);
 
-        let code = format!(
-            "        MessageType::{}(_) => Some({}u32),",
-            format_message_type_name(info),
-            info.id
-        );
+        let code = format!("        MessageType::{}(_) => Some({}u32),", format_message_type_name(info), info.id);
         code_get_message_id.push(code);
 
         let code = format!(
@@ -187,22 +166,13 @@ fn build_code(messages: &Vec<MessageInfo>) -> String {
         );
         code_encode_message.push(code);
 
-        let code = format!(
-            r#"        MessageType::{}(msg) => msg.encoded_len(),"#,
-            format_message_type_name(info),
-        );
+        let code = format!(r#"        MessageType::{}(msg) => msg.encoded_len(),"#, format_message_type_name(info),);
         code_get_message_size.push(code);
 
-        let code = format!(
-            r#"        MessageType::{}(msg) => msg.encode_raw(buf),"#,
-            format_message_type_name(info)
-        );
+        let code = format!(r#"        MessageType::{}(msg) => msg.encode_raw(buf),"#, format_message_type_name(info));
         code_encode_raw_message.push(code);
 
-        let code = format!(
-            r#"        MessageType::{}(msg) => serde_json::to_string(&msg),"#,
-            format_message_type_name(info)
-        );
+        let code = format!(r#"        MessageType::{}(msg) => serde_json::to_string(&msg),"#, format_message_type_name(info));
         code_serialize_to_json.push(code);
     });
 
@@ -271,11 +241,7 @@ pub fn serialize_to_json(message: &MessageType) -> serde_json::Result<String> {{
     code
 }
 
-fn build(
-    proto_file_list: &[impl AsRef<Path>],
-    include_list: &[impl AsRef<Path>],
-    out_dir: &Path,
-) -> io::Result<Vec<MessageInfo>> {
+fn build(proto_file_list: &[impl AsRef<Path>], include_list: &[impl AsRef<Path>], out_dir: &Path) -> io::Result<Vec<MessageInfo>> {
     let package_re = Regex::new(r#"package\s+([\w.]+)"#).unwrap();
     let msg_re = Regex::new(r#"message\s+(\w+)"#).unwrap();
     let id_match_re = Regex::new(r#"enum\s+MsgId\s+"#).unwrap();
@@ -310,17 +276,11 @@ fn build(
                 for msg_cap in msg_re.captures_iter(&line) {
                     msg_name = msg_cap.get(1).map_or("", |m| m.as_str()).to_string();
                 }
-            } else if (line.starts_with(ANNOTATION_PREFIX) || line.starts_with("enum"))
-                && id_match_re.captures(&line).is_some()
-            {
+            } else if (line.starts_with(ANNOTATION_PREFIX) || line.starts_with("enum")) && id_match_re.captures(&line).is_some() {
                 let mut has_id = false;
                 for id_cap in id_re.captures_iter(&line) {
                     has_id = true;
-                    msg_id = id_cap
-                        .get(1)
-                        .map_or("", |m| m.as_str())
-                        .parse()
-                        .expect("message id not a number");
+                    msg_id = id_cap.get(1).map_or("", |m| m.as_str()).parse().expect("message id not a number");
                 }
                 if has_id {
                     // 注释消息id
@@ -343,10 +303,7 @@ fn build(
 
     Config::new()
         .out_dir(out_dir)
-        .type_attribute(
-            ".",
-            "#[cfg_attr(feature = \"serde-serialize\", derive(serde::Serialize, serde::Deserialize))]",
-        )
+        .type_attribute(".", "#[cfg_attr(feature = \"serde-serialize\", derive(serde::Serialize, serde::Deserialize))]")
         .compile_protos(&proto_file_list, &include_list)?;
 
     // 将生成的 pb.abc_def.rc重命名为abc_def.rc
