@@ -7,6 +7,7 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use bytes::BytesMut;
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{Sender, UnboundedSender};
@@ -126,7 +127,12 @@ impl InletSession {
 
 #[async_trait]
 impl SessionDelegate for InletSession {
-    async fn on_session_start(&mut self, session_id: u32, tx: UnboundedSender<WriterMessage>) {
+    async fn on_session_start(
+        &mut self,
+        session_id: u32,
+        _addr: &SocketAddr,
+        tx: UnboundedSender<WriterMessage>,
+    ) {
         self.session_id = session_id;
         self.sender_map.lock().await.insert(session_id, tx);
     }

@@ -13,6 +13,17 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 use tokio::task::yield_now;
 use tokio::time::sleep;
 
+/// run
+///
+/// [`session_id`] 会话id
+///
+/// [`addr`] 地址
+///
+/// [`delegate`] 会话代理
+///
+/// [`shutdown`] 监听退出消息
+///
+/// [`stream`] TcpStream
 pub async fn run(
     session_id: u32,
     addr: SocketAddr,
@@ -23,7 +34,9 @@ pub async fn run(
     let (reader, writer) = tokio::io::split(stream);
     let (delegate_sender, delegate_receiver) = unbounded_channel::<WriterMessage>();
 
-    delegate.on_session_start(session_id, delegate_sender).await;
+    delegate
+        .on_session_start(session_id, &addr, delegate_sender)
+        .await;
     select! {
         _ = poll_read(addr, &mut delegate, reader) => {}
         _ = poll_write(delegate_receiver, writer) => {}

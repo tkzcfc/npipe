@@ -3,6 +3,7 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use byteorder::{BigEndian, ByteOrder};
 use bytes::BytesMut;
+use std::net::SocketAddr;
 use tokio::sync::mpsc::UnboundedSender;
 
 #[async_trait]
@@ -11,7 +12,18 @@ where
     Self: Sync + Send,
 {
     /// 会话开始
-    async fn on_session_start(&mut self, session_id: u32, tx: UnboundedSender<WriterMessage>);
+    ///
+    /// [`session_id`] 会话id，大于0
+    ///
+    /// [`addr`] 对方地址
+    ///
+    /// [`tx`] 主动发送消息通道发送端
+    async fn on_session_start(
+        &mut self,
+        session_id: u32,
+        addr: &SocketAddr,
+        tx: UnboundedSender<WriterMessage>,
+    );
 
     /// 会话关闭
     async fn on_session_close(&mut self);

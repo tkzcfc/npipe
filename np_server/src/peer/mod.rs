@@ -10,6 +10,7 @@ use np_base::net::session_delegate::SessionDelegate;
 use np_base::net::WriterMessage;
 use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size, MessageType};
 use np_proto::{generic, message_map};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
@@ -70,7 +71,12 @@ impl Peer {
 
 #[async_trait]
 impl SessionDelegate for Peer {
-    async fn on_session_start(&mut self, session_id: u32, tx: UnboundedSender<WriterMessage>) {
+    async fn on_session_start(
+        &mut self,
+        session_id: u32,
+        _addr: &SocketAddr,
+        tx: UnboundedSender<WriterMessage>,
+    ) {
         self.tx = Some(tx);
         self.session_id = session_id;
     }
