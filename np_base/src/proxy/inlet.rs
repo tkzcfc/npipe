@@ -4,20 +4,24 @@ use crate::net::{tcp_server, udp_server};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use bytes::BytesMut;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{Sender, UnboundedSender};
-use tokio::sync::{mpsc, Notify};
+use tokio::sync::{mpsc, Mutex, Notify};
 
 pub enum InletProxyType {
     TCP,
     UDP,
 }
 
+type SenderMap = Arc<Mutex<HashMap<u32, UnboundedSender<WriterMessage>>>>;
+
 pub struct Inlet {
     inlet_proxy_type: InletProxyType,
     shutdown_tx: Option<Sender<()>>,
     notify: Arc<Notify>,
+    sender_map: SenderMap,
 }
 
 impl Inlet {
@@ -26,6 +30,7 @@ impl Inlet {
             inlet_proxy_type,
             shutdown_tx: None,
             notify: Arc::new(Notify::new()),
+            sender_map: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -37,6 +42,13 @@ impl Inlet {
 
         let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
         let worker_notify = self.notify.clone();
+        let sender_map = self.sender_map.clone();
+
+        let create_session_delegate_func = Box::new(
+            move || -> Box<dyn crate::net::session_delegate::SessionDelegate> {
+                Box::new(InletSession::new(sender_map.clone()))
+            },
+        );
 
         match self.inlet_proxy_type {
             InletProxyType::TCP => {
@@ -45,7 +57,7 @@ impl Inlet {
                 tokio::spawn(async move {
                     tcp_server::run_server(
                         listener,
-                        || Box::new(InletSession::new()),
+                        create_session_delegate_func,
                         |stream: TcpStream| async move { Ok(stream) },
                         async move {
                             let _ = shutdown_rx.recv().await;
@@ -59,7 +71,7 @@ impl Inlet {
                 let socket = udp_server::bind(&listen_addr).await?;
                 self.shutdown_tx = Some(shutdown_tx);
                 tokio::spawn(async move {
-                    udp_server::run_server(socket, || Box::new(InletSession::new()), async move {
+                    udp_server::run_server(socket, create_session_delegate_func, async move {
                         let _ = shutdown_rx.recv().await;
                     })
                     .await;
@@ -82,19 +94,23 @@ impl Inlet {
     pub fn running(&self) -> bool {
         self.shutdown_tx.is_some()
     }
+
+    pub async fn send_to(session_id: u32) {}
 }
 
-struct InletSession {}
+struct InletSession {
+    sender_map: SenderMap,
+}
 
 impl InletSession {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(sender_map: SenderMap) -> Self {
+        Self { sender_map }
     }
 }
 
 #[async_trait]
 impl SessionDelegate for InletSession {
-    fn on_session_start(&mut self, _session_id: u32, _tx: UnboundedSender<WriterMessage>) {}
+    async fn on_session_start(&mut self, _session_id: u32, _tx: UnboundedSender<WriterMessage>) {}
 
     async fn on_session_close(&mut self) {}
 

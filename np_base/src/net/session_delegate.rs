@@ -11,7 +11,7 @@ where
     Self: Sync + Send,
 {
     /// 会话开始
-    fn on_session_start(&mut self, session_id: u32, tx: UnboundedSender<WriterMessage>);
+    async fn on_session_start(&mut self, session_id: u32, tx: UnboundedSender<WriterMessage>);
 
     /// 会话关闭
     async fn on_session_close(&mut self);
@@ -51,3 +51,5 @@ where
     /// 收到一个完整的消息包
     async fn on_recv_frame(&mut self, frame: Vec<u8>) -> bool;
 }
+
+pub type CreateSessionDelegateCallback = Box<dyn Fn() -> Box<dyn SessionDelegate> + Send + Sync>;

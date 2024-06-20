@@ -67,7 +67,9 @@ impl TcpSession {
     ) where
         S: AsyncRead + AsyncWrite + Send + 'static,
     {
-        self.delegate.on_session_start(session_id, self.tx.clone());
+        self.delegate
+            .on_session_start(session_id, self.tx.clone())
+            .await;
         select! {
             _ = self.poll_read(reader) => {}
             _ = Self::poll_write(rx, writer) => {}

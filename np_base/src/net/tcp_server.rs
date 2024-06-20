@@ -1,4 +1,4 @@
-use crate::net::session_delegate::SessionDelegate;
+use crate::net::session_delegate::{CreateSessionDelegateCallback, SessionDelegate};
 use crate::net::tcp_session::TcpSession;
 use log::error;
 use log::{info, trace};
@@ -11,8 +11,6 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::select;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::{broadcast, mpsc};
-
-pub type CreateSessionDelegateCallback = fn() -> Box<dyn SessionDelegate>;
 
 pub type OnStreamInitReturnType = anyhow::Result<TcpStream>;
 pub trait OnStreamInitCallback {

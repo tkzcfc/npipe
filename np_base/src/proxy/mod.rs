@@ -1,5 +1,6 @@
 mod inlet;
 mod outlet;
+mod test;
 
 #[cfg(test)]
 mod tests {

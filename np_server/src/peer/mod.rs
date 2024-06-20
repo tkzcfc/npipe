@@ -70,7 +70,7 @@ impl Peer {
 
 #[async_trait]
 impl SessionDelegate for Peer {
-    fn on_session_start(&mut self, session_id: u32, tx: UnboundedSender<WriterMessage>) {
+    async fn on_session_start(&mut self, session_id: u32, tx: UnboundedSender<WriterMessage>) {
         self.tx = Some(tx);
         self.session_id = session_id;
     }
