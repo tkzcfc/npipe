@@ -1,0 +1,6 @@
+# 最大行宽
+max_width = 180
+
+# 是否重新排列 `use` 语句
+reorder_imports = true
+

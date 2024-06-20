@@ -58,16 +58,17 @@ impl TunnelManager {
         }
 
         let tunnel_id = sqlx::query!(
-                "INSERT INTO tunnel (source, endpoint, enabled, sender, receiver, description) VALUES (?, ?, ?, ?, ?, ?)",
-                tunnel.source,
-                tunnel.endpoint,
-                tunnel.enabled,
-                tunnel.sender,
-                tunnel.receiver,
-                tunnel.description
-            ).execute(GLOBAL_DB_POOL.get().unwrap())
-            .await?
-            .last_insert_id();
+            "INSERT INTO tunnel (source, endpoint, enabled, sender, receiver, description) VALUES (?, ?, ?, ?, ?, ?)",
+            tunnel.source,
+            tunnel.endpoint,
+            tunnel.enabled,
+            tunnel.sender,
+            tunnel.receiver,
+            tunnel.description
+        )
+        .execute(GLOBAL_DB_POOL.get().unwrap())
+        .await?
+        .last_insert_id();
 
         tunnel.id = tunnel_id as u32;
         self.tunnels.push(tunnel);

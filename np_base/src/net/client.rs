@@ -210,7 +210,10 @@ impl Client {
             }
 
             if buffer.capacity() > 1024 * 1024 * 5 {
-                error!("The buffer size is abnormal ({}), whether the buffer data has not been consumed", buffer.capacity());
+                error!(
+                    "The buffer size is abnormal ({}), whether the buffer data has not been consumed",
+                    buffer.capacity()
+                );
             }
         }
     }

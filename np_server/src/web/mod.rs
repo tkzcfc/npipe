@@ -346,9 +346,9 @@ async fn tunnel_list(
         page_size as u32,
         offset as u32
     )
-        .fetch_all(GLOBAL_DB_POOL.get().unwrap())
-        .await
-        .map_err(map_db_err)?;
+    .fetch_all(GLOBAL_DB_POOL.get().unwrap())
+    .await
+    .map_err(map_db_err)?;
 
     // 查询总条数
     let count_query = "SELECT COUNT(*) FROM tunnel";

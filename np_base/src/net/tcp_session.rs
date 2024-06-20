@@ -134,9 +134,9 @@ async fn poll_read<S>(
                     }
                 }
             }
-            Err(e) => {
+            Err(err) => {
                 // socket读错误
-                error!("Failed to read from socket[{}]: {}", addr, e);
+                error!("Failed to read from socket[{}]: {}", addr, err);
                 return;
             }
         }

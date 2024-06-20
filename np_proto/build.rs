@@ -325,8 +325,7 @@ fn build(
                 if has_id {
                     // 注释消息id
                     if !line.starts_with(ANNOTATION_PREFIX) {
-                        *lines.last_mut().unwrap() =
-                            format!("{}{}", ANNOTATION_PREFIX, lines.last().unwrap());
+                        *lines.last_mut().unwrap() = format!("{}{}", ANNOTATION_PREFIX, lines.last().unwrap());
                     }
                     messages.push(MessageInfo {
                         name: msg_name.clone(),
@@ -344,7 +343,10 @@ fn build(
 
     Config::new()
         .out_dir(out_dir)
-        .type_attribute(".", "#[cfg_attr(feature = \"serde-serialize\", derive(serde::Serialize, serde::Deserialize))]")
+        .type_attribute(
+            ".",
+            "#[cfg_attr(feature = \"serde-serialize\", derive(serde::Serialize, serde::Deserialize))]",
+        )
         .compile_protos(&proto_file_list, &include_list)?;
 
     // 将生成的 pb.abc_def.rc重命名为abc_def.rc
