@@ -73,9 +73,14 @@ pub async fn run(
     socket: Arc<Mutex<UdpSocket>>,
 ) {
     let (delegate_sender, delegate_receiver) = unbounded_channel::<WriterMessage>();
-    delegate
+
+    if let Err(err) = delegate
         .on_session_start(session_id, &addr, delegate_sender)
-        .await;
+        .await
+    {
+        error!("on_session_start error:{err}");
+        return;
+    }
 
     select! {
         _= poll_read(&mut delegate, udp_recv_receiver) => {},

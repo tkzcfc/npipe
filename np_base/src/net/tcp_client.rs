@@ -106,12 +106,15 @@ impl Client {
     pub fn send(&self, buf: Vec<u8>, flush: bool) -> anyhow::Result<()> {
         if let Some(ref tx) = self.tx {
             if let Err(error) = tx.send(ChannelMessage::DoWriteData(buf, flush)) {
-                error!("Send Disconnect error: {}", error);
+                error!("Send data error: {}", error);
             }
             return Ok(());
         }
         Err(anyhow!("Not connected"))
     }
+
+    /// 接收消息
+    // pub async recv
 
     /// 接收消息
     pub fn try_recv(&mut self) -> Option<Vec<u8>> {

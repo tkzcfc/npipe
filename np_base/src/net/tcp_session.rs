@@ -34,9 +34,14 @@ pub async fn run(
     let (reader, writer) = tokio::io::split(stream);
     let (delegate_sender, delegate_receiver) = unbounded_channel::<WriterMessage>();
 
-    delegate
+    if let Err(err) = delegate
         .on_session_start(session_id, &addr, delegate_sender)
-        .await;
+        .await
+    {
+        error!("on_session_start error:{err}");
+        return;
+    }
+
     select! {
         _ = poll_read(addr, &mut delegate, reader) => {}
         _ = poll_write(delegate_receiver, writer) => {}

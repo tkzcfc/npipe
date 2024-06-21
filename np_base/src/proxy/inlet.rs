@@ -1,15 +1,15 @@
 use crate::net::session_delegate::SessionDelegate;
 use crate::net::WriterMessage;
 use crate::net::{tcp_server, udp_server};
-use crate::proxy::OutputFuncType;
 use crate::proxy::SenderMap;
+use crate::proxy::{OutputFuncType, ProxyMessage};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use bytes::BytesMut;
+use log::error;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use log::error;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{Sender, UnboundedSender};
 use tokio::sync::{mpsc, Mutex, Notify};
@@ -17,6 +17,8 @@ use tokio::sync::{mpsc, Mutex, Notify};
 pub enum InletProxyType {
     TCP,
     UDP,
+    // Not implemented
+    // SOCKS5,
 }
 
 pub struct Inlet {
@@ -49,9 +51,14 @@ impl Inlet {
         let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
         let worker_notify = self.notify.clone();
         let sender_map = self.sender_map.clone();
+        let is_tcp = match &self.inlet_proxy_type {
+            InletProxyType::TCP => true,
+            InletProxyType::UDP => false,
+        };
 
         let create_session_delegate_func = Box::new(move || -> Box<dyn SessionDelegate> {
             Box::new(InletSession::new(
+                is_tcp,
                 sender_map.clone(),
                 on_output_callback.clone(),
             ))
@@ -102,23 +109,44 @@ impl Inlet {
         self.shutdown_tx.is_some()
     }
 
-    pub async fn send_to(&self, session_id: u32, message: WriterMessage) -> anyhow::Result<()> {
-        if let Some(sender) = self.sender_map.lock().await.get(&session_id) {
-            sender.send(message)?
+    pub async fn send_to(&self, message: ProxyMessage) -> anyhow::Result<()> {
+        match message {
+            ProxyMessage::O2iConnect(session_id, success) => {
+                if !success {
+                    if let Some(sender) = self.sender_map.lock().await.get(&session_id) {
+                        sender.send(WriterMessage::Close)?
+                    }
+                }
+            }
+            ProxyMessage::O2iDisconnect(session_id) => {
+                if let Some(sender) = self.sender_map.lock().await.get(&session_id) {
+                    sender.send(WriterMessage::Close)?
+                }
+            }
+            ProxyMessage::O2iRecvData(session_id, data) => {
+                if let Some(sender) = self.sender_map.lock().await.get(&session_id) {
+                    sender.send(WriterMessage::Send(data, true))?
+                }
+            }
+            _ => {
+                panic!("error message")
+            }
         }
-        Err(anyhow!("invalid session: {session_id}"))
+        Ok(())
     }
 }
 
 struct InletSession {
+    is_tcp: bool,
     sender_map: SenderMap,
     session_id: u32,
     on_output_callback: OutputFuncType,
 }
 
 impl InletSession {
-    pub fn new(sender_map: SenderMap, on_output_callback: OutputFuncType) -> Self {
+    pub fn new(is_tcp: bool, sender_map: SenderMap, on_output_callback: OutputFuncType) -> Self {
         Self {
+            is_tcp,
             sender_map,
             session_id: 0,
             on_output_callback,
@@ -131,15 +159,27 @@ impl SessionDelegate for InletSession {
     async fn on_session_start(
         &mut self,
         session_id: u32,
-        _addr: &SocketAddr,
+        addr: &SocketAddr,
         tx: UnboundedSender<WriterMessage>,
-    ) {
+    ) -> anyhow::Result<()> {
         self.session_id = session_id;
         self.sender_map.lock().await.insert(session_id, tx);
+        if (self.on_output_callback)(ProxyMessage::I2oConnect(
+            self.session_id,
+            self.is_tcp,
+            addr.clone(),
+        ))
+        .await?
+        {
+            Ok(())
+        } else {
+            Err(anyhow!("send I2oConnect failed"))
+        }
     }
 
     async fn on_session_close(&mut self) {
         self.sender_map.lock().await.remove(&self.session_id);
+        let _ = (self.on_output_callback)(ProxyMessage::I2oDisconnect(self.session_id)).await;
     }
 
     fn on_try_extract_frame(&self, buffer: &mut BytesMut) -> anyhow::Result<Option<Vec<u8>>> {
@@ -151,11 +191,12 @@ impl SessionDelegate for InletSession {
     }
 
     async fn on_recv_frame(&mut self, frame: Vec<u8>) -> bool {
-        if let Err(err) = (self.on_output_callback)(WriterMessage::Send(frame, true)).await {
+        if let Err(err) =
+            (self.on_output_callback)(ProxyMessage::I2oSendData(self.session_id, frame)).await
+        {
             error!("Message processing error: {err}");
             false
-        }
-        else {
+        } else {
             true
         }
     }

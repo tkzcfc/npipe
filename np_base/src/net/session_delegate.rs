@@ -23,7 +23,7 @@ where
         session_id: u32,
         addr: &SocketAddr,
         tx: UnboundedSender<WriterMessage>,
-    );
+    ) -> anyhow::Result<()>;
 
     /// 会话关闭
     async fn on_session_close(&mut self);

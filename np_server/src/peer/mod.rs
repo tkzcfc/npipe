@@ -76,9 +76,10 @@ impl SessionDelegate for Peer {
         session_id: u32,
         _addr: &SocketAddr,
         tx: UnboundedSender<WriterMessage>,
-    ) {
+    ) -> anyhow::Result<()> {
         self.tx = Some(tx);
         self.session_id = session_id;
+        Ok(())
     }
 
     // 会话关闭回调

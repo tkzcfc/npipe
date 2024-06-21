@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use byteorder::{BigEndian, ByteOrder};
 use bytes::BytesMut;
 use log::error;
-use np_base::net::client::Client;
+use np_base::net::tcp_client::Client;
 use np_proto::message_map::{
     decode_message, encode_raw_message, get_message_id, get_message_size, MessageType,
 };
@@ -196,7 +196,7 @@ fn try_extract_frame(buffer: &mut BytesMut) -> anyhow::Result<Option<Vec<u8>>> {
 
     // 超出最大限制
     if len <= 0 || len >= 1024 * 1024 * 5 {
-        return Err(anyhow!("Length too long"));
+        return Err(anyhow!("Message too long"));
     }
 
     // 数据不够,继续读取数据
