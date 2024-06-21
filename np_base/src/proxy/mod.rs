@@ -13,8 +13,8 @@ pub mod outlet;
 pub enum ProxyMessage {
     // 向输出端请求发起连接(u32:会话id  bool:是否是TCP连接 SocketAddr:目标地址)
     I2oConnect(u32, bool, SocketAddr),
-    // 连接结果(u32:会话id  bool:是否是成功)
-    O2iConnect(u32, bool),
+    // 连接结果(u32:会话id  bool:是否是成功 String:错误信息)
+    O2iConnect(u32, bool, String),
     // 向输出端请求发送数据(u32:会话id  Vec<u8>:数据)
     I2oSendData(u32, Vec<u8>),
     // 输出端收到数据返回给输入端(u32:会话id  Vec<u8>:数据)
@@ -27,9 +27,7 @@ pub enum ProxyMessage {
 
 // 输出函数类型
 pub type OutputFuncType = Arc<
-    dyn Fn(ProxyMessage) -> Pin<Box<dyn Future<Output = anyhow::Result<bool>> + Send>>
-        + Send
-        + Sync,
+    dyn Fn(ProxyMessage) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>> + Send + Sync,
 >;
 
 // 输入通道发送端类型
@@ -58,7 +56,11 @@ mod tests {
             let value_cloned = value.clone();
             Box::pin(async move {
                 if let ProxyMessage::I2oSendData(_, frame) = message {
-                    Ok(frame.len() > *value_cloned)
+                    if *value_cloned > frame.len() {
+                        Ok(())
+                    } else {
+                        Err(anyhow!("bad message"))
+                    }
                 } else {
                     Err(anyhow!("bad message"))
                 }

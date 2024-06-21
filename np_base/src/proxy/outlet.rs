@@ -1,39 +1,104 @@
-use crate::net::WriterMessage;
+use crate::proxy::{OutputFuncType, ProxyMessage};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use tokio::io::{AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpSocket, TcpStream, UdpSocket};
+use tokio::sync::Mutex;
 
 enum ClientType {
     TCP(TcpClient),
     UDP(SocketAddr),
 }
 
-struct OutletClient {
-    inner: ClientType,
-}
-
 struct Outlet {
-    client_map: HashMap<u32, OutletClient>,
-    udp_socket: Option<UdpSocket>,
+    client_map: Mutex<HashMap<u32, ClientType>>,
+    udp_socket: Mutex<Option<UdpSocket>>,
+    on_output_callback: OutputFuncType,
 }
 
 impl Outlet {
-    pub fn new() -> Self {
+    pub fn new(on_output_callback: OutputFuncType) -> Self {
         Self {
-            udp_socket: None,
-            client_map: HashMap::new(),
+            udp_socket: Mutex::new(None),
+            client_map: Mutex::new(HashMap::new()),
+            on_output_callback,
         }
     }
 
-    // pub async fn send_to(&self, session_id: u32, is_tcp: bool, message: WriterMessage) -> anyhow::Result<()> {
-    //
-    // }
+    pub async fn input(&self, message: ProxyMessage) -> anyhow::Result<()> {
+        match message {
+            ProxyMessage::I2oConnect(session_id, is_tcp, addr) => {
+                if self.client_map.lock().await.contains_key(&session_id) {
+                    let _ = (self.on_output_callback)(ProxyMessage::O2iConnect(
+                        session_id,
+                        false,
+                        "Repeated connection".into(),
+                    ))
+                    .await?;
+                    return Ok(());
+                }
+                if is_tcp {
+                    match TcpClient::connect(addr).await {
+                        Ok(client) => {
+                            self.client_map
+                                .lock()
+                                .await
+                                .insert(session_id, ClientType::TCP(client));
+                        }
+                        Err(err) => {
+                            // 连接失败
+                            let _ = (self.on_output_callback)(ProxyMessage::O2iConnect(
+                                session_id,
+                                false,
+                                err.to_string(),
+                            ))
+                            .await?;
+                            return Ok(());
+                        }
+                    }
+                } else {
+                    self.client_map
+                        .lock()
+                        .await
+                        .insert(session_id, ClientType::UDP(addr));
+                }
+                let _ = (self.on_output_callback)(ProxyMessage::O2iConnect(
+                    session_id,
+                    true,
+                    "".into(),
+                ))
+                .await?;
+            }
+            ProxyMessage::I2oSendData(session_id, data) => {
+                if let Some(client_type) = self.client_map.lock().await.get(&session_id) {
+                    match client_type {
+                        ClientType::TCP(client) => {
+                            client.send(data).await?;
+                        }
+                        ClientType::UDP(addr) => {
+                            let mut socket = self.udp_socket.lock().await;
+                            if socket.is_none() {
+                                *socket = Some(UdpSocket::bind("0.0.0.0:0").await?);
+                            }
+                            if let Some(socket) = &*socket {
+                                socket.send_to(&data, addr).await?;
+                            }
+                        }
+                    }
+                }
+            }
+            ProxyMessage::I2oDisconnect(session_id) => {}
+            _ => {
+                panic!("error message")
+            }
+        }
+        Ok(())
+    }
 }
 
 struct TcpClient {
     reader: ReadHalf<TcpStream>,
-    writer: WriteHalf<TcpStream>,
+    writer: Mutex<WriteHalf<TcpStream>>,
 }
 
 impl TcpClient {
@@ -45,11 +110,14 @@ impl TcpClient {
         };
         let stream = socket.connect(addr).await?;
         let (reader, writer) = tokio::io::split(stream);
-        Ok(Self { reader, writer })
+        Ok(Self {
+            reader,
+            writer: Mutex::new(writer),
+        })
     }
 
-    async fn send(&mut self, frame: Vec<u8>) -> anyhow::Result<()> {
-        self.writer.write_all(&frame).await?;
+    async fn send(&self, frame: Vec<u8>) -> anyhow::Result<()> {
+        self.writer.lock().await.write_all(&frame).await?;
         Ok(())
     }
 }

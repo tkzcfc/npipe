@@ -26,7 +26,7 @@ where
     ) -> anyhow::Result<()>;
 
     /// 会话关闭
-    async fn on_session_close(&mut self);
+    async fn on_session_close(&mut self) -> anyhow::Result<()>;
 
     /// 数据粘包处理
     ///
@@ -64,7 +64,7 @@ where
     }
 
     /// 收到一个完整的消息包
-    async fn on_recv_frame(&mut self, frame: Vec<u8>) -> bool;
+    async fn on_recv_frame(&mut self, frame: Vec<u8>) -> anyhow::Result<()>;
 }
 
 pub type CreateSessionDelegateCallback = Box<dyn Fn() -> Box<dyn SessionDelegate> + Send + Sync>;

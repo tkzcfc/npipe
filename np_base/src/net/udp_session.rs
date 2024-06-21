@@ -11,20 +11,22 @@ use tokio::task::yield_now;
 use tokio::time::sleep;
 
 async fn poll_read(
+    addr: SocketAddr,
     delegate: &mut Box<dyn SessionDelegate>,
     mut udp_recv_receiver: UnboundedReceiver<Vec<u8>>,
 ) {
     while let Some(data) = udp_recv_receiver.recv().await {
-        if !delegate.on_recv_frame(data).await {
+        if let Err(err) = delegate.on_recv_frame(data).await {
+            error!("[{addr}] on_recv_frame error: {err}");
             break;
         }
     }
 }
 
 async fn poll_write(
+    addr: SocketAddr,
     mut delegate_receiver: UnboundedReceiver<WriterMessage>,
     socket: Arc<Mutex<UdpSocket>>,
-    addr: SocketAddr,
 ) {
     while let Some(message) = delegate_receiver.recv().await {
         match message {
@@ -40,7 +42,7 @@ async fn poll_write(
                 }
 
                 if let Err(error) = socket.lock().await.send_to(&data, &addr).await {
-                    error!("Error when udp socket send_to {:?}", error);
+                    error!("[{addr}] Error when udp socket send_to {:?}", error);
                     break;
                 }
             }
@@ -83,10 +85,12 @@ pub async fn run(
     }
 
     select! {
-        _= poll_read(&mut delegate, udp_recv_receiver) => {},
-        _= poll_write(delegate_receiver, socket, addr) => {},
+        _= poll_read(addr, &mut delegate, udp_recv_receiver) => {},
+        _= poll_write(addr, delegate_receiver, socket) => {},
         _ = shutdown.recv() => {}
     }
 
-    delegate.on_session_close().await;
+    if let Err(err) = delegate.on_session_close().await {
+        error!("[{addr}] on_session_close error:{err}");
+    }
 }

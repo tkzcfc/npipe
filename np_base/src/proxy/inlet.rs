@@ -109,10 +109,11 @@ impl Inlet {
         self.shutdown_tx.is_some()
     }
 
-    pub async fn send_to(&self, message: ProxyMessage) -> anyhow::Result<()> {
+    pub async fn input(&self, message: ProxyMessage) -> anyhow::Result<()> {
         match message {
-            ProxyMessage::O2iConnect(session_id, success) => {
+            ProxyMessage::O2iConnect(session_id, success, error_msg) => {
                 if !success {
+                    error!("connect error: {error_msg}");
                     if let Some(sender) = self.sender_map.lock().await.get(&session_id) {
                         sender.send(WriterMessage::Close)?
                     }
@@ -164,22 +165,18 @@ impl SessionDelegate for InletSession {
     ) -> anyhow::Result<()> {
         self.session_id = session_id;
         self.sender_map.lock().await.insert(session_id, tx);
-        if (self.on_output_callback)(ProxyMessage::I2oConnect(
+        (self.on_output_callback)(ProxyMessage::I2oConnect(
             self.session_id,
             self.is_tcp,
             addr.clone(),
         ))
-        .await?
-        {
-            Ok(())
-        } else {
-            Err(anyhow!("send I2oConnect failed"))
-        }
+        .await?;
+        Ok(())
     }
 
-    async fn on_session_close(&mut self) {
+    async fn on_session_close(&mut self) -> anyhow::Result<()> {
         self.sender_map.lock().await.remove(&self.session_id);
-        let _ = (self.on_output_callback)(ProxyMessage::I2oDisconnect(self.session_id)).await;
+        (self.on_output_callback)(ProxyMessage::I2oDisconnect(self.session_id)).await
     }
 
     fn on_try_extract_frame(&self, buffer: &mut BytesMut) -> anyhow::Result<Option<Vec<u8>>> {
@@ -190,14 +187,7 @@ impl SessionDelegate for InletSession {
         Ok(Some(frame))
     }
 
-    async fn on_recv_frame(&mut self, frame: Vec<u8>) -> bool {
-        if let Err(err) =
-            (self.on_output_callback)(ProxyMessage::I2oSendData(self.session_id, frame)).await
-        {
-            error!("Message processing error: {err}");
-            false
-        } else {
-            true
-        }
+    async fn on_recv_frame(&mut self, frame: Vec<u8>) -> anyhow::Result<()> {
+        (self.on_output_callback)(ProxyMessage::I2oSendData(self.session_id, frame)).await
     }
 }

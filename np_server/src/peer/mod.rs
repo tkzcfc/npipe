@@ -3,6 +3,7 @@ mod handle_request;
 mod handle_response;
 
 use crate::player::Player;
+use anyhow::anyhow;
 use async_trait::async_trait;
 use byteorder::{BigEndian, ByteOrder};
 use log::{error, trace};
@@ -83,18 +84,19 @@ impl SessionDelegate for Peer {
     }
 
     // 会话关闭回调
-    async fn on_session_close(&mut self) {
+    async fn on_session_close(&mut self) -> anyhow::Result<()> {
         self.tx.take();
         // 清退对应玩家
         if let Some(player) = self.player.take() {
             player.write().await.on_disconnect_session().await;
         }
+        Ok(())
     }
 
     // 收到一个完整的消息包
-    async fn on_recv_frame(&mut self, frame: Vec<u8>) -> bool {
+    async fn on_recv_frame(&mut self, frame: Vec<u8>) -> anyhow::Result<()> {
         if frame.len() < 8 {
-            return false;
+            return Err(anyhow!("message length is too small"));
         }
         // 消息序号
         let serial: i32 = BigEndian::read_i32(&frame[0..4]);
@@ -119,54 +121,49 @@ impl SessionDelegate for Peer {
                             if let MessageType::None = msg {
                                 // 请求不应该不回复
                                 error!("The response to request {} is empty", msg_id);
-                                let _ = self
-                                    .send_response(
-                                        serial,
-                                        &MessageType::GenericError(generic::Error {
-                                            number: generic::ErrorCode::InternalError.into(),
-                                            message: "response is empty".to_string(),
-                                        }),
-                                    )
-                                    .await;
+                                self.send_response(
+                                    serial,
+                                    &MessageType::GenericError(generic::Error {
+                                        number: generic::ErrorCode::InternalError.into(),
+                                        message: "response is empty".to_string(),
+                                    }),
+                                )
+                                .await?;
                             } else {
-                                if let Err(err) = self.send_response(serial, &msg).await {
-                                    error!("Send response error: {}", err);
-                                }
+                                self.send_response(serial, &msg).await?;
                             }
                         }
                     }
                     Err(err) => {
                         error!("Request error: {}, message id: {}", err, msg_id);
 
-                        let _ = self
-                            .send_response(
-                                serial,
-                                &MessageType::GenericError(generic::Error {
-                                    number: generic::ErrorCode::InternalError.into(),
-                                    message: format!("{}", err),
-                                }),
-                            )
-                            .await;
+                        self.send_response(
+                            serial,
+                            &MessageType::GenericError(generic::Error {
+                                number: generic::ErrorCode::InternalError.into(),
+                                message: format!("{}", err),
+                            }),
+                        )
+                        .await?;
                     }
                 }
             }
             Err(err) => {
-                error!("Protobuf parse error: {}", err);
-                let _ = self
-                    .send_response(
-                        serial,
-                        &MessageType::GenericError(generic::Error {
-                            number: generic::ErrorCode::InternalError.into(),
-                            message: format!("{}", err),
-                        }),
-                    )
-                    .await;
+                // 消息解码失败
+                self.send_response(
+                    serial,
+                    &MessageType::GenericError(generic::Error {
+                        number: generic::ErrorCode::InternalError.into(),
+                        message: format!("{}", err),
+                    }),
+                )
+                .await?;
 
-                return false;
+                return Err(anyhow!(err));
             }
         }
 
-        true
+        Ok(())
     }
 }
 
