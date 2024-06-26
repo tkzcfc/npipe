@@ -26,9 +26,8 @@ pub enum ProxyMessage {
 }
 
 // 输出函数类型
-pub type OutputFuncType = Arc<
-    dyn Fn(ProxyMessage) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>> + Send + Sync,
->;
+pub type OutputFuncType =
+    Arc<dyn Fn(ProxyMessage) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
 // 输入通道发送端类型
 pub type InputSenderType = UnboundedSender<WriterMessage>;
@@ -41,7 +40,6 @@ mod tests {
     use crate::proxy::inlet::{Inlet, InletProxyType};
     use crate::proxy::OutputFuncType;
     use crate::proxy::ProxyMessage;
-    use anyhow::anyhow;
     use std::sync::Arc;
     use std::time::Duration;
     use tokio::time::sleep;
@@ -57,12 +55,8 @@ mod tests {
             Box::pin(async move {
                 if let ProxyMessage::I2oSendData(_, frame) = message {
                     if *value_cloned > frame.len() {
-                        Ok(())
-                    } else {
-                        Err(anyhow!("bad message"))
+                        println!("ok");
                     }
-                } else {
-                    Err(anyhow!("bad message"))
                 }
             })
         });

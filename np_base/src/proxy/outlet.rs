@@ -1,8 +1,9 @@
 use crate::proxy::{OutputFuncType, ProxyMessage};
 use bytes::BytesMut;
-use log::{debug, info};
+use log::{debug, error, info};
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, WriteHalf};
 use tokio::net::{TcpSocket, TcpStream, UdpSocket};
 use tokio::sync::Mutex;
@@ -15,8 +16,9 @@ enum ClientType {
 }
 
 pub struct Outlet {
-    client_map: Mutex<HashMap<u32, ClientType>>,
-    udp_socket: Mutex<Option<UdpSocket>>,
+    client_map: Arc<Mutex<HashMap<u32, ClientType>>>,
+    udp_socket: Mutex<Option<Arc<UdpSocket>>>,
+    udp_session_id_map: Arc<Mutex<HashMap<SocketAddr, u32>>>,
     on_output_callback: OutputFuncType,
 }
 
@@ -24,25 +26,36 @@ impl Outlet {
     pub fn new(on_output_callback: OutputFuncType) -> Self {
         Self {
             udp_socket: Mutex::new(None),
-            client_map: Mutex::new(HashMap::new()),
+            client_map: Arc::new(Mutex::new(HashMap::new())),
+            udp_session_id_map: Arc::new(Mutex::new(HashMap::new())),
             on_output_callback,
         }
     }
 
-    pub async fn input(&self, message: ProxyMessage) -> anyhow::Result<()> {
+    pub async fn input(&self, message: ProxyMessage) {
         match message {
             ProxyMessage::I2oConnect(session_id, is_tcp, addr) => {
                 info!("session: {session_id}, connect to: {addr}");
                 if self.client_map.lock().await.contains_key(&session_id) {
-                    (self.on_output_callback)(ProxyMessage::O2iConnect(
-                        session_id,
-                        false,
-                        "repeated connection".into(),
-                    ))
-                    .await?;
+                    let output_callback = self.on_output_callback.clone();
+                    tokio::spawn(async move {
+                        output_callback(ProxyMessage::O2iConnect(
+                            session_id,
+                            false,
+                            "repeated connection".into(),
+                        ))
+                        .await
+                    });
                 } else {
                     if is_tcp {
-                        match tcp_connect(addr, session_id, self.on_output_callback.clone()).await {
+                        match tcp_connect(
+                            addr,
+                            session_id,
+                            self.on_output_callback.clone(),
+                            self.client_map.clone(),
+                        )
+                        .await
+                        {
                             Ok(client) => {
                                 self.client_map
                                     .lock()
@@ -50,14 +63,17 @@ impl Outlet {
                                     .insert(session_id, ClientType::TCP(client));
                             }
                             Err(err) => {
+                                let output_callback = self.on_output_callback.clone();
                                 // 连接失败
-                                let _ = (self.on_output_callback)(ProxyMessage::O2iConnect(
-                                    session_id,
-                                    false,
-                                    err.to_string(),
-                                ))
-                                .await?;
-                                return Ok(());
+                                tokio::spawn(async move {
+                                    output_callback(ProxyMessage::O2iConnect(
+                                        session_id,
+                                        false,
+                                        err.to_string(),
+                                    ))
+                                    .await;
+                                });
+                                return;
                             }
                         }
                     } else {
@@ -65,28 +81,66 @@ impl Outlet {
                             .lock()
                             .await
                             .insert(session_id, ClientType::UDP(addr));
+                        self.udp_session_id_map
+                            .lock()
+                            .await
+                            .insert(addr, session_id);
                     }
-                    (self.on_output_callback)(ProxyMessage::O2iConnect(
-                        session_id,
-                        true,
-                        "".into(),
-                    ))
-                    .await?;
+
+                    let output_callback = self.on_output_callback.clone();
+                    tokio::spawn(async move {
+                        output_callback(ProxyMessage::O2iConnect(session_id, true, "".into()))
+                            .await;
+                    });
                 }
             }
             ProxyMessage::I2oSendData(session_id, data) => {
                 if let Some(client_type) = self.client_map.lock().await.get(&session_id) {
                     match client_type {
                         ClientType::TCP(writer) => {
-                            writer.lock().await.write_all(&data).await?;
+                            if let Err(err) = writer.lock().await.write_all(&data).await {
+                                error!("[{session_id}] tcp write_all err: {err}");
+                            }
                         }
                         ClientType::UDP(addr) => {
                             let mut socket = self.udp_socket.lock().await;
                             if socket.is_none() {
-                                *socket = Some(UdpSocket::bind("0.0.0.0:0").await?);
+                                let udp_socket = Arc::new(
+                                    UdpSocket::bind("0.0.0.0:0").await.expect("udp bind error"),
+                                );
+                                *socket = Some(udp_socket.clone());
+
+                                let udp_session_id_map = self.udp_session_id_map.clone();
+                                let on_output_callback = self.on_output_callback.clone();
+
+                                tokio::spawn(async move {
+                                    let mut buffer = Vec::with_capacity(65536);
+                                    loop {
+                                        buffer.clear();
+                                        match udp_socket.recv_buf_from(&mut buffer).await {
+                                            Ok((size, addr)) => {
+                                                let received_data = &buffer[..size];
+                                                if let Some(session_id) =
+                                                    udp_session_id_map.lock().await.get(&addr)
+                                                {
+                                                    on_output_callback(ProxyMessage::O2iRecvData(
+                                                        *session_id,
+                                                        received_data.to_vec(),
+                                                    ))
+                                                    .await;
+                                                }
+                                            }
+                                            Err(err) => {
+                                                error!("Failed to read from udp socket: {}", err);
+                                            }
+                                        }
+                                    }
+                                });
                             }
                             if let Some(socket) = &*socket {
-                                socket.send_to(&data, addr).await?;
+                                if let Err(err) = socket.send_to(&data, addr).await {
+                                    error!("[{session_id}] udp send_to({addr}) err: {err}");
+                                }
                             }
                         }
                     }
@@ -94,13 +148,22 @@ impl Outlet {
             }
             ProxyMessage::I2oDisconnect(session_id) => {
                 info!("disconnect session: {session_id}");
-                self.client_map.lock().await.remove(&session_id);
+
+                if let Some(client_type) = self.client_map.lock().await.remove(&session_id) {
+                    match client_type {
+                        ClientType::UDP(addr) => {
+                            self.udp_session_id_map.lock().await.remove(&addr);
+                        }
+                        ClientType::TCP(writer) => {
+                            let _ = writer.into_inner().shutdown().await;
+                        }
+                    }
+                }
             }
             _ => {
                 panic!("error message")
             }
         }
-        Ok(())
     }
 }
 
@@ -108,6 +171,7 @@ async fn tcp_connect(
     addr: SocketAddr,
     session_id: u32,
     on_output_callback: OutputFuncType,
+    client_map: Arc<Mutex<HashMap<u32, ClientType>>>,
 ) -> anyhow::Result<TcpWriter> {
     let socket = if addr.is_ipv4() {
         TcpSocket::new_v4()?
@@ -122,14 +186,27 @@ async fn tcp_connect(
         loop {
             match reader.read_buf(&mut buffer).await {
                 // n为0表示对端已经关闭连接。
-                Ok(n) if n == 0 => {
-                    debug!("socket[{}] closed.", addr);
+                Ok(n) => {
+                    if n == 0 {
+                        debug!("socket[{}] closed.", addr);
+                        break;
+                    } else {
+                        on_output_callback(ProxyMessage::O2iRecvData(
+                            session_id,
+                            buffer.split().to_vec(),
+                        ))
+                        .await;
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to read from socket[{}]: {}", addr, e);
+                    // socket读错误,主动断开
                     break;
                 }
-                _ => {}
             }
         }
-        let _ = on_output_callback(ProxyMessage::O2iDisconnect(session_id)).await;
+        on_output_callback(ProxyMessage::O2iDisconnect(session_id)).await;
+        client_map.lock().await.remove(&session_id);
     });
 
     Ok(Mutex::new(writer))

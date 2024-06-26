@@ -14,16 +14,16 @@ pub struct Tunnel {
     pub id: u32,
     /// 是否启用
     pub enabled: u8,
-    /// 发送方id
+    /// 发送方id(出口)
     pub sender: u32,
-    /// 接收方id
+    /// 接收方id(入口)
     pub receiver: u32,
     /// 描述文本
     pub description: String,
 }
 
 pub struct TunnelManager {
-    tunnels: Vec<Tunnel>,
+    pub tunnels: Vec<Tunnel>,
 }
 
 impl TunnelManager {

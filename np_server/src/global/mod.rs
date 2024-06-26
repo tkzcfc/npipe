@@ -47,5 +47,12 @@ pub(crate) async fn init_global() -> anyhow::Result<()> {
         .load_all_player()
         .await?;
 
+    GLOBAL_MANAGER
+        .proxy_manager
+        .read()
+        .await
+        .sync_tunnels(&GLOBAL_MANAGER.tunnel_manager.read().await.tunnels)
+        .await;
+
     Ok(())
 }

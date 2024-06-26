@@ -120,6 +120,9 @@ async fn poll_read<S>(
             Ok(_n) => {
                 // 循环解包
                 loop {
+                    if buffer.is_empty() {
+                        break;
+                    }
                     // 处理数据粘包
                     match delegate.on_try_extract_frame(&mut buffer) {
                         Ok(result) => {

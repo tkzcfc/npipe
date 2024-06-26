@@ -26,7 +26,7 @@ async fn poll_read(
 async fn poll_write(
     addr: SocketAddr,
     mut delegate_receiver: UnboundedReceiver<WriterMessage>,
-    socket: Arc<Mutex<UdpSocket>>,
+    socket: Arc<UdpSocket>,
 ) {
     while let Some(message) = delegate_receiver.recv().await {
         match message {
@@ -41,7 +41,7 @@ async fn poll_write(
                     continue;
                 }
 
-                if let Err(error) = socket.lock().await.send_to(&data, &addr).await {
+                if let Err(error) = socket.send_to(&data, &addr).await {
                     error!("[{addr}] Error when udp socket send_to {:?}", error);
                     break;
                 }
@@ -72,7 +72,7 @@ pub async fn run(
     mut delegate: Box<dyn SessionDelegate>,
     udp_recv_receiver: UnboundedReceiver<Vec<u8>>,
     mut shutdown: broadcast::Receiver<()>,
-    socket: Arc<Mutex<UdpSocket>>,
+    socket: Arc<UdpSocket>,
 ) {
     let (delegate_sender, delegate_receiver) = unbounded_channel::<WriterMessage>();
 

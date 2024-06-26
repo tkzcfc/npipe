@@ -40,18 +40,14 @@ pub async fn run_server(
         let hashmap: Arc<Mutex<HashMap<SocketAddr, UnboundedSender<Vec<u8>>>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let mut buf = [0; 65535]; // 最大允许的UDP数据包大小
-        let socket = Arc::new(Mutex::new(socket));
+        let socket = Arc::new(socket);
         loop {
             // 接收数据
-            if let Ok((len, addr)) = socket.lock().await.recv_from(&mut buf).await {
-                if let Some(sender) = hashmap.lock().await.get(&addr) {
-                    let received_data = Vec::from(&buf[..len]);
-                    if let Err(err) = sender.send(received_data) {
-                        error!(
-                            "Unable to process received data, data address: {addr}, error: {err}"
-                        );
-                    }
-                } else {
+            if let Ok((amt, addr)) = socket.recv_from(&mut buf).await {
+                let received_data = Vec::from(&buf[..amt]);
+
+                let contains_addr = hashmap.lock().await.contains_key(&addr);
+                if !contains_addr {
                     // 新的会话id
                     session_id_seed += 1;
                     let session_id = session_id_seed;
@@ -67,7 +63,10 @@ pub async fn run_server(
 
                     // 创建无界通道
                     let (udp_recv_sender, udp_recv_receiver) = mpsc::unbounded_channel::<Vec<u8>>();
-                    hashmap.lock().await.insert(addr.clone(), udp_recv_sender);
+                    hashmap
+                        .lock()
+                        .await
+                        .insert(addr.clone(), udp_recv_sender.clone());
 
                     let hashmap_cloned = hashmap.clone();
                     // 新连接单独起一个异步任务处理
@@ -89,8 +88,13 @@ pub async fn run_server(
                     });
                 }
 
-                println!("Received {} bytes from {}", len, addr);
-                addr.to_string();
+                if let Some(sender) = hashmap.lock().await.get(&addr) {
+                    if let Err(err) = sender.send(received_data) {
+                        error!(
+                            "Unable to process received data, data address: {addr}, error: {err}"
+                        );
+                    }
+                }
             }
         }
     };
