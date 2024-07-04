@@ -20,6 +20,12 @@ pub struct Tunnel {
     pub receiver: u32,
     /// 描述文本
     pub description: String,
+    /// 通道类型
+    pub tunnel_type: u32,
+    /// 密码
+    pub password: String,
+    /// 用户名
+    pub username: String,
 }
 
 pub struct TunnelManager {
@@ -58,13 +64,16 @@ impl TunnelManager {
         }
 
         let tunnel_id = sqlx::query!(
-            "INSERT INTO tunnel (source, endpoint, enabled, sender, receiver, description) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO tunnel (source, endpoint, enabled, sender, receiver, description, tunnel_type, password, username) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             tunnel.source,
             tunnel.endpoint,
             tunnel.enabled,
             tunnel.sender,
             tunnel.receiver,
-            tunnel.description
+            tunnel.description,
+            tunnel.tunnel_type,
+            tunnel.password,
+            tunnel.username,
         )
         .execute(GLOBAL_DB_POOL.get().unwrap())
         .await?
@@ -110,13 +119,16 @@ impl TunnelManager {
 
         if let Some(index) = self.tunnels.iter().position(|it| it.id == tunnel.id) {
             if sqlx::query!(
-                "UPDATE tunnel SET source = ?, endpoint = ?, enabled = ?, sender = ?, receiver = ?, description = ? WHERE id = ?",
+                "UPDATE tunnel SET source = ?, endpoint = ?, enabled = ?, sender = ?, receiver = ?, description = ?, tunnel_type = ?, password = ?, username = ? WHERE id = ?",
                 tunnel.source,
                 tunnel.endpoint,
                 tunnel.enabled,
                 tunnel.sender,
                 tunnel.receiver,
                 tunnel.description,
+                tunnel.tunnel_type,
+                tunnel.password,
+                tunnel.username,
                 tunnel.id
             ).execute(GLOBAL_DB_POOL.get().unwrap())
                 .await?
@@ -148,5 +160,31 @@ impl TunnelManager {
                     && get_tunnel_address_port(&x.source) == port
             })
             .is_some()
+    }
+
+    /// 查询通道
+    pub async fn query(
+        &self,
+        page_number: usize,
+        page_size: usize,
+    ) -> anyhow::Result<Vec<Tunnel>, sqlx::Error> {
+        let page_number = page_number;
+        let page_size = if page_size <= 0 || page_size > 100 {
+            10
+        } else {
+            page_size
+        };
+        let offset = page_number * page_size;
+
+        // 分页查询数据
+        let data_list: Vec<Tunnel> = sqlx::query_as!(
+            Tunnel,
+            "SELECT * FROM tunnel LIMIT ? OFFSET ?",
+            page_size as u32,
+            offset as u32
+        )
+        .fetch_all(GLOBAL_DB_POOL.get().unwrap())
+        .await?;
+        return Ok(data_list);
     }
 }

@@ -3,17 +3,25 @@ syntax = "proto3";
 package PB.ClassDef;
 
 // 通道端点
-message ChannelPoint {
+message TunnelPoint {
     // 地址
     string addr = 1;
 }
 
+// 通道类型
+enum TunnelType {
+    TCP = 0;
+    UDP = 1;
+    SOCKS5 = 2;
+    UNKNOWN = 3;
+}
+
 // 通道
-message Channel {
+message Tunnel {
     // 起点（入口）
-    ChannelPoint source = 1;
+    TunnelPoint source = 1;
     // 终点（出口）
-    ChannelPoint endpoint = 2;
+    TunnelPoint endpoint = 2;
     // 通道id
     uint32 id = 3;
     // 是否启用
@@ -22,4 +30,10 @@ message Channel {
     uint32 sender = 5;
     // 接收方id
     uint32 receiver = 6;
+    // 通道类型
+    TunnelType tunnel_type = 7;
+    // 密码
+    string password = 8;
+    // 用户名
+    string username = 9;
 }

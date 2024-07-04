@@ -12,7 +12,7 @@ message LoginAck {
   // 自己的玩家id
   uint32 player_id = 2;
   // 通道列表
-  repeated PB.ClassDef.Channel channel_list = 3;
+  repeated PB.ClassDef.Tunnel tunnel_list = 3;
 }
 
 // 管理员登录回复
@@ -23,16 +23,16 @@ message ManagementLoginAck {
 }
 
 // 修改通道通知
-message ModifyChannelNtf {
+message ModifyTunnelNtf {
   enum MsgId {None = 0; Id = 1008;}
   // 是否是删除通道，如果不是则表示新增或更新通道信息
   bool is_delete = 1;
   // 通道信息
-  PB.ClassDef.Channel channel = 2;
+  PB.ClassDef.Tunnel tunnel = 2;
 }
 
 // 向通道发送消息
-message SendMessageToChannel {
+message SendMessageToTunnel {
   enum MsgId {None = 0; Id = 1010;}
   // 通道id
   int32 id = 1;
@@ -41,7 +41,7 @@ message SendMessageToChannel {
 }
 
 // 从通道收到消息
-message RecvMessageFromChannel {
+message RecvMessageFromTunnel {
   enum MsgId {None = 0; Id = 1012;}
   // 通道id
   int32 id = 1;

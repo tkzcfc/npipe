@@ -5,10 +5,12 @@ mod utils;
 mod web;
 
 use crate::global::config::GLOBAL_CONFIG;
+use crate::global::opts::GLOBAL_OPTS;
 use crate::peer::Peer;
 use anyhow::anyhow;
 use np_base::net::session_delegate::SessionDelegate;
 use np_base::net::tcp_server;
+use once_cell::sync::Lazy;
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
 use tokio::{select, signal};
@@ -37,6 +39,8 @@ pub async fn run_web_server() -> anyhow::Result<()> {
 
 #[tokio::main]
 pub async fn main() -> anyhow::Result<()> {
+    Lazy::force(&GLOBAL_OPTS);
+    Lazy::force(&GLOBAL_CONFIG);
     global::init_global().await?;
 
     let result: anyhow::Result<()>;

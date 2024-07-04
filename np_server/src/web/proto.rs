@@ -78,6 +78,9 @@ pub struct TunnelListItem {
     pub sender: u32,
     pub receiver: u32,
     pub description: String,
+    pub tunnel_type: u32,
+    pub password: String,
+    pub username: String,
 }
 
 /// 通道列表回复
@@ -103,6 +106,9 @@ pub struct TunnelAddReq {
     pub sender: u32,
     pub receiver: u32,
     pub description: String,
+    pub tunnel_type: u32,
+    pub password: String,
+    pub username: String,
 }
 
 /// 修改通道请求
@@ -115,4 +121,7 @@ pub struct TunnelUpdateReq {
     pub sender: u32,
     pub receiver: u32,
     pub description: String,
+    pub tunnel_type: u32,
+    pub password: String,
+    pub username: String,
 }

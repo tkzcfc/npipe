@@ -322,33 +322,13 @@ async fn tunnel_list(
     }
 
     let req = serde_json::from_str::<proto::PlayerListRequest>(&body)?;
-    let page_number = req.page_number;
-    let page_size = if req.page_size <= 0 || req.page_size > 100 {
-        1
-    } else {
-        req.page_size
-    };
-    let offset = page_number * page_size;
-
-    struct Data {
-        id: u32,
-        source: String,
-        endpoint: String,
-        enabled: u8,
-        sender: u32,
-        receiver: u32,
-        description: String,
-    }
-    // 分页查询数据
-    let data_list: Vec<Data> = sqlx::query_as!(
-        Data,
-        "SELECT id, source, endpoint, enabled, sender, receiver, description FROM tunnel LIMIT ? OFFSET ?",
-        page_size as u32,
-        offset as u32
-    )
-    .fetch_all(GLOBAL_DB_POOL.get().unwrap())
-    .await
-    .map_err(map_db_err)?;
+    let tunnel_list = GLOBAL_MANAGER
+        .tunnel_manager
+        .read()
+        .await
+        .query(req.page_number, req.page_size)
+        .await
+        .map_err(map_db_err)?;
 
     // 查询总条数
     let count_query = "SELECT COUNT(*) FROM tunnel";
@@ -360,7 +340,7 @@ async fn tunnel_list(
 
     let mut tunnels: Vec<proto::TunnelListItem> = Vec::new();
 
-    for data in data_list {
+    for data in tunnel_list {
         tunnels.push(proto::TunnelListItem {
             id: data.id,
             source: data.source,
@@ -369,6 +349,9 @@ async fn tunnel_list(
             sender: data.sender,
             receiver: data.receiver,
             description: data.description,
+            tunnel_type: data.tunnel_type,
+            password: data.password,
+            username: data.username,
         })
     }
 
@@ -425,6 +408,9 @@ async fn add_tunnel(identity: Option<Identity>, body: String) -> actix_web::Resu
             sender: req.sender,
             receiver: req.receiver,
             description: req.description,
+            tunnel_type: req.tunnel_type,
+            password: req.password,
+            username: req.username,
         })
         .await
     {
@@ -461,6 +447,9 @@ async fn update_tunnel(
             sender: req.sender,
             receiver: req.receiver,
             description: req.description,
+            tunnel_type: req.tunnel_type,
+            password: req.password,
+            username: req.username,
         })
         .await
     {

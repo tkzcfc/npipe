@@ -1,3 +1,4 @@
+use crate::global::opts::GLOBAL_OPTS;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -16,7 +17,7 @@ pub struct Config {
 }
 
 pub static GLOBAL_CONFIG: Lazy<Config> = Lazy::new(|| {
-    let file = match File::open("config.json") {
+    let file = match File::open(&GLOBAL_OPTS.config_file) {
         Ok(file) => file,
         Err(e) => {
             eprintln!("Failed to open config file: {}", e);

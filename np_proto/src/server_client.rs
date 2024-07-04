@@ -12,7 +12,7 @@ pub struct LoginAck {
     pub player_id: u32,
     /// 通道列表
     #[prost(message, repeated, tag = "3")]
-    pub channel_list: ::prost::alloc::vec::Vec<super::class_def::Channel>,
+    pub tunnel_list: ::prost::alloc::vec::Vec<super::class_def::Tunnel>,
 }
 /// 管理员登录回复
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]
@@ -28,20 +28,20 @@ pub struct ManagementLoginAck {
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ModifyChannelNtf {
+pub struct ModifyTunnelNtf {
     /// @build_automatically_generate_message_id@  enum MsgId {None = 0; Id = 1008;}
     /// 是否是删除通道，如果不是则表示新增或更新通道信息
     #[prost(bool, tag = "1")]
     pub is_delete: bool,
     /// 通道信息
     #[prost(message, optional, tag = "2")]
-    pub channel: ::core::option::Option<super::class_def::Channel>,
+    pub tunnel: ::core::option::Option<super::class_def::Tunnel>,
 }
 /// 向通道发送消息
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct SendMessageToChannel {
+pub struct SendMessageToTunnel {
     /// @build_automatically_generate_message_id@  enum MsgId {None = 0; Id = 1010;}
     /// 通道id
     #[prost(int32, tag = "1")]
@@ -54,7 +54,7 @@ pub struct SendMessageToChannel {
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct RecvMessageFromChannel {
+pub struct RecvMessageFromTunnel {
     /// @build_automatically_generate_message_id@  enum MsgId {None = 0; Id = 1012;}
     /// 通道id
     #[prost(int32, tag = "1")]

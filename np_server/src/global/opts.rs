@@ -10,7 +10,11 @@ pub struct Opts {
     #[arg(short, long, default_value_t = false, action = clap::ArgAction::Set)]
     pub backtrace: bool,
 
-    /// Set log level
-    #[arg(long, default_value = "warn")]
+    /// Config file
+    #[arg(short, long, default_value = "config.json")]
+    pub config_file: String,
+
+    /// Set log level  warn
+    #[arg(long, default_value = "trace")]
     pub log_level: String,
 }
