@@ -4,29 +4,28 @@ use np_base::proxy::inlet::{Inlet, InletProxyType};
 use np_base::proxy::outlet::Outlet;
 use np_base::proxy::{OutputFuncType, ProxyMessage};
 use std::collections::HashMap;
-use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 pub struct ProxyManager {
-    outlets: Arc<Mutex<HashMap<u32, Outlet>>>,
-    inlets: Arc<Mutex<HashMap<u32, Inlet>>>,
+    outlets: Arc<RwLock<HashMap<u32, Outlet>>>,
+    inlets: Arc<RwLock<HashMap<u32, Inlet>>>,
 }
 
 impl ProxyManager {
     pub fn new() -> Self {
         Self {
-            outlets: Arc::new(Mutex::new(HashMap::new())),
-            inlets: Arc::new(Mutex::new(HashMap::new())),
+            outlets: Arc::new(RwLock::new(HashMap::new())),
+            inlets: Arc::new(RwLock::new(HashMap::new())),
         }
     }
     pub async fn sync_tunnels(&self, tunnels: &Vec<Tunnel>) {
-        self.outlets.lock().await.retain(|key: &u32, _| {
+        self.outlets.write().await.retain(|key: &u32, _| {
             tunnels
                 .iter()
                 .any(|tunnel| tunnel.enabled == 1 && tunnel.id == *key && tunnel.sender == 0)
         });
-        self.inlets.lock().await.retain(|key: &u32, _| {
+        self.inlets.write().await.retain(|key: &u32, _| {
             tunnels
                 .iter()
                 .any(|tunnel| tunnel.enabled == 1 && tunnel.id == *key && tunnel.receiver == 0)
@@ -36,7 +35,7 @@ impl ProxyManager {
             .iter()
             .filter(|tunnel| tunnel.enabled == 1 && tunnel.sender == 0)
         {
-            if !self.outlets.lock().await.contains_key(&tunnel.id) {
+            if !self.outlets.read().await.contains_key(&tunnel.id) {
                 let tunnel_id = tunnel.id;
                 let this_machine = tunnel.receiver == tunnel.sender;
                 let inlets = self.inlets.clone();
@@ -45,7 +44,7 @@ impl ProxyManager {
                     let inlets = inlets.clone();
                     Box::pin(async move {
                         if this_machine {
-                            if let Some(inlet) = inlets.lock().await.get(&tunnel_id) {
+                            if let Some(inlet) = inlets.read().await.get(&tunnel_id) {
                                 inlet.input(message).await;
                             }
                         } else {
@@ -53,7 +52,7 @@ impl ProxyManager {
                     })
                 });
                 self.outlets
-                    .lock()
+                    .write()
                     .await
                     .insert(tunnel.id, Outlet::new(outlet_output));
             }
@@ -63,7 +62,7 @@ impl ProxyManager {
             .iter()
             .filter(|tunnel| tunnel.enabled == 1 && tunnel.receiver == 0)
         {
-            if !self.inlets.lock().await.contains_key(&tunnel.id) {
+            if !self.inlets.read().await.contains_key(&tunnel.id) {
                 let tunnel_id = tunnel.id;
                 let this_machine = tunnel.receiver == tunnel.sender;
                 let outlets = self.outlets.clone();
@@ -72,7 +71,7 @@ impl ProxyManager {
                     let outlets = outlets.clone();
                     Box::pin(async move {
                         if this_machine {
-                            if let Some(outlet) = outlets.lock().await.get(&tunnel_id) {
+                            if let Some(outlet) = outlets.read().await.get(&tunnel_id) {
                                 outlet.input(message).await;
                             }
                         } else {
@@ -89,7 +88,7 @@ impl ProxyManager {
                     let source = tunnel.source.clone();
                     error!("inlet({source}) start error: {err}");
                 } else {
-                    self.inlets.lock().await.insert(tunnel.id, inlet);
+                    self.inlets.write().await.insert(tunnel.id, inlet);
                 }
             }
         }

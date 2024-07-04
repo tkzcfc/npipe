@@ -1,7 +1,6 @@
 use crate::net::WriterMessage;
 use std::collections::HashMap;
 use std::future::Future;
-use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
