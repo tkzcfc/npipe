@@ -64,40 +64,32 @@ impl ProxyManager {
             .filter(|tunnel| tunnel.enabled == 1 && tunnel.receiver == 0)
         {
             if !self.inlets.lock().await.contains_key(&tunnel.id) {
-                match tunnel.endpoint.parse::<SocketAddr>() {
-                    Err(err) => {
-                        let endpoint = tunnel.endpoint.clone();
-                        error!("unresolvable address({endpoint}) err: {err}");
-                    }
-                    Ok(output_addr) => {
-                        let tunnel_id = tunnel.id;
-                        let this_machine = tunnel.receiver == tunnel.sender;
-                        let outlets = self.outlets.clone();
+                let tunnel_id = tunnel.id;
+                let this_machine = tunnel.receiver == tunnel.sender;
+                let outlets = self.outlets.clone();
 
-                        let inlet_output: OutputFuncType =
-                            Arc::new(move |message: ProxyMessage| {
-                                let outlets = outlets.clone();
-                                Box::pin(async move {
-                                    if this_machine {
-                                        if let Some(outlet) = outlets.lock().await.get(&tunnel_id) {
-                                            outlet.input(message).await;
-                                        }
-                                    } else {
-                                    }
-                                })
-                            });
-
-                        let mut inlet = Inlet::new(InletProxyType::TCP, output_addr);
-                        if let Err(err) = inlet
-                            .start(tunnel.source.clone().into(), inlet_output)
-                            .await
-                        {
-                            let source = tunnel.source.clone();
-                            error!("inlet({source}) start error: {err}");
+                let inlet_output: OutputFuncType = Arc::new(move |message: ProxyMessage| {
+                    let outlets = outlets.clone();
+                    Box::pin(async move {
+                        if this_machine {
+                            if let Some(outlet) = outlets.lock().await.get(&tunnel_id) {
+                                outlet.input(message).await;
+                            }
                         } else {
-                            self.inlets.lock().await.insert(tunnel.id, inlet);
                         }
-                    }
+                    })
+                });
+
+                // let mut inlet = Inlet::new(InletProxyType::UDP, tunnel.endpoint.clone());
+                let mut inlet = Inlet::new(InletProxyType::TCP, tunnel.endpoint.clone());
+                if let Err(err) = inlet
+                    .start(tunnel.source.clone().into(), inlet_output)
+                    .await
+                {
+                    let source = tunnel.source.clone();
+                    error!("inlet({source}) start error: {err}");
+                } else {
+                    self.inlets.lock().await.insert(tunnel.id, inlet);
                 }
             }
         }

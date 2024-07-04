@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, WriteHalf};
-use tokio::net::{TcpSocket, TcpStream, UdpSocket};
+use tokio::net::{lookup_host, TcpSocket, TcpStream, UdpSocket};
 use tokio::sync::Mutex;
 
 type TcpWriter = Mutex<WriteHalf<TcpStream>>;
@@ -47,51 +47,97 @@ impl Outlet {
                         .await
                     });
                 } else {
-                    if is_tcp {
-                        match tcp_connect(
-                            addr,
-                            session_id,
-                            self.on_output_callback.clone(),
-                            self.client_map.clone(),
-                        )
-                        .await
-                        {
-                            Ok(client) => {
-                                self.client_map
-                                    .lock()
-                                    .await
-                                    .insert(session_id, ClientType::TCP(client));
-                            }
-                            Err(err) => {
-                                let output_callback = self.on_output_callback.clone();
-                                // 连接失败
-                                tokio::spawn(async move {
-                                    output_callback(ProxyMessage::O2iConnect(
-                                        session_id,
-                                        false,
-                                        err.to_string(),
-                                    ))
-                                    .await;
-                                });
-                                return;
+                    let mut addr_opt = None;
+                    // 地址解析
+                    if let Ok(addr) = addr.parse::<SocketAddr>() {
+                        addr_opt = Some(addr);
+                    } else {
+                        let mut addr_err = format!("The address format is invalid: '{}'", addr);
+                        // 尝试解析域名
+                        let s: Vec<&str> = addr.split(":").collect();
+                        if s.len() == 2 && s[1].parse::<u16>().is_ok() {
+                            let domain = s[0];
+                            match lookup_host(domain).await {
+                                Ok(mut addrs) => {
+                                    while let Some(addr) = addrs.next() {
+                                        // match addr {
+                                        //     SocketAddr::V4(addr) => println!("IPv4: {}", addr),
+                                        //     SocketAddr::V6(addr) => println!("IPv6: {}", addr),
+                                        // }
+
+                                        // 使用第一个解析到的地址
+                                        let mut addr = addr.clone();
+                                        // 端口重定向
+                                        addr.set_port(s[1].parse::<u16>().unwrap());
+                                        addr_opt = Some(addr);
+                                        break;
+                                    }
+                                }
+                                Err(e) => {
+                                    addr_err = format!("Failed to resolve domain: {}", e);
+                                }
                             }
                         }
-                    } else {
-                        self.client_map
-                            .lock()
-                            .await
-                            .insert(session_id, ClientType::UDP(addr));
-                        self.udp_session_id_map
-                            .lock()
-                            .await
-                            .insert(addr, session_id);
+
+                        // 无法连接,地址解析失败
+                        if addr_opt.is_none() {
+                            let output_callback = self.on_output_callback.clone();
+                            tokio::spawn(async move {
+                                output_callback(ProxyMessage::O2iConnect(
+                                    session_id, false, addr_err,
+                                ))
+                                .await
+                            });
+                        }
                     }
 
-                    let output_callback = self.on_output_callback.clone();
-                    tokio::spawn(async move {
-                        output_callback(ProxyMessage::O2iConnect(session_id, true, "".into()))
-                            .await;
-                    });
+                    if let Some(addr) = addr_opt {
+                        if is_tcp {
+                            match tcp_connect(
+                                addr,
+                                session_id,
+                                self.on_output_callback.clone(),
+                                self.client_map.clone(),
+                            )
+                            .await
+                            {
+                                Ok(client) => {
+                                    self.client_map
+                                        .lock()
+                                        .await
+                                        .insert(session_id, ClientType::TCP(client));
+                                }
+                                Err(err) => {
+                                    let output_callback = self.on_output_callback.clone();
+                                    // 连接失败
+                                    tokio::spawn(async move {
+                                        output_callback(ProxyMessage::O2iConnect(
+                                            session_id,
+                                            false,
+                                            err.to_string(),
+                                        ))
+                                        .await;
+                                    });
+                                    return;
+                                }
+                            }
+                        } else {
+                            self.client_map
+                                .lock()
+                                .await
+                                .insert(session_id, ClientType::UDP(addr));
+                            self.udp_session_id_map
+                                .lock()
+                                .await
+                                .insert(addr, session_id);
+                        }
+
+                        let output_callback = self.on_output_callback.clone();
+                        tokio::spawn(async move {
+                            output_callback(ProxyMessage::O2iConnect(session_id, true, "".into()))
+                                .await;
+                        });
+                    }
                 }
             }
             ProxyMessage::I2oSendData(session_id, data) => {

@@ -11,8 +11,8 @@ pub mod inlet;
 pub mod outlet;
 
 pub enum ProxyMessage {
-    // 向输出端请求发起连接(u32:会话id  bool:是否是TCP连接 SocketAddr:目标地址)
-    I2oConnect(u32, bool, SocketAddr),
+    // 向输出端请求发起连接(u32:会话id  bool:是否是TCP连接 String:目标地址)
+    I2oConnect(u32, bool, String),
     // 连接结果(u32:会话id  bool:是否是成功 String:错误信息)
     O2iConnect(u32, bool, String),
     // 向输出端请求发送数据(u32:会话id  Vec<u8>:数据)

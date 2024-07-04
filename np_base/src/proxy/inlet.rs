@@ -26,11 +26,11 @@ pub struct Inlet {
     shutdown_tx: Option<Sender<()>>,
     notify: Arc<Notify>,
     sender_map: SenderMap,
-    output_addr: SocketAddr,
+    output_addr: String,
 }
 
 impl Inlet {
-    pub fn new(inlet_proxy_type: InletProxyType, output_addr: SocketAddr) -> Self {
+    pub fn new(inlet_proxy_type: InletProxyType, output_addr: String) -> Self {
         Self {
             inlet_proxy_type,
             shutdown_tx: None,
@@ -148,7 +148,7 @@ impl Inlet {
 
 struct InletSession {
     is_tcp: bool,
-    output_addr: SocketAddr,
+    output_addr: String,
     sender_map: SenderMap,
     session_id: u32,
     on_output_callback: OutputFuncType,
@@ -157,7 +157,7 @@ struct InletSession {
 impl InletSession {
     pub fn new(
         is_tcp: bool,
-        output_addr: SocketAddr,
+        output_addr: String,
         sender_map: SenderMap,
         on_output_callback: OutputFuncType,
     ) -> Self {
