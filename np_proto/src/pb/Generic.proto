@@ -43,3 +43,69 @@ message Pong {
   enum MsgId {None = 0; Id = 150005;}
   int64 ticks = 1;
 }
+
+// 向输出端请求发起连接
+message I2oConnect {
+  enum MsgId {None = 0; Id = 150006;}
+  // 通道id
+  uint32 tunnel_id = 1;
+  // 会话id
+  uint32 session_id = 2;
+  // 是否是TCP连接
+  bool is_tcp = 3;
+  // 目标地址
+  string addr = 4;
+}
+
+// 连接结果
+message O2iConnect {
+  enum MsgId {None = 0; Id = 150007;}
+  // 通道id
+  uint32 tunnel_id = 1;
+  // 会话id
+  uint32 session_id = 2;
+  // 是否是成功
+  bool success = 3;
+  // 错误信息
+  string error_info = 4;
+}
+
+// 输出端收到数据返回给输入端
+message I2oSendData {
+  enum MsgId {None = 0; Id = 150008;}
+  // 通道id
+  uint32 tunnel_id = 1;
+  // 会话id
+  uint32 session_id = 2;
+  // 数据
+  bytes data = 3;
+}
+
+// 输出端收到数据返回给输入端
+message O2iRecvData {
+  enum MsgId {None = 0; Id = 150009;}
+  // 通道id
+  uint32 tunnel_id = 1;
+  // 会话id
+  uint32 session_id = 2;
+  // 数据
+  bytes data = 3;
+}
+
+// 断开连接
+message I2oDisconnect {
+  enum MsgId {None = 0; Id = 150010;}
+  // 通道id
+  uint32 tunnel_id = 1;
+  // 会话id
+  uint32 session_id = 2;
+}
+
+// 断开连接
+message O2iDisconnect {
+  enum MsgId {None = 0; Id = 150011;}
+  // 通道id
+  uint32 tunnel_id = 1;
+  // 会话id
+  uint32 session_id = 2;
+}

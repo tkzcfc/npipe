@@ -37,29 +37,3 @@ pub struct ModifyTunnelNtf {
     #[prost(message, optional, tag = "2")]
     pub tunnel: ::core::option::Option<super::class_def::Tunnel>,
 }
-/// 向通道发送消息
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct SendMessageToTunnel {
-    /// @build_automatically_generate_message_id@  enum MsgId {None = 0; Id = 1010;}
-    /// 通道id
-    #[prost(int32, tag = "1")]
-    pub id: i32,
-    /// 数据
-    #[prost(bytes = "vec", tag = "2")]
-    pub data: ::prost::alloc::vec::Vec<u8>,
-}
-/// 从通道收到消息
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct RecvMessageFromTunnel {
-    /// @build_automatically_generate_message_id@  enum MsgId {None = 0; Id = 1012;}
-    /// 通道id
-    #[prost(int32, tag = "1")]
-    pub id: i32,
-    /// 数据
-    #[prost(bytes = "vec", tag = "2")]
-    pub data: ::prost::alloc::vec::Vec<u8>,
-}

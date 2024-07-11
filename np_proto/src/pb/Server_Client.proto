@@ -31,20 +31,20 @@ message ModifyTunnelNtf {
   PB.ClassDef.Tunnel tunnel = 2;
 }
 
-// 向通道发送消息
-message SendMessageToTunnel {
-  enum MsgId {None = 0; Id = 1010;}
-  // 通道id
-  int32 id = 1;
-  // 数据
-  bytes data = 2;
-}
-
-// 从通道收到消息
-message RecvMessageFromTunnel {
-  enum MsgId {None = 0; Id = 1012;}
-  // 通道id
-  int32 id = 1;
-  // 数据
-  bytes data = 2;
-}
+//// 向通道发送消息
+//message SendMessageToTunnel {
+//  enum MsgId {None = 0; Id = 1010;}
+//  // 通道id
+//  int32 id = 1;
+//  // 数据
+//  bytes data = 2;
+//}
+//
+//// 从通道收到消息
+//message RecvMessageFromTunnel {
+//  enum MsgId {None = 0; Id = 1012;}
+//  // 通道id
+//  int32 id = 1;
+//  // 数据
+//  bytes data = 2;
+//}

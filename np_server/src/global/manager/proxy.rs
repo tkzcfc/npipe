@@ -1,5 +1,5 @@
 use crate::global::manager::tunnel::Tunnel;
-use log::{error, info};
+use log::{debug, error, info};
 use np_base::proxy::inlet::{Inlet, InletProxyType};
 use np_base::proxy::outlet::Outlet;
 use np_base::proxy::{OutputFuncType, ProxyMessage};
@@ -77,7 +77,7 @@ impl ProxyManager {
                             if let Some(inlet) = inlets.read().await.get(&tunnel_id) {
                                 inlet.input(message).await;
                             } else {
-                                error!("unknown inlet({tunnel_id})");
+                                debug!("unknown inlet({tunnel_id})");
                             }
                         } else {
                         }
@@ -107,7 +107,7 @@ impl ProxyManager {
                             if let Some(outlet) = outlets.read().await.get(&tunnel_id) {
                                 outlet.input(message).await;
                             } else {
-                                error!("unknown outlet({tunnel_id})");
+                                debug!("unknown outlet({tunnel_id})");
                             }
                         } else {
                         }

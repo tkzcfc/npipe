@@ -1,3 +1,4 @@
+use crate::global::manager::GLOBAL_MANAGER;
 use crate::global::GLOBAL_DB_POOL;
 use crate::utils::str::{
     get_tunnel_address_port, is_valid_tunnel_endpoint_address, is_valid_tunnel_source_address,
@@ -81,6 +82,14 @@ impl TunnelManager {
 
         tunnel.id = tunnel_id as u32;
         self.tunnels.push(tunnel);
+
+        GLOBAL_MANAGER
+            .proxy_manager
+            .write()
+            .await
+            .sync_tunnels(&self.tunnels)
+            .await;
+
         Ok(())
     }
 
@@ -94,6 +103,12 @@ impl TunnelManager {
         {
             if let Some(index) = self.tunnels.iter().position(|it| it.id == tunnel_id) {
                 self.tunnels.remove(index);
+                GLOBAL_MANAGER
+                    .proxy_manager
+                    .write()
+                    .await
+                    .sync_tunnels(&self.tunnels)
+                    .await;
             }
             return Ok(());
         }
@@ -134,6 +149,7 @@ impl TunnelManager {
                 .await?
                 .rows_affected() == 1 {
                 self.tunnels[index] = tunnel;
+                GLOBAL_MANAGER.proxy_manager.write().await.sync_tunnels(&self.tunnels).await;
                 return Ok(());
             }
             return Err(anyhow!(format!(
