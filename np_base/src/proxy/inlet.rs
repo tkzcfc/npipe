@@ -18,7 +18,18 @@ pub enum InletProxyType {
     TCP,
     UDP,
     // Not implemented
-    // SOCKS5,
+    SOCKS5,
+}
+
+impl InletProxyType {
+    pub fn from_u32(value: u32) -> Option<InletProxyType> {
+        match value {
+            0 => Some(InletProxyType::TCP),
+            1 => Some(InletProxyType::UDP),
+            2 => Some(InletProxyType::SOCKS5),
+            _ => None,
+        }
+    }
 }
 
 pub struct Inlet {
@@ -27,16 +38,18 @@ pub struct Inlet {
     notify: Arc<Notify>,
     sender_map: SenderMap,
     output_addr: String,
+    description: String,
 }
 
 impl Inlet {
-    pub fn new(inlet_proxy_type: InletProxyType, output_addr: String) -> Self {
+    pub fn new(inlet_proxy_type: InletProxyType, output_addr: String, description: String) -> Self {
         Self {
             inlet_proxy_type,
             shutdown_tx: None,
             notify: Arc::new(Notify::new()),
             sender_map: Arc::new(Mutex::new(HashMap::new())),
             output_addr,
+            description,
         }
     }
 
@@ -56,6 +69,7 @@ impl Inlet {
         let is_tcp = match &self.inlet_proxy_type {
             InletProxyType::TCP => true,
             InletProxyType::UDP => false,
+            InletProxyType::SOCKS5 => true,
         };
 
         let output_addr = self.output_addr.clone();
@@ -95,6 +109,9 @@ impl Inlet {
                     .await;
                     worker_notify.notify_one();
                 });
+            }
+            InletProxyType::SOCKS5 => {
+                return Err(anyhow!("SOCKS5 (Not implemented)"));
             }
         }
 
@@ -143,6 +160,10 @@ impl Inlet {
                 panic!("error message")
             }
         }
+    }
+
+    pub fn description(&self) -> &String {
+        &self.description
     }
 }
 

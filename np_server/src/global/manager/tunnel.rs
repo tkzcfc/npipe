@@ -4,7 +4,7 @@ use crate::utils::str::{
 };
 use anyhow::anyhow;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Tunnel {
     /// 入口
     pub source: String,
@@ -186,5 +186,29 @@ impl TunnelManager {
         .fetch_all(GLOBAL_DB_POOL.get().unwrap())
         .await?;
         return Ok(data_list);
+    }
+}
+
+impl Tunnel {
+    pub fn outlet_description(&self) -> String {
+        format!(
+            "id:{}-sender:{}-enabled:{}",
+            self.id, self.sender, self.enabled
+        )
+    }
+
+    pub fn inlet_description(&self) -> String {
+        format!(
+            "id:{}-source:{}-endpoint:{}-sender:{}-receiver:{}-tunnel_type:{}-username:{}-password:{}-enabled:{}",
+            self.id,
+            self.source,
+            self.endpoint,
+            self.sender,
+            self.receiver,
+            self.tunnel_type,
+            self.username,
+            self.password,
+            self.enabled
+        )
     }
 }

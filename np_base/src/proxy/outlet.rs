@@ -20,15 +20,17 @@ pub struct Outlet {
     udp_socket: Mutex<Option<Arc<UdpSocket>>>,
     udp_session_id_map: Arc<Mutex<HashMap<SocketAddr, u32>>>,
     on_output_callback: OutputFuncType,
+    description: String,
 }
 
 impl Outlet {
-    pub fn new(on_output_callback: OutputFuncType) -> Self {
+    pub fn new(on_output_callback: OutputFuncType, description: String) -> Self {
         Self {
             udp_socket: Mutex::new(None),
             client_map: Arc::new(Mutex::new(HashMap::new())),
             udp_session_id_map: Arc::new(Mutex::new(HashMap::new())),
             on_output_callback,
+            description,
         }
     }
 
@@ -210,6 +212,10 @@ impl Outlet {
                 panic!("error message")
             }
         }
+    }
+
+    pub fn description(&self) -> &String {
+        &self.description
     }
 }
 
