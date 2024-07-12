@@ -203,6 +203,14 @@ impl TunnelManager {
         .await?;
         return Ok(data_list);
     }
+
+    pub fn get_tunnel(&self, id: u32) -> Option<&Tunnel> {
+        if let Some(index) = self.tunnels.iter().position(|x| x.id == id) {
+            Some(&self.tunnels[index])
+        } else {
+            None
+        }
+    }
 }
 
 impl Tunnel {
