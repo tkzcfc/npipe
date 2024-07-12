@@ -2741,7 +2741,12 @@ dependencies = [
 name = "np_client"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "clap",
+ "flexi_logger",
+ "log",
+ "np_base",
+ "np_proto",
  "num",
  "tokio",
 ]

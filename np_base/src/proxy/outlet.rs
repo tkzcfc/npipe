@@ -3,10 +3,10 @@ use anyhow::anyhow;
 use bytes::BytesMut;
 use log::{debug, error, info};
 use std::collections::HashMap;
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::{SocketAddr};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, WriteHalf};
-use tokio::net::{lookup_host, TcpSocket, TcpStream, UdpSocket};
+use tokio::net::{lookup_host, TcpStream, UdpSocket};
 use tokio::sync::Mutex;
 
 type TcpWriter = Mutex<WriteHalf<TcpStream>>;
