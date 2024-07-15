@@ -2742,6 +2742,8 @@ name = "np_client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "byteorder",
+ "bytes",
  "clap",
  "flexi_logger",
  "log",

@@ -1,4 +1,3 @@
-use crate::client::Client;
 use clap::Parser;
 use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming, WriteMode};
 use log::error;
@@ -16,12 +15,16 @@ pub struct Opts {
     pub backtrace: bool,
 
     /// Server address
-    #[arg(long)]
+    #[arg(long, default_value = "127.0.0.1:8118")]
     pub server_addr: String,
 
-    /// Secret key
-    #[arg(long)]
-    pub secret: String,
+    /// username
+    #[arg(short, long, default_value = "f123456")]
+    pub username: String,
+
+    /// password
+    #[arg(short, long, default_value = "f123456")]
+    pub password: String,
 
     /// Set log level  warn
     #[arg(long, default_value = "trace")]
@@ -50,10 +53,10 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // 日志初始化
-    Logger::try_with_str("trace")?
+    let _logger = Logger::try_with_str("trace")?
         .log_to_file(
             FileSpec::default()
-                .directory("client_logs")
+                .directory("logs")
                 .suppress_timestamp()
                 .suffix("log"),
         )
@@ -70,8 +73,7 @@ async fn main() -> anyhow::Result<()> {
         .start()?;
 
     loop {
-        let client = Client::new();
-        if let Err(err) = client.run(&ops).await {
+        if let Err(err) = client::run(&ops).await {
             error!("{err}");
             sleep(Duration::from_secs(1)).await;
         } else {

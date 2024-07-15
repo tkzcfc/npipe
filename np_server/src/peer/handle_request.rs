@@ -2,7 +2,7 @@ use super::Peer;
 use crate::global::manager::GLOBAL_MANAGER;
 use crate::global::GLOBAL_DB_POOL;
 use np_proto::message_map::MessageType;
-use np_proto::{client_server, generic};
+use np_proto::{class_def, client_server, generic, server_client};
 
 impl Peer {
     // 收到玩家向服务器请求的消息
@@ -85,7 +85,34 @@ impl Peer {
                 player
                     .on_connect_session(self.session_id, self.tx.clone().unwrap())
                     .await;
-                return Ok(MessageType::GenericSuccess(generic::Success {}));
+
+                let tunnel_list = GLOBAL_MANAGER
+                    .tunnel_manager
+                    .read()
+                    .await
+                    .tunnels
+                    .iter()
+                    .map(|x| class_def::Tunnel {
+                        source: Some(class_def::TunnelPoint {
+                            addr: x.source.clone(),
+                        }),
+                        endpoint: Some(class_def::TunnelPoint {
+                            addr: x.endpoint.clone(),
+                        }),
+                        id: x.id,
+                        enabled: x.enabled == 1,
+                        sender: x.sender,
+                        receiver: x.receiver,
+                        tunnel_type: x.tunnel_type as i32,
+                        password: x.password.clone(),
+                        username: x.username.clone(),
+                    })
+                    .collect();
+
+                return Ok(MessageType::ServerClientLoginAck(server_client::LoginAck {
+                    player_id: account.id,
+                    tunnel_list,
+                }));
             }
 
             return Ok(MessageType::GenericError(generic::Error {

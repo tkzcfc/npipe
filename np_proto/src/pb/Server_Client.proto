@@ -7,12 +7,10 @@ package PB.ServerClient;
 // 登录回复
 message LoginAck {
   enum MsgId {None = 0; Id = 1002;}
-  // 错误码 0成功
-  int32 code = 1;
   // 自己的玩家id
-  uint32 player_id = 2;
+  uint32 player_id = 1;
   // 通道列表
-  repeated PB.ClassDef.Tunnel tunnel_list = 3;
+  repeated PB.ClassDef.Tunnel tunnel_list = 2;
 }
 
 // 管理员登录回复
@@ -30,21 +28,3 @@ message ModifyTunnelNtf {
   // 通道信息
   PB.ClassDef.Tunnel tunnel = 2;
 }
-
-//// 向通道发送消息
-//message SendMessageToTunnel {
-//  enum MsgId {None = 0; Id = 1010;}
-//  // 通道id
-//  int32 id = 1;
-//  // 数据
-//  bytes data = 2;
-//}
-//
-//// 从通道收到消息
-//message RecvMessageFromTunnel {
-//  enum MsgId {None = 0; Id = 1012;}
-//  // 通道id
-//  int32 id = 1;
-//  // 数据
-//  bytes data = 2;
-//}

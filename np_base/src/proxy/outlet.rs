@@ -3,7 +3,7 @@ use anyhow::anyhow;
 use bytes::BytesMut;
 use log::{debug, error, info};
 use std::collections::HashMap;
-use std::net::{SocketAddr};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, WriteHalf};
 use tokio::net::{lookup_host, TcpStream, UdpSocket};

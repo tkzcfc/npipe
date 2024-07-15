@@ -134,15 +134,14 @@ impl ProxyManager {
                         .start(tunnel.source.clone().into(), inlet_output)
                         .await
                     {
-                        error!("inlet({}) start error: {}", tunnel.source.clone(), err);
+                        error!("inlet({}) start error: {}", tunnel.source, err);
                     } else {
                         self.inlets.write().await.insert(tunnel.id, inlet);
                     }
                 } else {
                     error!(
                         "inlet({}) unknown tunnel type: {}",
-                        tunnel.source.clone(),
-                        tunnel.tunnel_type
+                        tunnel.source, tunnel.tunnel_type
                     );
                 }
             }
