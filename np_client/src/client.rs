@@ -309,35 +309,19 @@ impl Client {
     ) {
         if self_player_id == player_id {
             match proxy_message {
-                ProxyMessage::I2oConnect(session_id, _, _) => {
-                    tokio::spawn(async move {
-                        if let Some(inlet) = inlets.read().await.get(&tunnel_id) {
-                            inlet
-                                .input(ProxyMessage::O2iConnect(
-                                    session_id,
-                                    false,
-                                    format!("no sender {player_id}"),
-                                ))
-                                .await;
-                        }
-                    });
+                ProxyMessage::I2oConnect(_, _, _)
+                | ProxyMessage::I2oSendData(_, _)
+                | ProxyMessage::I2oDisconnect(_) => {
+                    if let Some(outlet) = outlets.read().await.get(&tunnel_id) {
+                        outlet.input(proxy_message).await;
+                    }
                 }
-                ProxyMessage::I2oSendData(session_id, _) => {
-                    tokio::spawn(async move {
-                        if let Some(inlet) = inlets.read().await.get(&tunnel_id) {
-                            inlet.input(ProxyMessage::O2iDisconnect(session_id)).await;
-                        }
-                    });
+                _ => {
+                    if let Some(inlet) = inlets.read().await.get(&tunnel_id) {
+                        inlet.input(proxy_message).await;
+                    }
                 }
-                ProxyMessage::O2iRecvData(session_id, _) => {
-                    tokio::spawn(async move {
-                        if let Some(outlet) = outlets.read().await.get(&tunnel_id) {
-                            outlet.input(ProxyMessage::I2oDisconnect(session_id)).await;
-                        }
-                    });
-                }
-                _ => {}
-            }
+            };
         } else {
             let message = match proxy_message {
                 ProxyMessage::I2oConnect(session_id, is_tcp, addr) => {

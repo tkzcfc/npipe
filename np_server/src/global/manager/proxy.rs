@@ -153,6 +153,40 @@ impl ProxyManager {
         tunnel_id: u32,
         proxy_message: ProxyMessage,
     ) {
+        if player_id == 0 {
+            match proxy_message {
+                ProxyMessage::I2oConnect(_, _, _)
+                | ProxyMessage::I2oSendData(_, _)
+                | ProxyMessage::I2oDisconnect(_) => {
+                    if let Some(outlet) = GLOBAL_MANAGER
+                        .proxy_manager
+                        .read()
+                        .await
+                        .outlets
+                        .read()
+                        .await
+                        .get(&tunnel_id)
+                    {
+                        outlet.input(proxy_message).await;
+                    }
+                }
+                _ => {
+                    if let Some(inlet) = GLOBAL_MANAGER
+                        .proxy_manager
+                        .read()
+                        .await
+                        .inlets
+                        .read()
+                        .await
+                        .get(&tunnel_id)
+                    {
+                        inlet.input(proxy_message).await;
+                    }
+                }
+            };
+            return;
+        }
+
         if let Some(player) = GLOBAL_MANAGER
             .player_manager
             .read()
