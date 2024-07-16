@@ -39,7 +39,8 @@ impl Outlet {
         match message {
             ProxyMessage::I2oConnect(session_id, is_tcp, addr) => {
                 let output_callback = self.on_output_callback.clone();
-                if let Err(err) = self.on_i2o_connect(session_id, is_tcp, addr).await {
+                if let Err(err) = self.on_i2o_connect(session_id, is_tcp, addr.clone()).await {
+                    error!("Failed to connect to {}, error: {}", addr, err.to_string());
                     tokio::spawn(async move {
                         output_callback(ProxyMessage::O2iConnect(
                             session_id,
@@ -49,6 +50,7 @@ impl Outlet {
                         .await
                     });
                 } else {
+                    info!("Successfully connected to {}", addr);
                     tokio::spawn(async move {
                         output_callback(ProxyMessage::O2iConnect(session_id, true, "".into()))
                             .await;
@@ -73,8 +75,6 @@ impl Outlet {
         is_tcp: bool,
         addr: String,
     ) -> anyhow::Result<()> {
-        info!("session: {session_id}, connect to: {addr}");
-
         if self.client_map.lock().await.contains_key(&session_id) {
             return Err(anyhow!("repeated connection"));
         }

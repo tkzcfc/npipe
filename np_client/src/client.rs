@@ -17,7 +17,7 @@ use np_proto::server_client::ModifyTunnelNtf;
 use np_proto::{generic, message_map};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt, WriteHalf};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::{Mutex, RwLock};
 
@@ -37,7 +37,7 @@ pub async fn run(opts: &Opts) -> anyhow::Result<()> {
     let stream = TcpStream::connect(&opts.server_addr).await?;
     info!("Successful connection with server {}", opts.server_addr);
 
-    let (mut reader, writer) = tokio::io::split(stream);
+    let (reader, writer) = tokio::io::split(stream);
 
     let mut client = Client {
         writer: Arc::new(Mutex::new(writer)),
@@ -50,38 +50,42 @@ pub async fn run(opts: &Opts) -> anyhow::Result<()> {
     };
 
     client.send_login().await?;
-
-    let mut buffer = BytesMut::with_capacity(1024);
-    loop {
-        let len = reader.read_buf(&mut buffer).await?;
-        // len为0表示对端已经关闭连接。
-        if len == 0 {
-            info!("Disconnect from the server");
-            client.sync_tunnels(&Vec::new()).await;
-            break;
-        } else {
-            // 循环解包
-            loop {
-                if buffer.is_empty() {
-                    break;
-                }
-
-                let result = try_extract_frame(&mut buffer)?;
-                if let Some(frame) = result {
-                    // 收到完整消息
-                    client.on_recv_frame(frame).await?;
-                } else {
-                    // 消息包接收还未完成
-                    break;
-                }
-            }
-        }
-    }
-
-    Ok(())
+    let result = client.run(reader).await;
+    client.sync_tunnels(&Vec::new()).await;
+    result
 }
 
 impl Client {
+    async fn run(&mut self, mut reader: ReadHalf<TcpStream>) -> anyhow::Result<()> {
+        let mut buffer = BytesMut::with_capacity(1024);
+        loop {
+            let len = reader.read_buf(&mut buffer).await?;
+            // len为0表示对端已经关闭连接。
+            if len == 0 {
+                info!("Disconnect from the server");
+                break;
+            } else {
+                // 循环解包
+                loop {
+                    if buffer.is_empty() {
+                        break;
+                    }
+
+                    let result = try_extract_frame(&mut buffer)?;
+                    if let Some(frame) = result {
+                        // 收到完整消息
+                        self.on_recv_frame(frame).await?;
+                    } else {
+                        // 消息包接收还未完成
+                        break;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     async fn send_login(&self) -> anyhow::Result<()> {
         info!("Start Login");
         Self::package_and_send_message(
