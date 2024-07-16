@@ -34,8 +34,8 @@ struct Client {
 }
 
 pub async fn run(opts: &Opts) -> anyhow::Result<()> {
-    let stream = TcpStream::connect(&opts.server_addr).await?;
-    info!("Successful connection with server {}", opts.server_addr);
+    let stream = TcpStream::connect(&opts.server).await?;
+    info!("Successful connection with server {}", opts.server);
 
     let (reader, writer) = tokio::io::split(stream);
 

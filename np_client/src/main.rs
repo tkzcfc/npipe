@@ -16,7 +16,7 @@ pub struct Opts {
 
     /// Server address
     #[arg(long, default_value = "127.0.0.1:8118")]
-    pub server_addr: String,
+    pub server: String,
 
     /// username
     #[arg(short, long, default_value = "f123456")]
