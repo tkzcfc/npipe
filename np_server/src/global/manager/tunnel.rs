@@ -1,9 +1,12 @@
 use crate::global::manager::GLOBAL_MANAGER;
 use crate::global::GLOBAL_DB_POOL;
+use crate::player::PlayerId;
 use crate::utils::str::{
     get_tunnel_address_port, is_valid_tunnel_endpoint_address, is_valid_tunnel_source_address,
 };
 use anyhow::anyhow;
+use np_proto::message_map::MessageType;
+use np_proto::{class_def, server_client};
 
 #[derive(Debug, Clone)]
 pub struct Tunnel {
@@ -81,6 +84,11 @@ impl TunnelManager {
         .last_insert_id();
 
         tunnel.id = tunnel_id as u32;
+
+        Self::broadcast_tunnel_info(tunnel.sender, &tunnel, false).await;
+        if tunnel.sender != tunnel.receiver {
+            Self::broadcast_tunnel_info(tunnel.receiver, &tunnel, false).await;
+        }
         self.tunnels.push(tunnel);
 
         GLOBAL_MANAGER
@@ -102,7 +110,12 @@ impl TunnelManager {
             == 1
         {
             if let Some(index) = self.tunnels.iter().position(|it| it.id == tunnel_id) {
-                self.tunnels.remove(index);
+                let tunnel = self.tunnels.remove(index);
+                Self::broadcast_tunnel_info(tunnel.sender, &tunnel, true).await;
+                if tunnel.sender != tunnel.receiver {
+                    Self::broadcast_tunnel_info(tunnel.receiver, &tunnel, true).await;
+                }
+
                 GLOBAL_MANAGER
                     .proxy_manager
                     .write()
@@ -148,6 +161,21 @@ impl TunnelManager {
             ).execute(GLOBAL_DB_POOL.get().unwrap())
                 .await?
                 .rows_affected() == 1 {
+
+                let old_sender = self.tunnels[index].sender;
+                let old_receiver = self.tunnels[index].receiver;
+
+                if old_sender != tunnel.sender {
+                    Self::broadcast_tunnel_info(old_sender, &tunnel, true).await;
+                }
+                if old_receiver != tunnel.sender {
+                    Self::broadcast_tunnel_info(old_receiver, &tunnel, true).await;
+                }
+                Self::broadcast_tunnel_info(tunnel.sender, &tunnel, false).await;
+                if tunnel.sender != tunnel.receiver {
+                    Self::broadcast_tunnel_info(tunnel.receiver, &tunnel, false).await;
+                }
+
                 self.tunnels[index] = tunnel;
                 GLOBAL_MANAGER.proxy_manager.write().await.sync_tunnels(&self.tunnels).await;
                 return Ok(());
@@ -159,6 +187,42 @@ impl TunnelManager {
         }
 
         Err(anyhow!(format!("Unable to find tunnel_id: {}", tunnel.id)))
+    }
+
+    async fn broadcast_tunnel_info(player_id: PlayerId, tunnel: &Tunnel, is_delete: bool) {
+        if player_id != 0 {
+            if let Some(player) = GLOBAL_MANAGER
+                .player_manager
+                .read()
+                .await
+                .get_player(player_id)
+            {
+                let _ = player
+                    .read()
+                    .await
+                    .send_push(&MessageType::ServerClientModifyTunnelNtf(
+                        server_client::ModifyTunnelNtf {
+                            is_delete,
+                            tunnel: Some(class_def::Tunnel {
+                                source: Some(class_def::TunnelPoint {
+                                    addr: tunnel.source.clone(),
+                                }),
+                                endpoint: Some(class_def::TunnelPoint {
+                                    addr: tunnel.endpoint.clone(),
+                                }),
+                                id: tunnel.id,
+                                enabled: tunnel.enabled == 1,
+                                sender: tunnel.sender,
+                                receiver: tunnel.receiver,
+                                tunnel_type: tunnel.tunnel_type as i32,
+                                username: tunnel.username.clone(),
+                                password: tunnel.password.clone(),
+                            }),
+                        },
+                    ))
+                    .await;
+            }
+        }
     }
 
     /// 检测端口是否冲突
