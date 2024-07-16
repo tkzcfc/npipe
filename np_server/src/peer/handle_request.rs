@@ -92,6 +92,7 @@ impl Peer {
                     .await
                     .tunnels
                     .iter()
+                    .filter(|x| x.receiver == account.id || x.sender == account.id)
                     .map(|x| class_def::Tunnel {
                         source: Some(class_def::TunnelPoint {
                             addr: x.source.clone(),
