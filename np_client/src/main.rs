@@ -27,7 +27,7 @@ pub struct Opts {
     pub password: String,
 
     /// Set log level  warn
-    #[arg(long, default_value = "trace")]
+    #[arg(long, default_value = "info")]
     pub log_level: String,
 }
 

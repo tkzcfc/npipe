@@ -15,6 +15,6 @@ pub struct Opts {
     pub config_file: String,
 
     /// Set log level  warn
-    #[arg(long, default_value = "trace")]
+    #[arg(long, default_value = "info")]
     pub log_level: String,
 }
