@@ -31,6 +31,7 @@ impl Peer {
             .get_tunnel(msg.tunnel_id)
         {
             ProxyManager::send_proxy_message(
+                tunnel.receiver,
                 tunnel.sender,
                 tunnel.id,
                 ProxyMessage::I2oConnect(msg.session_id, msg.is_tcp, msg.addr),
@@ -47,6 +48,7 @@ impl Peer {
             .get_tunnel(msg.tunnel_id)
         {
             ProxyManager::send_proxy_message(
+                tunnel.sender,
                 tunnel.receiver,
                 tunnel.id,
                 ProxyMessage::O2iConnect(msg.session_id, msg.success, msg.error_info),
@@ -63,6 +65,7 @@ impl Peer {
             .get_tunnel(msg.tunnel_id)
         {
             ProxyManager::send_proxy_message(
+                tunnel.receiver,
                 tunnel.sender,
                 tunnel.id,
                 ProxyMessage::I2oSendData(msg.session_id, msg.data),
@@ -79,6 +82,7 @@ impl Peer {
             .get_tunnel(msg.tunnel_id)
         {
             ProxyManager::send_proxy_message(
+                tunnel.sender,
                 tunnel.receiver,
                 tunnel.id,
                 ProxyMessage::O2iRecvData(msg.session_id, msg.data),
@@ -95,6 +99,7 @@ impl Peer {
             .get_tunnel(msg.tunnel_id)
         {
             ProxyManager::send_proxy_message(
+                tunnel.receiver,
                 tunnel.sender,
                 tunnel.id,
                 ProxyMessage::I2oDisconnect(msg.session_id),
@@ -111,6 +116,7 @@ impl Peer {
             .get_tunnel(msg.tunnel_id)
         {
             ProxyManager::send_proxy_message(
+                tunnel.sender,
                 tunnel.receiver,
                 tunnel.id,
                 ProxyMessage::O2iDisconnect(msg.session_id),

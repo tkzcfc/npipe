@@ -85,7 +85,7 @@ impl ProxyManager {
                                 debug!("unknown inlet({tunnel_id})");
                             }
                         } else {
-                            Self::send_proxy_message(player_id as PlayerId, tunnel_id, message)
+                            Self::send_proxy_message(0, player_id as PlayerId, tunnel_id, message)
                                 .await;
                         }
                     })
@@ -118,7 +118,7 @@ impl ProxyManager {
                                 debug!("unknown outlet({tunnel_id})");
                             }
                         } else {
-                            Self::send_proxy_message(player_id as PlayerId, tunnel_id, message)
+                            Self::send_proxy_message(0, player_id as PlayerId, tunnel_id, message)
                                 .await;
                         }
                     })
@@ -149,11 +149,12 @@ impl ProxyManager {
     }
 
     pub(crate) async fn send_proxy_message(
-        player_id: PlayerId,
+        from_player_id: PlayerId,
+        to_player_id: PlayerId,
         tunnel_id: u32,
         proxy_message: ProxyMessage,
     ) {
-        if player_id == 0 {
+        if to_player_id == 0 {
             match proxy_message {
                 ProxyMessage::I2oConnect(_, _, _)
                 | ProxyMessage::I2oSendData(_, _)
@@ -191,60 +192,67 @@ impl ProxyManager {
             .player_manager
             .read()
             .await
-            .get_player(player_id)
+            .get_player(to_player_id)
         {
-            let message = match proxy_message {
-                ProxyMessage::I2oConnect(session_id, is_tcp, addr) => {
-                    MessageType::GenericI2oConnect(generic::I2oConnect {
-                        tunnel_id,
-                        session_id,
-                        is_tcp,
-                        addr,
-                    })
-                }
-                ProxyMessage::O2iConnect(session_id, success, error_info) => {
-                    MessageType::GenericO2iConnect(generic::O2iConnect {
-                        tunnel_id,
-                        session_id,
-                        success,
-                        error_info,
-                    })
-                }
-                ProxyMessage::I2oSendData(session_id, data) => {
-                    MessageType::GenericI2oSendData(generic::I2oSendData {
-                        tunnel_id,
-                        session_id,
-                        data,
-                    })
-                }
-                ProxyMessage::O2iRecvData(session_id, data) => {
-                    MessageType::GenericO2iRecvData(generic::O2iRecvData {
-                        tunnel_id,
-                        session_id,
-                        data,
-                    })
-                }
-                ProxyMessage::I2oDisconnect(session_id) => {
-                    MessageType::GenericI2oDisconnect(generic::I2oDisconnect {
-                        tunnel_id,
-                        session_id,
-                    })
-                }
-                ProxyMessage::O2iDisconnect(session_id) => {
-                    MessageType::GenericO2iDisconnect(generic::O2iDisconnect {
-                        tunnel_id,
-                        session_id,
-                    })
-                }
-            };
+            if player.read().await.is_online() {
+                let message = match proxy_message {
+                    ProxyMessage::I2oConnect(session_id, is_tcp, addr) => {
+                        MessageType::GenericI2oConnect(generic::I2oConnect {
+                            tunnel_id,
+                            session_id,
+                            is_tcp,
+                            addr,
+                        })
+                    }
+                    ProxyMessage::O2iConnect(session_id, success, error_info) => {
+                        MessageType::GenericO2iConnect(generic::O2iConnect {
+                            tunnel_id,
+                            session_id,
+                            success,
+                            error_info,
+                        })
+                    }
+                    ProxyMessage::I2oSendData(session_id, data) => {
+                        MessageType::GenericI2oSendData(generic::I2oSendData {
+                            tunnel_id,
+                            session_id,
+                            data,
+                        })
+                    }
+                    ProxyMessage::O2iRecvData(session_id, data) => {
+                        MessageType::GenericO2iRecvData(generic::O2iRecvData {
+                            tunnel_id,
+                            session_id,
+                            data,
+                        })
+                    }
+                    ProxyMessage::I2oDisconnect(session_id) => {
+                        MessageType::GenericI2oDisconnect(generic::I2oDisconnect {
+                            tunnel_id,
+                            session_id,
+                        })
+                    }
+                    ProxyMessage::O2iDisconnect(session_id) => {
+                        MessageType::GenericO2iDisconnect(generic::O2iDisconnect {
+                            tunnel_id,
+                            session_id,
+                        })
+                    }
+                };
 
-            match message {
-                MessageType::None => {}
-                _ => {
-                    let _ = player.read().await.send_push(&message).await;
+                match message {
+                    MessageType::None => {}
+                    _ => {
+                        let _ = player.read().await.send_push(&message).await;
+                    }
                 }
+                return;
             }
-        } else {
+        }
+
+        // 玩家离线或找不到
+        println!("{to_player_id} is offline");
+        if from_player_id == 0 {
             match proxy_message {
                 ProxyMessage::I2oConnect(session_id, _, _) => {
                     tokio::spawn(async move {
@@ -261,7 +269,7 @@ impl ProxyManager {
                                 .input(ProxyMessage::O2iConnect(
                                     session_id,
                                     false,
-                                    format!("no sender {player_id}"),
+                                    format!("no sender {to_player_id}"),
                                 ))
                                 .await;
                         }
@@ -298,6 +306,44 @@ impl ProxyManager {
                     });
                 }
                 _ => {}
+            }
+        } else {
+            let message = match proxy_message {
+                ProxyMessage::I2oConnect(session_id, _, _) => {
+                    MessageType::GenericO2iConnect(generic::O2iConnect {
+                        tunnel_id,
+                        session_id,
+                        success: false,
+                        error_info: format!("no sender {to_player_id}"),
+                    })
+                }
+                ProxyMessage::I2oSendData(session_id, _) => {
+                    MessageType::GenericO2iDisconnect(generic::O2iDisconnect {
+                        tunnel_id,
+                        session_id,
+                    })
+                }
+                ProxyMessage::O2iRecvData(session_id, _) => {
+                    MessageType::GenericI2oDisconnect(generic::I2oDisconnect {
+                        tunnel_id,
+                        session_id,
+                    })
+                }
+                _ => MessageType::None,
+            };
+
+            match message {
+                MessageType::None => {}
+                _ => {
+                    if let Some(player) = GLOBAL_MANAGER
+                        .player_manager
+                        .read()
+                        .await
+                        .get_player(from_player_id)
+                    {
+                        let _ = player.read().await.send_push(&message).await;
+                    }
+                }
             }
         }
     }
