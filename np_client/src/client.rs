@@ -57,6 +57,7 @@ pub async fn run(opts: &Opts) -> anyhow::Result<()> {
         // len为0表示对端已经关闭连接。
         if len == 0 {
             info!("Disconnect from the server");
+            client.sync_tunnels(&Vec::new()).await;
             break;
         } else {
             // 循环解包
