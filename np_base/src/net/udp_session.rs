@@ -21,6 +21,7 @@ async fn poll_read(
             break;
         }
     }
+    udp_recv_receiver.close();
 }
 
 async fn poll_write(

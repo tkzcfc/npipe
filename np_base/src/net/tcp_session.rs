@@ -1,7 +1,8 @@
 use crate::net::session_delegate::SessionDelegate;
 use crate::net::WriterMessage;
+use anyhow::anyhow;
 use bytes::BytesMut;
-use log::{debug, error};
+use log::error;
 use std::net::SocketAddr;
 use tokio::io::{
     AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf,
@@ -43,7 +44,9 @@ pub async fn run(
     }
 
     select! {
-        _ = poll_read(addr, &mut delegate, reader) => {}
+        err = poll_read(addr, &mut delegate, reader) => {
+            error!("poll read error: {:?}", err);
+        }
         _ = poll_write(addr, delegate_receiver, writer) => {}
         _ = shutdown.recv() => {}
     }
@@ -103,61 +106,36 @@ async fn poll_read<S>(
     addr: SocketAddr,
     delegate: &mut Box<dyn SessionDelegate>,
     mut reader: ReadHalf<S>,
-) where
+) -> anyhow::Result<()>
+where
     S: AsyncRead + AsyncWrite + Send + 'static,
 {
     let mut buffer = BytesMut::with_capacity(1024);
 
     loop {
-        match reader.read_buf(&mut buffer).await {
-            // n为0表示对端已经关闭连接。
-            Ok(n) if n == 0 => {
-                // 客户端主动断开
-                debug!("[{addr}] socket closed.");
-                return;
-            }
-            // 正常收到数据
-            Ok(_n) => {
-                // 循环解包
-                loop {
-                    if buffer.is_empty() {
-                        break;
-                    }
-                    // 处理数据粘包
-                    match delegate.on_try_extract_frame(&mut buffer) {
-                        Ok(result) => {
-                            if let Some(frame) = result {
-                                // 收到完整消息
-                                if let Err(err) = delegate.on_recv_frame(frame).await {
-                                    // 消息处理失败
-                                    error!("[{addr}] on_recv_frame error: {err}");
-                                    return;
-                                }
-                            } else {
-                                // 消息包接收还未完成
-                                break;
-                            }
-                        }
-                        Err(error) => {
-                            // 消息解包错误
-                            error!("[{addr}] try extract frame error: {error}");
-                            return;
-                        }
-                    }
-                }
-            }
-            Err(err) => {
-                // socket读错误
-                error!("[{addr}] read error: {err}");
-                return;
-            }
+        if reader.read_buf(&mut buffer).await? == 0 {
+            // 客户端主动断开
+            return Err(anyhow!("[{addr}] socket closed."));
         }
 
-        if buffer.capacity() > 1024 * 1024 * 5 {
-            error!(
-                "[{addr}] The buffer size is abnormal ({}), whether the buffer data has not been consumed",
-                buffer.capacity()
-            );
+        // 循环解包
+        loop {
+            if buffer.is_empty() {
+                break;
+            }
+            // 处理数据粘包
+            let result = delegate.on_try_extract_frame(&mut buffer)?;
+            if let Some(frame) = result {
+                // 收到完整消息
+                delegate.on_recv_frame(frame).await?;
+            } else {
+                // 消息包接收还未完成
+                break;
+            }
+
+            if buffer.capacity() > 1024 * 1024 * 10 {
+                error!("[{addr}] The buffer size is abnormal ({}), whether the buffer data has not been consumed",buffer.capacity());
+            }
         }
     }
 }
