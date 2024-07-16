@@ -75,7 +75,7 @@ async fn main() -> anyhow::Result<()> {
     loop {
         if let Err(err) = client::run(&ops).await {
             error!("{err}");
-            sleep(Duration::from_secs(1)).await;
+            sleep(Duration::from_secs(5)).await;
         } else {
             sleep(Duration::from_millis(100)).await;
         }

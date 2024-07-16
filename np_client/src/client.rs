@@ -141,7 +141,6 @@ impl Client {
                 self.handle_push(message).await?;
             }
         }
-
         Ok(())
     }
 
