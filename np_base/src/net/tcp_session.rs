@@ -2,7 +2,7 @@ use crate::net::session_delegate::SessionDelegate;
 use crate::net::WriterMessage;
 use anyhow::anyhow;
 use bytes::BytesMut;
-use log::error;
+use log::{error, info};
 use std::net::SocketAddr;
 use tokio::io::{
     AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf,
@@ -45,7 +45,9 @@ pub async fn run(
 
     select! {
         err = poll_read(addr, &mut delegate, reader) => {
-            error!("poll read error: {:?}", err);
+            if let Err(err) = err {
+                info!("poll read error: {}", err.to_string());
+            }
         }
         _ = poll_write(addr, delegate_receiver, writer) => {}
         _ = shutdown.recv() => {}

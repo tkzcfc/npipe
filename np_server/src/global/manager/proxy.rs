@@ -251,7 +251,6 @@ impl ProxyManager {
         }
 
         // 玩家离线或找不到
-        println!("{to_player_id} is offline");
         if from_player_id == 0 {
             match proxy_message {
                 ProxyMessage::I2oConnect(session_id, _, _) => {
