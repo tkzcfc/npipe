@@ -19,9 +19,6 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
-    - name: Checkout npipe_web
-      run: git clone https://github.com/tkzcfc/npipe_web.git
 
     - name: Install dependencies
       run: sudo apt update && sudo apt install musl-tools -y
@@ -38,7 +35,7 @@ jobs:
         CC: musl-gcc
         RUSTFLAGS: "-C target-feature=+crt-static -C relocation-model=static"
         CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
-        SQLX_OFFLINE: true
+        SQLX_OFFLINE: false
       run: |
         cargo build --bin np_client --release --target x86_64-unknown-linux-musl
         cargo build --bin np_server --release --target x86_64-unknown-linux-musl
@@ -51,15 +48,17 @@ jobs:
     - name: Build web
       id: build_web
       run: |
+        cd ../
+        git clone https://github.com/tkzcfc/npipe_web.git
         cd npipe_web
         rustup target add wasm32-unknown-unknown
         cargo install --locked trunk
-        trunk build --release --target wasm32-unknown-unknown
+        trunk build --release
         cd ../
         mkdir -p release
         cp -r ./npipe_web/dist/ ./release/
-        cp ./target/x86_64-unknown-linux-musl/release/np_client ./release/
-        cp ./target/x86_64-unknown-linux-musl/release/np_server ./release/
+        cp ./npipe/target/x86_64-unknown-linux-musl/release/np_client ./release/
+        cp ./npipe/target/x86_64-unknown-linux-musl/release/np_server ./release/
         cd release
         tar -czvf npipe.tar.gz *
         cd ../
