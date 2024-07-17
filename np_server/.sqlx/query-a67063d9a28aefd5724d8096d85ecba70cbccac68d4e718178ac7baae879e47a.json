@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO tunnel (source, endpoint, enabled, sender, receiver, description, tunnel_type, password, username) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 9
+    },
+    "nullable": []
+  },
+  "hash": "a67063d9a28aefd5724d8096d85ecba70cbccac68d4e718178ac7baae879e47a"
+}
