@@ -31,19 +31,6 @@ pub struct Opts {
     pub log_level: String,
 }
 
-fn duplicate_level(val: &str) -> Duplicate {
-    match val {
-        "none" => Duplicate::None,
-        "error" => Duplicate::Error,
-        "warn" => Duplicate::Warn,
-        "info" => Duplicate::Info,
-        "debug" => Duplicate::Debug,
-        "trace" => Duplicate::Trace,
-        "all" => Duplicate::All,
-        _ => Duplicate::All,
-    }
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let ops = Opts::parse();
@@ -53,14 +40,14 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // 日志初始化
-    let _logger = Logger::try_with_str("trace")?
+    let _logger = Logger::try_with_str(format!("{}, np_base=error", ops.log_level))?
         .log_to_file(
             FileSpec::default()
                 .directory("logs")
                 .suppress_timestamp()
                 .suffix("log"),
         )
-        .duplicate_to_stdout(duplicate_level(ops.log_level.as_str()))
+        .duplicate_to_stdout(Duplicate::All)
         .format(flexi_logger::opt_format)
         .format_for_stdout(flexi_logger::colored_opt_format)
         .rotate(
