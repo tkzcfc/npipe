@@ -22,33 +22,39 @@ jobs:
 
     - name: Install dependencies
       run: sudo apt update && sudo apt install musl-tools -y
-
-    - name: Install Rust-wasm
+      
+    - name: Install Rust
       uses: actions-rs/toolchain@v1
       with:
-        profile: minimal
-        target: wasm32-unknown-unknown
-        toolchain: 1.76.0
-        override: true
-        
-    - name: Build web
-      id: build_web
+        toolchain: stable
+        target: x86_64-unknown-linux-musl
+
+    - name: Build
+      id: build
+      env:
+        CC: musl-gcc
+        RUSTFLAGS: "-C target-feature=+crt-static -C relocation-model=static"
+        CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+        SQLX_OFFLINE: true
       run: |
-        cd ../
-        git clone https://github.com/tkzcfc/npipe_web.git
-        cd npipe_web
-        rustup target add wasm32-unknown-unknown
-        cargo install --locked trunk
-        trunk build --release
-        cd ../
-        mkdir -p release
-        cp -r ./npipe_web/dist/ ./release/
-        cd release
-        tar -czvf npipe.tar.gz *
-        cd ../
+        cargo build --bin np_client --release --target x86_64-unknown-linux-musl
+        cargo build --bin np_server --release --target x86_64-unknown-linux-musl
+
+    - name: Verify Binary
+      run: |
+        file ./target/x86_64-unknown-linux-musl/release/np_client
+        file ./target/x86_64-unknown-linux-musl/release/np_server
       
     - name: Create Release
       uses: softprops/action-gh-release@v2
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        files: ./release/npipe.tar.gz
+        files: |
+          ./target/x86_64-unknown-linux-musl/release/np_client,
+          ./target/x86_64-unknown-linux-musl/release/np_server
+
+
+
+
+
+
