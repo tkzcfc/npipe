@@ -29,15 +29,13 @@ jobs:
         toolchain: stable
         target: x86_64-unknown-linux-musl
 
-    - name: Build
-      id: build
-      env:
-        CC: musl-gcc
-        RUSTFLAGS: "-C target-feature=+crt-static -C relocation-model=static"
-        CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
-        SQLX_OFFLINE: true
-      run: |
-        cargo build --bin np_server --release --target x86_64-unknown-linux-musl
+    - name: Install Rust-wasm
+    - uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        target: wasm32-unknown-unknown
+        toolchain: 1.76.0
+        override: true
         
     - name: Build web
       id: build_web
@@ -51,7 +49,6 @@ jobs:
         cd ../
         mkdir -p release
         cp -r ./npipe_web/dist/ ./release/
-        cp ./npipe/target/x86_64-unknown-linux-musl/release/np_server ./release/
         cd release
         tar -czvf npipe.tar.gz *
         cd ../
