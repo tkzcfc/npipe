@@ -1,0 +1,48 @@
+name: build_for_linux
+
+on:
+  push:
+    # Sequence of patterns matched against refs/tags
+    tags:
+      - "v*" # Push events to matching v*, i.e. v1.0, v20.15.10
+
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: sudo apt update && sudo apt install musl-tools -y
+      
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        target: x86_64-unknown-linux-musl
+
+    - name: Build np_client
+      id: build
+      env:
+        CC: musl-gcc
+        RUSTFLAGS: "-C target-feature=+crt-static -C relocation-model=static"
+        CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+      run: cargo build --bin np_client --release --target x86_64-unknown-linux-musl
+
+    - name: Verify np_client Binary
+      run: file ./target/x86_64-unknown-linux-musl/release/np_client
+      
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: ./target/x86_64-unknown-linux-musl/release/np_client
+        
