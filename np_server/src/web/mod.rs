@@ -18,8 +18,6 @@ use std::net::SocketAddr;
 
 /// http server
 pub async fn run_http_server(addr: &SocketAddr, web_base_dir: String) -> anyhow::Result<()> {
-    info!("HttpServer listening: {}", addr);
-
     let secret_key = Key::generate();
 
     HttpServer::new(move || {
