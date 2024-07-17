@@ -37,13 +37,7 @@ jobs:
         CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
         SQLX_OFFLINE: false
       run: |
-        cargo build --bin np_client --release --target x86_64-unknown-linux-musl
         cargo build --bin np_server --release --target x86_64-unknown-linux-musl
-
-    - name: Verify Binary
-      run: |
-        file ./target/x86_64-unknown-linux-musl/release/np_client
-        file ./target/x86_64-unknown-linux-musl/release/np_server
         
     - name: Build web
       id: build_web
@@ -57,7 +51,6 @@ jobs:
         cd ../
         mkdir -p release
         cp -r ./npipe_web/dist/ ./release/
-        cp ./npipe/target/x86_64-unknown-linux-musl/release/np_client ./release/
         cp ./npipe/target/x86_64-unknown-linux-musl/release/np_server ./release/
         cd release
         tar -czvf npipe.tar.gz *
