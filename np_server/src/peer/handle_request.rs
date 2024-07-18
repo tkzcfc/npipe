@@ -1,8 +1,11 @@
 use super::Peer;
 use crate::global::manager::GLOBAL_MANAGER;
 use crate::global::GLOBAL_DB_POOL;
+use crate::orm_entity::prelude::User;
+use crate::orm_entity::user;
 use np_proto::message_map::MessageType;
 use np_proto::{class_def, client_server, generic, server_client};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 impl Peer {
     // 收到玩家向服务器请求的消息
@@ -48,85 +51,71 @@ impl Peer {
             }));
         }
 
-        struct Account {
-            id: u32,
-            password: String,
-        }
+        let user_result = User::find()
+            .filter(user::Column::Username.eq(message.username))
+            .filter(user::Column::Password.eq(message.password))
+            .one(GLOBAL_DB_POOL.get().unwrap())
+            .await?;
 
-        let account: Option<Account> = sqlx::query_as!(
-            Account,
-            "SELECT id, password FROM user WHERE username = ?",
-            message.username
-        )
-        .fetch_optional(GLOBAL_DB_POOL.get().unwrap())
-        .await?;
-
-        if let Some(account) = account {
-            // 密码错误
-            if account.password != message.password {
-                return Ok(MessageType::GenericError(generic::Error {
-                    number: -2,
-                    message: "Incorrect username or password".into(),
-                }));
-            }
-
-            // 用户登录成功，将会话绑定到Player上
-            if let Some(player) = GLOBAL_MANAGER
-                .player_manager
-                .read()
-                .await
-                .get_player(account.id)
-            {
-                self.player = Some(player.clone());
-                let mut player = player.write().await;
-                if player.is_online() {
-                    player.on_terminate_old_session().await;
-                }
-                player
-                    .on_connect_session(self.session_id, self.tx.clone().unwrap())
-                    .await;
-
-                let tunnel_list = GLOBAL_MANAGER
-                    .tunnel_manager
-                    .read()
-                    .await
-                    .tunnels
-                    .iter()
-                    .filter(|x| x.receiver == account.id || x.sender == account.id)
-                    .map(|x| class_def::Tunnel {
-                        source: Some(class_def::TunnelPoint {
-                            addr: x.source.clone(),
-                        }),
-                        endpoint: Some(class_def::TunnelPoint {
-                            addr: x.endpoint.clone(),
-                        }),
-                        id: x.id,
-                        enabled: x.enabled == 1,
-                        sender: x.sender,
-                        receiver: x.receiver,
-                        tunnel_type: x.tunnel_type as i32,
-                        password: x.password.clone(),
-                        username: x.username.clone(),
-                    })
-                    .collect();
-
-                return Ok(MessageType::ServerClientLoginAck(server_client::LoginAck {
-                    player_id: account.id,
-                    tunnel_list,
-                }));
-            }
-
+        if user_result.is_none() {
             return Ok(MessageType::GenericError(generic::Error {
-                number: -3,
-                message: "unable to find player".into(),
+                number: -2,
+                message: "Incorrect username or password".into(),
             }));
         }
 
-        // 找不到玩家，用户名无效
-        Ok(MessageType::GenericError(generic::Error {
-            number: -4,
-            message: "Incorrect username or password".into(),
-        }))
+        let user = user_result.unwrap();
+
+        // 用户登录成功，将会话绑定到Player上
+        if let Some(player) = GLOBAL_MANAGER
+            .player_manager
+            .read()
+            .await
+            .get_player(user.id)
+        {
+            self.player = Some(player.clone());
+            let mut player = player.write().await;
+            if player.is_online() {
+                player.on_terminate_old_session().await;
+            }
+            player
+                .on_connect_session(self.session_id, self.tx.clone().unwrap())
+                .await;
+
+            let tunnel_list = GLOBAL_MANAGER
+                .tunnel_manager
+                .read()
+                .await
+                .tunnels
+                .iter()
+                .filter(|x| x.receiver == user.id || x.sender == user.id)
+                .map(|x| class_def::Tunnel {
+                    source: Some(class_def::TunnelPoint {
+                        addr: x.source.clone(),
+                    }),
+                    endpoint: Some(class_def::TunnelPoint {
+                        addr: x.endpoint.clone(),
+                    }),
+                    id: x.id,
+                    enabled: x.enabled == 1,
+                    sender: x.sender,
+                    receiver: x.receiver,
+                    tunnel_type: x.tunnel_type as i32,
+                    password: x.password.clone(),
+                    username: x.username.clone(),
+                })
+                .collect();
+
+            return Ok(MessageType::ServerClientLoginAck(server_client::LoginAck {
+                player_id: user.id,
+                tunnel_list,
+            }));
+        }
+
+        return Ok(MessageType::GenericError(generic::Error {
+            number: -3,
+            message: "unable to find player".into(),
+        }));
     }
 
     async fn on_register_request(

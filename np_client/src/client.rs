@@ -92,6 +92,7 @@ impl Client {
             self.writer.clone(),
             -1,
             &MessageType::ClientServerLoginReq(LoginReq {
+                version: "0.0.0".to_string(),
                 username: self.username.clone(),
                 password: self.password.clone(),
             }),

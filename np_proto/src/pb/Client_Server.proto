@@ -5,10 +5,12 @@ package PB.Client_Server;
 // 登录请求
 message LoginReq {
   enum MsgId {None = 0; Id = 1001;}
+  // 客户端版本号
+  string version = 1;
   // 用户名
-  string username = 1;
+  string username = 2;
   // 密码
-  string password = 2;
+  string password = 3;
 }
 
 // 注册请求

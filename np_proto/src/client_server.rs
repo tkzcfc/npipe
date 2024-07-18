@@ -4,11 +4,14 @@
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct LoginReq {
     /// @build_automatically_generate_message_id@  enum MsgId {None = 0; Id = 1001;}
-    /// 用户名
+    /// 客户端版本号
     #[prost(string, tag = "1")]
+    pub version: ::prost::alloc::string::String,
+    /// 用户名
+    #[prost(string, tag = "2")]
     pub username: ::prost::alloc::string::String,
     /// 密码
-    #[prost(string, tag = "2")]
+    #[prost(string, tag = "3")]
     pub password: ::prost::alloc::string::String,
 }
 /// 注册请求

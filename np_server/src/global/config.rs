@@ -12,6 +12,10 @@ pub struct Config {
     pub listen_addr: String,
     /// web监听地址
     pub web_addr: String,
+    /// 管理员用户
+    pub web_username: String,
+    /// 管理员密码
+    pub web_password: String,
     /// web目录
     pub web_base_dir: String,
 }

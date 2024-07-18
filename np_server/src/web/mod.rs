@@ -1,9 +1,11 @@
 mod proto;
 
+use crate::global::config::GLOBAL_CONFIG;
 use crate::global::manager::player::PlayerDbData;
-use crate::global::manager::tunnel::Tunnel;
 use crate::global::manager::GLOBAL_MANAGER;
 use crate::global::GLOBAL_DB_POOL;
+use crate::orm_entity::prelude::User;
+use crate::orm_entity::tunnel;
 use crate::utils::str::{is_valid_password, is_valid_username};
 use actix_cors::Cors;
 use actix_identity::{Identity, IdentityMiddleware};
@@ -13,7 +15,7 @@ use actix_web::{
     error, middleware, web, App, Error, HttpMessage, HttpRequest, HttpResponse, HttpServer,
     Responder,
 };
-use log::info;
+use sea_orm::{EntityTrait, PaginatorTrait};
 use std::net::SocketAddr;
 
 /// http server
@@ -57,10 +59,6 @@ pub async fn run_http_server(addr: &SocketAddr, web_base_dir: String) -> anyhow:
     .run()
     .await?;
     Ok(())
-}
-
-fn map_db_err(err: sqlx::Error) -> Error {
-    error::ErrorInternalServerError(format!("sqlx error:{}", err.to_string()))
 }
 
 fn authentication(identity: Option<Identity>) -> Option<actix_web::Result<HttpResponse, Error>> {
@@ -111,36 +109,23 @@ async fn logout(id: Identity) -> actix_web::Result<HttpResponse, Error> {
 async fn login(request: HttpRequest, body: String) -> actix_web::Result<HttpResponse, Error> {
     let req = serde_json::from_str::<proto::LoginReq>(&body)?;
 
-    struct Result {
-        r#type: u8,
-        id: u32,
-    }
+    if GLOBAL_CONFIG.web_username.len() > 0
+        && GLOBAL_CONFIG.web_username == req.username
+        && GLOBAL_CONFIG.web_password == req.password
+    {
+        let content = format!(
+            "{}-{}",
+            GLOBAL_CONFIG.web_username, GLOBAL_CONFIG.web_password
+        );
+        let digest = md5::compute(content.as_bytes());
+        let md5 = format!("{:x}", digest);
+        Identity::login(&request.extensions(), md5)?;
 
-    let result: Option<Result> = sqlx::query_as!(
-        Result,
-        "SELECT type, id FROM user WHERE username = ? AND password = ?",
-        req.username,
-        req.password
-    )
-    .fetch_optional(GLOBAL_DB_POOL.get().unwrap())
-    .await
-    .map_err(map_db_err)?;
-
-    if let Some(result) = result {
-        if result.r#type == 1 {
-            Identity::login(&request.extensions(), format!("{}", result.id))?;
-            // 登录成功
-            Ok(HttpResponse::Ok().json(proto::GeneralResponse {
-                code: 0,
-                msg: "Success".into(),
-            }))
-        } else {
-            // 不是管理员
-            Ok(HttpResponse::Ok().json(proto::GeneralResponse {
-                code: -1,
-                msg: "Not an administrator account".into(),
-            }))
-        }
+        // 登录成功
+        Ok(HttpResponse::Ok().json(proto::GeneralResponse {
+            code: 0,
+            msg: "Success".into(),
+        }))
     } else {
         // 账号或密码错误
         Ok(HttpResponse::Ok().json(proto::GeneralResponse {
@@ -166,37 +151,27 @@ async fn player_list(
     } else {
         req.page_size
     };
-    let offset = page_number * page_size;
 
-    struct Data {
-        id: u32,
-        username: String,
-        password: String,
-    }
-
-    // 分页查询玩家数据
-    let data_list: Vec<Data> = sqlx::query_as!(
-        Data,
-        "SELECT id, username, password FROM user WHERE type = ? LIMIT ? OFFSET ?",
-        0,
-        page_size as u32,
-        offset as u32
-    )
-    .fetch_all(GLOBAL_DB_POOL.get().unwrap())
-    .await
-    .map_err(map_db_err)?;
+    // 分页查询玩家信息
+    let paginator = User::find().paginate(GLOBAL_DB_POOL.get().unwrap(), page_size as u64);
+    let users = paginator
+        .fetch_page(page_number as u64)
+        .await
+        .map_err(|err| {
+            error::ErrorInternalServerError(format!("sqlx error:{}", err.to_string()))
+        })?;
 
     // 查询玩家总条数
-    let count_query = "SELECT COUNT(*) FROM user WHERE type = ?";
-    let total_count: i64 = sqlx::query_scalar(count_query)
-        .bind(0)
-        .fetch_one(GLOBAL_DB_POOL.get().unwrap())
+    let total_count = User::find()
+        .count(GLOBAL_DB_POOL.get().unwrap())
         .await
-        .map_err(map_db_err)?;
+        .map_err(|err| {
+            error::ErrorInternalServerError(format!("sqlx error:{}", err.to_string()))
+        })?;
 
     let mut players: Vec<proto::PlayerListItem> = Vec::new();
 
-    for data in data_list {
+    for data in users {
         let online = if let Some(p) = GLOBAL_MANAGER
             .player_manager
             .read()
@@ -325,16 +300,10 @@ async fn tunnel_list(
         .read()
         .await
         .query(req.page_number, req.page_size)
-        .await
-        .map_err(map_db_err)?;
+        .await;
 
     // 查询总条数
-    let count_query = "SELECT COUNT(*) FROM tunnel";
-    let total_count: i64 = sqlx::query_scalar(count_query)
-        .bind(0)
-        .fetch_one(GLOBAL_DB_POOL.get().unwrap())
-        .await
-        .map_err(map_db_err)?;
+    let total_count = GLOBAL_MANAGER.tunnel_manager.read().await.tunnels.len();
 
     let mut tunnels: Vec<proto::TunnelListItem> = Vec::new();
 
@@ -356,7 +325,7 @@ async fn tunnel_list(
     Ok(HttpResponse::Ok().json(proto::TunnelListResponse {
         tunnels,
         cur_page_number: req.page_number,
-        total_count: total_count as usize,
+        total_count,
     }))
 }
 
@@ -398,7 +367,7 @@ async fn add_tunnel(identity: Option<Identity>, body: String) -> actix_web::Resu
         .tunnel_manager
         .write()
         .await
-        .add_tunnel(Tunnel {
+        .add_tunnel(tunnel::Model {
             source: req.source,
             endpoint: req.endpoint,
             id: 0,
@@ -437,7 +406,7 @@ async fn update_tunnel(
         .tunnel_manager
         .write()
         .await
-        .update_tunnel(Tunnel {
+        .update_tunnel(tunnel::Model {
             source: req.source,
             endpoint: req.endpoint,
             id: req.id,

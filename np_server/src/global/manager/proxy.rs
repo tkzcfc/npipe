@@ -1,5 +1,5 @@
-use crate::global::manager::tunnel::Tunnel;
 use crate::global::manager::GLOBAL_MANAGER;
+use crate::orm_entity::tunnel;
 use crate::player::PlayerId;
 use log::{debug, error, info};
 use np_base::proxy::inlet::{Inlet, InletProxyType};
@@ -23,7 +23,7 @@ impl ProxyManager {
             inlets: Arc::new(RwLock::new(HashMap::new())),
         }
     }
-    pub async fn sync_tunnels(&self, tunnels: &Vec<Tunnel>) {
+    pub async fn sync_tunnels(&self, tunnels: &Vec<tunnel::Model>) {
         // 删除无效的出口
         self.outlets.write().await.retain(|id, outlet| {
             let retain = tunnels

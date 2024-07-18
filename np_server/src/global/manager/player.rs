@@ -1,12 +1,16 @@
 use crate::global::GLOBAL_DB_POOL;
+use crate::orm_entity::prelude::User;
+use crate::orm_entity::user;
 use crate::player::{Player, PlayerId};
 use crate::utils::str::{is_valid_password, is_valid_username};
-use anyhow::anyhow;
+use chrono::Utc;
 use rand::prelude::StdRng;
 use rand::{Rng, SeedableRng};
-use sqlx::Row;
+use sea_orm::ActiveValue::Set;
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter};
 use std::collections::HashMap;
 use std::sync::Arc;
+
 use tokio::sync::RwLock;
 
 pub struct PlayerDbData {
@@ -29,15 +33,10 @@ impl PlayerManager {
     }
 
     pub async fn load_all_player(&mut self) -> anyhow::Result<()> {
-        let query = "SELECT id, type FROM user";
-        let rows = sqlx::query(query)
-            .fetch_all(crate::global::GLOBAL_DB_POOL.get().unwrap())
-            .await?;
+        let users = User::find().all(GLOBAL_DB_POOL.get().unwrap()).await?;
 
-        for row in rows {
-            let id: u32 = row.get("id");
-            let r#type: u8 = row.get("type");
-            self.create_player(id, r#type).await;
+        for user in users {
+            self.create_player(user.id).await;
         }
 
         Ok(())
@@ -55,12 +54,8 @@ impl PlayerManager {
         }
     }
 
-    pub async fn create_player(
-        &mut self,
-        player_id: PlayerId,
-        player_type: u8,
-    ) -> Arc<RwLock<Player>> {
-        let player = Player::new(player_id, player_type);
+    pub async fn create_player(&mut self, player_id: PlayerId) -> Arc<RwLock<Player>> {
+        let player = Player::new(player_id);
         self.players.push(player.clone());
         self.player_map
             .insert(player.read().await.get_player_id(), player.clone());
@@ -69,28 +64,28 @@ impl PlayerManager {
 
     /// 删除玩家
     pub async fn delete_player(&mut self, player_id: u32) -> anyhow::Result<()> {
-        if sqlx::query!("DELETE FROM user WHERE id = ?", player_id)
-            .execute(GLOBAL_DB_POOL.get().unwrap())
-            .await?
-            .rows_affected()
-            == 1
-        {
-            let mut index_to_find: Option<usize> = None;
-            for (index, value) in self.players.iter().enumerate() {
-                if value.read().await.get_player_id() == player_id {
-                    index_to_find = Some(index);
-                    break;
-                }
-            }
+        let db = GLOBAL_DB_POOL.get().unwrap();
+        let rows_affected = User::delete_by_id(player_id).exec(db).await?.rows_affected;
+        anyhow::ensure!(
+            rows_affected == 1,
+            "delete_player: rows_affected = {}",
+            rows_affected
+        );
 
-            if let Some(index) = index_to_find {
-                let player = self.players.remove(index);
-                player.write().await.close_session();
+        let mut index_to_find: Option<usize> = None;
+        for (index, value) in self.players.iter().enumerate() {
+            if value.read().await.get_player_id() == player_id {
+                index_to_find = Some(index);
+                break;
             }
-
-            return Ok(());
         }
-        Err(anyhow!(format!("Unable to find player: {}", player_id)))
+
+        if let Some(index) = index_to_find {
+            let player = self.players.remove(index);
+            player.write().await.close_session();
+        }
+
+        Ok(())
     }
 
     /// 新加玩家
@@ -105,15 +100,12 @@ impl PlayerManager {
         }
 
         // 执行查询以检查用户名是否存在
-        let record = sqlx::query!(
-            "SELECT EXISTS(SELECT 1 FROM user WHERE username = ?) as 'exists'",
-            username
-        )
-        .fetch_one(GLOBAL_DB_POOL.get().unwrap())
-        .await?;
-
-        // 用户已存在
-        if record.exists != 0 {
+        if User::find()
+            .filter(user::Column::Username.eq(username))
+            .one(GLOBAL_DB_POOL.get().unwrap())
+            .await?
+            .is_some()
+        {
             return Ok((-2, "User already exists".into()));
         }
 
@@ -132,44 +124,31 @@ impl PlayerManager {
                 continue;
             }
 
-            return if sqlx::query!(
-                "INSERT INTO user (id, username, password, type) VALUES (?, ?, ?, ?)",
-                id,
-                username,
-                password,
-                0
-            )
-            .execute(GLOBAL_DB_POOL.get().unwrap())
-            .await?
-            .rows_affected()
-                == 1
-            {
-                self.create_player(id, 0).await;
-                Ok((0, "".into()))
-            } else {
-                Ok((-4, "sqlx error".into()))
+            let new_user = user::ActiveModel {
+                id: Set(id),
+                username: Set(username.to_owned()),
+                password: Set(password.to_owned()),
+                create_time: Set(Utc::now().naive_utc()),
             };
+
+            let _ = new_user.insert(GLOBAL_DB_POOL.get().unwrap()).await?;
+            self.create_player(id).await;
+            return Ok((0, "".into()));
         }
     }
 
     /// 更新玩家数据
     pub async fn update_player(&self, data: PlayerDbData) -> anyhow::Result<()> {
-        if sqlx::query!(
-            "UPDATE user SET username = ?, password = ? WHERE id = ?",
-            data.username,
-            data.password,
-            data.id
-        )
-        .execute(GLOBAL_DB_POOL.get().unwrap())
-        .await?
-        .rows_affected()
-            == 1
-        {
-            return Ok(());
-        }
-        return Err(anyhow!(format!(
-            "Data update failed, player_id: {}",
-            data.id
-        )));
+        let user = User::find_by_id(data.id)
+            .one(GLOBAL_DB_POOL.get().unwrap())
+            .await?;
+        anyhow::ensure!(user.is_some(), "Can't find user: {}", data.id);
+
+        let mut user: user::ActiveModel = user.unwrap().into();
+        user.password = Set(data.username.to_owned());
+        user.password = Set(data.password.to_owned());
+
+        let _ = user.update(GLOBAL_DB_POOL.get().unwrap()).await?;
+        Ok(())
     }
 }
