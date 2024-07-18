@@ -35,7 +35,6 @@ jobs:
         CC: musl-gcc
         RUSTFLAGS: "-C target-feature=+crt-static -C relocation-model=static"
         CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
-        SQLX_OFFLINE: true
       run: |
         cargo build --bin np_client --release --target x86_64-unknown-linux-musl
         cargo build --bin np_server --release --target x86_64-unknown-linux-musl
