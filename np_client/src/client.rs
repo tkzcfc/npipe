@@ -284,11 +284,15 @@ impl Client {
                 if let Some(inlet_proxy_type) = InletProxyType::from_u32(tunnel.tunnel_type as u32)
                 {
                     let mut inlet = Inlet::new(
-                        inlet_proxy_type,
-                        endpoint.clone(),
                         inlet_description(&tunnel),
                     );
-                    if let Err(err) = inlet.start(source.clone(), inlet_output).await {
+                    if let Err(err) = inlet.start(
+                        inlet_proxy_type,
+                        source.clone(),
+                        endpoint.clone(),
+                        tunnel.is_compressed,
+                        tunnel.encryption_method.clone(),
+                        inlet_output).await {
                         error!("inlet({}) start error: {}", source, err);
                     } else {
                         self.inlets.write().await.insert(tunnel.id, inlet);
@@ -314,7 +318,7 @@ impl Client {
     ) {
         if self_player_id == player_id {
             match proxy_message {
-                ProxyMessage::I2oConnect(_, _, _)
+                ProxyMessage::I2oConnect(_,..)
                 | ProxyMessage::I2oSendData(_, _)
                 | ProxyMessage::I2oDisconnect(_) => {
                     if let Some(outlet) = outlets.read().await.get(&tunnel_id) {
@@ -329,12 +333,16 @@ impl Client {
             };
         } else {
             let message = match proxy_message {
-                ProxyMessage::I2oConnect(session_id, is_tcp, addr) => {
+                ProxyMessage::I2oConnect(session_id, is_tcp, is_compressed, addr, encryption_method, encryption_key, client_addr) => {
                     MessageType::GenericI2oConnect(generic::I2oConnect {
                         tunnel_id,
                         session_id,
                         is_tcp,
                         addr,
+                        is_compressed,
+                        encryption_method,
+                        encryption_key,
+                        client_addr,
                     })
                 }
                 ProxyMessage::O2iConnect(session_id, success, error_info) => {
@@ -432,7 +440,7 @@ impl Client {
                 self.player_id,
                 tunnel.sender,
                 tunnel.id,
-                ProxyMessage::I2oConnect(msg.session_id, msg.is_tcp, msg.addr),
+                ProxyMessage::I2oConnect(msg.session_id, msg.is_tcp, msg.is_compressed, msg.addr, msg.encryption_method, msg.encryption_key, msg.client_addr),
             )
             .await;
         }

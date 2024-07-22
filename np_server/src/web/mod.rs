@@ -16,6 +16,7 @@ use actix_web::{
     Responder,
 };
 use sea_orm::{EntityTrait, PaginatorTrait};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 
 /// http server
@@ -308,17 +309,23 @@ async fn tunnel_list(
     let mut tunnels: Vec<proto::TunnelListItem> = Vec::new();
 
     for data in tunnel_list {
+        let custom_mapping: HashMap<String, String> =
+            serde_json::from_str(&data.custom_mapping).map_or(HashMap::new(), |x| x);
+
         tunnels.push(proto::TunnelListItem {
             id: data.id,
             source: data.source,
             endpoint: data.endpoint,
-            enabled: data.enabled != 0,
+            enabled: data.enabled == 1,
             sender: data.sender,
             receiver: data.receiver,
             description: data.description,
             tunnel_type: data.tunnel_type,
             password: data.password,
             username: data.username,
+            is_compressed: data.is_compressed == 1,
+            encryption_method: data.encryption_method,
+            custom_mapping,
         })
     }
 
@@ -378,6 +385,10 @@ async fn add_tunnel(identity: Option<Identity>, body: String) -> actix_web::Resu
             tunnel_type: req.tunnel_type,
             password: req.password,
             username: req.username,
+            is_compressed: req.is_compressed,
+            custom_mapping: serde_json::to_string(&req.custom_mapping)
+                .map_or("".to_string(), |x| x),
+            encryption_method: req.encryption_method,
         })
         .await
     {
@@ -417,6 +428,10 @@ async fn update_tunnel(
             tunnel_type: req.tunnel_type,
             password: req.password,
             username: req.username,
+            is_compressed: req.is_compressed,
+            custom_mapping: serde_json::to_string(&req.custom_mapping)
+                .map_or("".to_string(), |x| x),
+            encryption_method: req.encryption_method,
         })
         .await
     {

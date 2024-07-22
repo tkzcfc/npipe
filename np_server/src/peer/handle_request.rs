@@ -4,7 +4,7 @@ use crate::global::GLOBAL_DB_POOL;
 use crate::orm_entity::prelude::User;
 use crate::orm_entity::user;
 use np_proto::message_map::MessageType;
-use np_proto::{class_def, client_server, generic, server_client};
+use np_proto::{client_server, generic, server_client};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 impl Peer {
@@ -89,21 +89,7 @@ impl Peer {
                 .tunnels
                 .iter()
                 .filter(|x| x.receiver == user.id || x.sender == user.id)
-                .map(|x| class_def::Tunnel {
-                    source: Some(class_def::TunnelPoint {
-                        addr: x.source.clone(),
-                    }),
-                    endpoint: Some(class_def::TunnelPoint {
-                        addr: x.endpoint.clone(),
-                    }),
-                    id: x.id,
-                    enabled: x.enabled == 1,
-                    sender: x.sender,
-                    receiver: x.receiver,
-                    tunnel_type: x.tunnel_type as i32,
-                    password: x.password.clone(),
-                    username: x.username.clone(),
-                })
+                .map(|x| x.into())
                 .collect();
 
             return Ok(MessageType::ServerClientLoginAck(server_client::LoginAck {

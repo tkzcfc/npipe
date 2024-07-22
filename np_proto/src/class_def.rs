@@ -39,6 +39,18 @@ pub struct Tunnel {
     /// 用户名
     #[prost(string, tag = "9")]
     pub username: ::prost::alloc::string::String,
+    /// 是否压缩数据
+    #[prost(bool, tag = "10")]
+    pub is_compressed: bool,
+    /// 加密算法
+    #[prost(string, tag = "11")]
+    pub encryption_method: ::prost::alloc::string::String,
+    /// 自定义域名映射关系
+    #[prost(map = "string, string", tag = "12")]
+    pub custom_mapping: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
 }
 /// 通道类型
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]

@@ -13,5 +13,11 @@ async-trait = "0.1.75"
 byteorder = "1.5.0"
 anyhow = "1.0.79"
 
-
+# 加密相关
+rand = "0.8"
+base64 = "0.22"
+brotli = "6.0"
+crypto_secretbox = "0.1.1"
+hex-literal = "0.4.1"
+xxtea = "0.2.0"
 

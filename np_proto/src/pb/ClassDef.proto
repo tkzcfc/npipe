@@ -36,4 +36,10 @@ message Tunnel {
     string password = 8;
     // 用户名
     string username = 9;
+    // 是否压缩数据
+    bool is_compressed = 10;
+    // 加密算法
+    string encryption_method = 11;
+    // 自定义域名映射关系
+    map<string, string> custom_mapping = 12;
 }

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// 登录请求
 #[derive(Serialize, Deserialize)]
@@ -81,6 +82,9 @@ pub struct TunnelListItem {
     pub tunnel_type: u32,
     pub password: String,
     pub username: String,
+    pub is_compressed: bool,
+    pub encryption_method: String,
+    pub custom_mapping: HashMap<String, String>,
 }
 
 /// 通道列表回复
@@ -109,6 +113,9 @@ pub struct TunnelAddReq {
     pub tunnel_type: u32,
     pub password: String,
     pub username: String,
+    pub is_compressed: u8,
+    pub encryption_method: String,
+    pub custom_mapping: HashMap<String, String>,
 }
 
 /// 修改通道请求
@@ -124,4 +131,7 @@ pub struct TunnelUpdateReq {
     pub tunnel_type: u32,
     pub password: String,
     pub username: String,
+    pub is_compressed: u8,
+    pub encryption_method: String,
+    pub custom_mapping: HashMap<String, String>,
 }

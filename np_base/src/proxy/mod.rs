@@ -1,17 +1,16 @@
 use crate::net::WriterMessage;
-use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
-use tokio::sync::Mutex;
 
+pub mod crypto;
 pub mod inlet;
 pub mod outlet;
 
 pub enum ProxyMessage {
-    // 向输出端请求发起连接(u32:会话id  bool:是否是TCP连接 String:目标地址)
-    I2oConnect(u32, bool, String),
+    // 向输出端请求发起连接(u32:会话id  bool:是否是TCP连接 bool:是否压缩数据 String:目标地址 String:加密方式 String:加密密码 String:客户端地址)
+    I2oConnect(u32, bool, bool, String, String, String, String),
     // 连接结果(u32:会话id  bool:是否是成功 String:错误信息)
     O2iConnect(u32, bool, String),
     // 向输出端请求发送数据(u32:会话id  Vec<u8>:数据)
@@ -31,14 +30,11 @@ pub type OutputFuncType =
 // 输入通道发送端类型
 pub type InputSenderType = UnboundedSender<WriterMessage>;
 
-// 发送通道集合
-pub(crate) type SenderMap = Arc<Mutex<HashMap<u32, InputSenderType>>>;
-
 #[cfg(test)]
 mod tests {
     use crate::proxy::inlet::{Inlet, InletProxyType};
-    use crate::proxy::OutputFuncType;
     use crate::proxy::ProxyMessage;
+    use crate::proxy::{crypto, OutputFuncType};
     use std::sync::Arc;
     use std::time::Duration;
     use tokio::time::sleep;
@@ -60,9 +56,15 @@ mod tests {
             })
         });
 
-        let mut inlet = Inlet::new(InletProxyType::TCP);
+        let mut inlet = Inlet::new(InletProxyType::TCP, "".into());
         inlet
-            .start("0.0.0.0:4000".into(), output.clone())
+            .start(
+                "0.0.0.0:4000".into(),
+                "www.baidu.com:80".into(),
+                false,
+                "None".into(),
+                output.clone(),
+            )
             .await
             .unwrap();
 
@@ -70,7 +72,13 @@ mod tests {
 
         inlet.stop().await;
         inlet
-            .start("0.0.0.0:4000".into(), output.clone())
+            .start(
+                "0.0.0.0:4000".into(),
+                "www.baidu.com:80".into(),
+                false,
+                "None".into(),
+                output.clone(),
+            )
             .await
             .unwrap();
         sleep(Duration::from_secs(1)).await;
@@ -79,5 +87,58 @@ mod tests {
         sleep(Duration::from_secs(1)).await;
         inlet.stop().await;
         inlet.stop().await;
+    }
+
+    #[test]
+    fn test_crypto() {
+        let raw_str = String::from("xxtea-nostd is an implementation of the XXTEA encryption algorithm designed for no-std environments. The code uses native endianess to interpret the byte slices passed to the library as 4-byte words.");
+
+        // XSalsa20Poly1305
+        let method = crypto::get_method("XSalsa20Poly1305");
+        let key = crypto::generate_key(&method);
+        println!("key:{:?}", key);
+
+        let cipher_text = crypto::encrypt(&method, key.as_slice(), raw_str.as_bytes()).unwrap();
+        println!("cipher_text:{:?}", cipher_text);
+
+        let compressed_data = crypto::compress_data(cipher_text.as_slice()).unwrap();
+        println!(
+            "raw len: {}, compressed_data len: {}",
+            cipher_text.len(),
+            compressed_data.len()
+        );
+        let decompressed_data = crypto::decompress_data(compressed_data.as_slice()).unwrap();
+
+        let plain_text =
+            crypto::decrypt(&method, key.as_slice(), decompressed_data.as_slice()).unwrap();
+        println!(
+            "plain_text len:{} data: {}",
+            plain_text.len(),
+            String::from_utf8_lossy(plain_text.as_slice())
+        );
+
+        // None
+        let method = crypto::get_method("None");
+        let key = crypto::generate_key(&method);
+        println!("key:{:?}", key);
+
+        let cipher_text = crypto::encrypt(&method, key.as_slice(), raw_str.as_bytes()).unwrap();
+        println!("cipher_text:{:?}", cipher_text);
+
+        let compressed_data = crypto::compress_data(cipher_text.as_slice()).unwrap();
+        println!(
+            "raw len: {}, compressed_data len: {}",
+            cipher_text.len(),
+            compressed_data.len()
+        );
+        let decompressed_data = crypto::decompress_data(compressed_data.as_slice()).unwrap();
+
+        let plain_text =
+            crypto::decrypt(&method, key.as_slice(), decompressed_data.as_slice()).unwrap();
+        println!(
+            "plain_text len:{} data: {}",
+            plain_text.len(),
+            String::from_utf8_lossy(plain_text.as_slice())
+        );
     }
 }

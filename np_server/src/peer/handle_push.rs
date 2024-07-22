@@ -34,7 +34,15 @@ impl Peer {
                 tunnel.receiver,
                 tunnel.sender,
                 tunnel.id,
-                ProxyMessage::I2oConnect(msg.session_id, msg.is_tcp, msg.addr),
+                ProxyMessage::I2oConnect(
+                    msg.session_id,
+                    msg.is_tcp,
+                    msg.is_compressed,
+                    msg.addr,
+                    msg.encryption_method,
+                    msg.encryption_key,
+                    msg.client_addr
+                ),
             )
             .await;
         }

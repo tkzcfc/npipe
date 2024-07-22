@@ -60,9 +60,21 @@ pub struct I2oConnect {
     /// 是否是TCP连接
     #[prost(bool, tag = "3")]
     pub is_tcp: bool,
+    /// 是否压缩数据
+    #[prost(bool, tag = "4")]
+    pub is_compressed: bool,
     /// 目标地址
-    #[prost(string, tag = "4")]
+    #[prost(string, tag = "5")]
     pub addr: ::prost::alloc::string::String,
+    /// 加密方式
+    #[prost(string, tag = "6")]
+    pub encryption_method: ::prost::alloc::string::String,
+    /// 加密key
+    #[prost(string, tag = "7")]
+    pub encryption_key: ::prost::alloc::string::String,
+    /// 客户端地址
+    #[prost(string, tag = "8")]
+    pub client_addr: ::prost::alloc::string::String,
 }
 /// 连接结果
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]

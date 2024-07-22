@@ -125,13 +125,16 @@ impl ProxyManager {
                 });
 
                 if let Some(inlet_proxy_type) = InletProxyType::from_u32(tunnel.tunnel_type) {
-                    let mut inlet = Inlet::new(
-                        inlet_proxy_type,
-                        tunnel.endpoint.clone(),
-                        tunnel.inlet_description(),
-                    );
+                    let mut inlet = Inlet::new(tunnel.inlet_description());
                     if let Err(err) = inlet
-                        .start(tunnel.source.clone().into(), inlet_output)
+                        .start(
+                            inlet_proxy_type,
+                            tunnel.source.clone(),
+                            tunnel.endpoint.clone(),
+                            tunnel.is_compressed == 1,
+                            tunnel.encryption_method.clone(),
+                            inlet_output,
+                        )
                         .await
                     {
                         error!("inlet({}) start error: {}", tunnel.source, err);
@@ -156,8 +159,8 @@ impl ProxyManager {
     ) {
         if to_player_id == 0 {
             match proxy_message {
-                ProxyMessage::I2oConnect(_, _, _)
-                | ProxyMessage::I2oSendData(_, _)
+                ProxyMessage::I2oConnect(_, ..)
+                | ProxyMessage::I2oSendData(_, ..)
                 | ProxyMessage::I2oDisconnect(_) => {
                     if let Some(outlet) = GLOBAL_MANAGER
                         .proxy_manager
@@ -196,14 +199,24 @@ impl ProxyManager {
         {
             if player.read().await.is_online() {
                 let message = match proxy_message {
-                    ProxyMessage::I2oConnect(session_id, is_tcp, addr) => {
-                        MessageType::GenericI2oConnect(generic::I2oConnect {
-                            tunnel_id,
-                            session_id,
-                            is_tcp,
-                            addr,
-                        })
-                    }
+                    ProxyMessage::I2oConnect(
+                        session_id,
+                        is_tcp,
+                        is_compressed,
+                        addr,
+                        encryption_method,
+                        encryption_key,
+                        client_addr,
+                    ) => MessageType::GenericI2oConnect(generic::I2oConnect {
+                        tunnel_id,
+                        session_id,
+                        is_tcp,
+                        is_compressed,
+                        addr,
+                        encryption_method,
+                        encryption_key,
+                        client_addr,
+                    }),
                     ProxyMessage::O2iConnect(session_id, success, error_info) => {
                         MessageType::GenericO2iConnect(generic::O2iConnect {
                             tunnel_id,
@@ -253,7 +266,7 @@ impl ProxyManager {
         // 玩家离线或找不到
         if from_player_id == 0 {
             match proxy_message {
-                ProxyMessage::I2oConnect(session_id, _, _) => {
+                ProxyMessage::I2oConnect(session_id, ..) => {
                     tokio::spawn(async move {
                         if let Some(inlet) = GLOBAL_MANAGER
                             .proxy_manager
@@ -308,7 +321,7 @@ impl ProxyManager {
             }
         } else {
             let message = match proxy_message {
-                ProxyMessage::I2oConnect(session_id, _, _) => {
+                ProxyMessage::I2oConnect(session_id, ..) => {
                     MessageType::GenericO2iConnect(generic::O2iConnect {
                         tunnel_id,
                         session_id,
@@ -316,7 +329,7 @@ impl ProxyManager {
                         error_info: format!("no sender {to_player_id}"),
                     })
                 }
-                ProxyMessage::I2oSendData(session_id, _) => {
+                ProxyMessage::I2oSendData(session_id, ..) => {
                     MessageType::GenericO2iDisconnect(generic::O2iDisconnect {
                         tunnel_id,
                         session_id,

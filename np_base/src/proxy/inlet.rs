@@ -1,10 +1,12 @@
 use crate::net::session_delegate::SessionDelegate;
 use crate::net::WriterMessage;
 use crate::net::{tcp_server, udp_server};
-use crate::proxy::SenderMap;
+use crate::proxy::crypto::EncryptionMethod;
+use crate::proxy::{crypto, InputSenderType};
 use crate::proxy::{OutputFuncType, ProxyMessage};
 use anyhow::anyhow;
 use async_trait::async_trait;
+use base64::prelude::*;
 use bytes::BytesMut;
 use log::{debug, error};
 use std::collections::HashMap;
@@ -32,30 +34,39 @@ impl InletProxyType {
     }
 }
 
+struct SenderSessionInfo {
+    sender: InputSenderType,
+    is_compressed: bool,
+    encryption_method: EncryptionMethod,
+    encryption_key: Vec<u8>,
+}
+
+type SenderSessionInfoMap = Arc<Mutex<HashMap<u32, SenderSessionInfo>>>;
+
 pub struct Inlet {
-    inlet_proxy_type: InletProxyType,
     shutdown_tx: Option<Sender<()>>,
     notify: Arc<Notify>,
-    sender_map: SenderMap,
-    output_addr: String,
+    session_info_map: SenderSessionInfoMap,
     description: String,
 }
 
 impl Inlet {
-    pub fn new(inlet_proxy_type: InletProxyType, output_addr: String, description: String) -> Self {
+    pub fn new(description: String) -> Self {
         Self {
-            inlet_proxy_type,
             shutdown_tx: None,
             notify: Arc::new(Notify::new()),
-            sender_map: Arc::new(Mutex::new(HashMap::new())),
-            output_addr,
+            session_info_map: Arc::new(Mutex::new(HashMap::new())),
             description,
         }
     }
 
     pub async fn start(
         &mut self,
+        inlet_proxy_type: InletProxyType,
         listen_addr: String,
+        output_addr: String,
+        is_compressed: bool,
+        encryption_method: String,
         on_output_callback: OutputFuncType,
     ) -> anyhow::Result<()> {
         // 重复调用启动函数
@@ -65,24 +76,25 @@ impl Inlet {
 
         let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
         let worker_notify = self.notify.clone();
-        let sender_map = self.sender_map.clone();
-        let is_tcp = match &self.inlet_proxy_type {
+        let session_info_map = self.session_info_map.clone();
+        let is_tcp = match inlet_proxy_type {
             InletProxyType::TCP => true,
             InletProxyType::UDP => false,
             InletProxyType::SOCKS5 => true,
         };
 
-        let output_addr = self.output_addr.clone();
         let create_session_delegate_func = Box::new(move || -> Box<dyn SessionDelegate> {
             Box::new(InletSession::new(
                 is_tcp,
                 output_addr.clone(),
-                sender_map.clone(),
+                session_info_map.clone(),
+                is_compressed,
+                encryption_method.clone(),
                 on_output_callback.clone(),
             ))
         });
 
-        match self.inlet_proxy_type {
+        match inlet_proxy_type {
             InletProxyType::TCP => {
                 let listener = tcp_server::bind(&listen_addr).await?;
                 self.shutdown_tx = Some(shutdown_tx);
@@ -131,63 +143,90 @@ impl Inlet {
     }
 
     pub async fn input(&self, message: ProxyMessage) {
-        match message {
-            ProxyMessage::O2iConnect(session_id, success, error_msg) => {
-                if !success {
-                    error!("connect error: {error_msg}");
-                    if let Some(sender) = self.sender_map.lock().await.get(&session_id) {
-                        if let Err(err) = sender.send(WriterMessage::Close) {
-                            error!("mpsc send error: {err}");
-                        }
-                    }
-                }
-            }
-            ProxyMessage::O2iDisconnect(session_id) => {
-                if let Some(sender) = self.sender_map.lock().await.get(&session_id) {
-                    if let Err(err) = sender.send(WriterMessage::Close) {
-                        error!("mpsc send error: {err}");
-                    }
-                }
-            }
-            ProxyMessage::O2iRecvData(session_id, data) => {
-                if let Some(sender) = self.sender_map.lock().await.get(&session_id) {
-                    if let Err(err) = sender.send(WriterMessage::Send(data, true)) {
-                        error!("mpsc send error: {err}");
-                    }
-                }
-            }
-            _ => {
-                panic!("error message")
-            }
+        if let Err(err) = self.input_internal(message).await {
+            error!("inlet input error: {}", err.to_string());
         }
     }
 
     pub fn description(&self) -> &String {
         &self.description
     }
+
+    async fn input_internal(&self, message: ProxyMessage) -> anyhow::Result<()> {
+        match message {
+            ProxyMessage::O2iConnect(session_id, success, error_msg) => {
+                if !success {
+                    error!("connect error: {error_msg}");
+                    if let Some(session) = self.session_info_map.lock().await.get(&session_id) {
+                        session.sender.send(WriterMessage::Close)?;
+                    }
+                }
+            }
+            ProxyMessage::O2iDisconnect(session_id) => {
+                if let Some(session) = self.session_info_map.lock().await.get(&session_id) {
+                    session.sender.send(WriterMessage::Close)?;
+                }
+            }
+            ProxyMessage::O2iRecvData(session_id, mut data) => {
+                if let Some(session) = self.session_info_map.lock().await.get(&session_id) {
+                    match session.encryption_method {
+                        EncryptionMethod::None => {}
+                        _ => {
+                            data = crypto::decrypt(
+                                &session.encryption_method,
+                                session.encryption_key.as_slice(),
+                                data.as_slice(),
+                            )?;
+                        }
+                    }
+                    if session.is_compressed {
+                        data = crypto::decompress_data(data.as_slice())?;
+                    }
+
+                    session.sender.send(WriterMessage::Send(data, true))?;
+                }
+            }
+            _ => {
+                return Err(anyhow!("Unknown message"));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 struct InletSession {
     is_tcp: bool,
     output_addr: String,
-    sender_map: SenderMap,
+    session_info_map: SenderSessionInfoMap,
     session_id: u32,
     on_output_callback: OutputFuncType,
+    is_compressed: bool,
+    encryption_method: EncryptionMethod,
+    encryption_key: Vec<u8>,
 }
 
 impl InletSession {
     pub fn new(
         is_tcp: bool,
         output_addr: String,
-        sender_map: SenderMap,
+        session_info_map: SenderSessionInfoMap,
+        is_compressed: bool,
+        encryption_method: String,
         on_output_callback: OutputFuncType,
     ) -> Self {
+        let encryption_method = crypto::get_method(encryption_method.as_str());
+        let encryption_key = crypto::generate_key(&encryption_method);
+
         Self {
             is_tcp,
             output_addr,
-            sender_map,
+            session_info_map,
             session_id: 0,
             on_output_callback,
+            is_compressed,
+            encryption_method,
+            encryption_key,
         }
     }
 }
@@ -201,12 +240,25 @@ impl SessionDelegate for InletSession {
         tx: UnboundedSender<WriterMessage>,
     ) -> anyhow::Result<()> {
         debug!("inlet on session({session_id}) start {addr}");
+
         self.session_id = session_id;
-        self.sender_map.lock().await.insert(session_id, tx);
+        self.session_info_map.lock().await.insert(
+            session_id,
+            SenderSessionInfo {
+                sender: tx,
+                is_compressed: self.is_compressed,
+                encryption_method: self.encryption_method.clone(),
+                encryption_key: self.encryption_key.clone(),
+            },
+        );
         (self.on_output_callback)(ProxyMessage::I2oConnect(
-            self.session_id,
+            session_id,
             self.is_tcp,
+            self.is_compressed,
             self.output_addr.clone(),
+            crypto::get_method_name(&self.encryption_method),
+            BASE64_STANDARD.encode(&self.encryption_key),
+            addr.to_string(),
         ))
         .await;
         Ok(())
@@ -214,7 +266,7 @@ impl SessionDelegate for InletSession {
 
     async fn on_session_close(&mut self) -> anyhow::Result<()> {
         debug!("inlet on session({}) close", self.session_id);
-        self.sender_map.lock().await.remove(&self.session_id);
+        self.session_info_map.lock().await.remove(&self.session_id);
         (self.on_output_callback)(ProxyMessage::I2oDisconnect(self.session_id)).await;
         Ok(())
     }
@@ -227,7 +279,20 @@ impl SessionDelegate for InletSession {
         Ok(Some(frame))
     }
 
-    async fn on_recv_frame(&mut self, frame: Vec<u8>) -> anyhow::Result<()> {
+    async fn on_recv_frame(&mut self, mut frame: Vec<u8>) -> anyhow::Result<()> {
+        if self.is_compressed {
+            frame = crypto::compress_data(frame.as_slice())?;
+        }
+        match &self.encryption_method {
+            EncryptionMethod::None => {}
+            _ => {
+                frame = crypto::encrypt(
+                    &self.encryption_method,
+                    self.encryption_key.as_slice(),
+                    frame.as_slice(),
+                )?;
+            }
+        }
         (self.on_output_callback)(ProxyMessage::I2oSendData(self.session_id, frame)).await;
         Ok(())
     }

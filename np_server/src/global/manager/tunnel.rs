@@ -11,6 +11,7 @@ use np_proto::message_map::MessageType;
 use np_proto::{class_def, server_client};
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ActiveModelTrait, EntityTrait};
+use std::collections::HashMap;
 
 pub struct TunnelManager {
     pub tunnels: Vec<tunnel::Model>,
@@ -56,6 +57,9 @@ impl TunnelManager {
             tunnel_type: Set(tunnel.tunnel_type),
             password: Set(tunnel.password.to_owned()),
             username: Set(tunnel.username.to_owned()),
+            is_compressed: Set(tunnel.is_compressed),
+            custom_mapping: Set(tunnel.custom_mapping.to_owned()),
+            encryption_method: Set(tunnel.encryption_method.to_owned()),
         };
 
         let new_tunnel = new_tunnel.insert(GLOBAL_DB_POOL.get().unwrap()).await?;
@@ -263,6 +267,9 @@ impl tunnel::Model {
 
 impl From<&tunnel::Model> for class_def::Tunnel {
     fn from(tunnel: &tunnel::Model) -> Self {
+        let custom_mapping: HashMap<String, String> =
+            serde_json::from_str(&tunnel.custom_mapping).map_or(HashMap::new(), |x| x);
+
         Self {
             source: Some(class_def::TunnelPoint {
                 addr: tunnel.source.clone(),
@@ -277,6 +284,9 @@ impl From<&tunnel::Model> for class_def::Tunnel {
             tunnel_type: tunnel.tunnel_type as i32,
             username: tunnel.username.clone(),
             password: tunnel.password.clone(),
+            is_compressed: tunnel.is_compressed == 1,
+            encryption_method: tunnel.encryption_method.clone(),
+            custom_mapping,
         }
     }
 }

@@ -53,8 +53,16 @@ message I2oConnect {
   uint32 session_id = 2;
   // 是否是TCP连接
   bool is_tcp = 3;
+  // 是否压缩数据
+  bool is_compressed = 4;
   // 目标地址
-  string addr = 4;
+  string addr = 5;
+  // 加密方式
+  string encryption_method = 6;
+  // 加密key
+  string encryption_key = 7;
+  // 客户端地址
+  string client_addr = 8;
 }
 
 // 连接结果

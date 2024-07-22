@@ -16,6 +16,10 @@ pub struct Model {
     pub tunnel_type: u32,
     pub password: String,
     pub username: String,
+    pub is_compressed: u8,
+    #[sea_orm(column_type = "Text")]
+    pub custom_mapping: String,
+    pub encryption_method: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
