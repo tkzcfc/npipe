@@ -8,7 +8,7 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use base64::prelude::*;
 use bytes::BytesMut;
-use log::{debug, error};
+use log::{debug, error, trace};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -155,6 +155,7 @@ impl Inlet {
     async fn input_internal(&self, message: ProxyMessage) -> anyhow::Result<()> {
         match message {
             ProxyMessage::O2iConnect(session_id, success, error_msg) => {
+                trace!("O2iConnect: session_id:{session_id}, success:{success}, error_msg:{error_msg}");
                 if !success {
                     error!("connect error: {error_msg}");
                     if let Some(session) = self.session_info_map.lock().await.get(&session_id) {
@@ -163,11 +164,13 @@ impl Inlet {
                 }
             }
             ProxyMessage::O2iDisconnect(session_id) => {
+                trace!("O2iDisconnect: session_id:{session_id}");
                 if let Some(session) = self.session_info_map.lock().await.get(&session_id) {
                     session.sender.send(WriterMessage::Close)?;
                 }
             }
             ProxyMessage::O2iRecvData(session_id, mut data) => {
+                // trace!("O2iRecvData: session_id:{session_id}");
                 if let Some(session) = self.session_info_map.lock().await.get(&session_id) {
                     match session.encryption_method {
                         EncryptionMethod::None => {}
@@ -184,6 +187,9 @@ impl Inlet {
                     }
 
                     session.sender.send(WriterMessage::Send(data, true))?;
+                }
+                else {
+                    trace!("O2iRecvData: unknown session:{session_id}");
                 }
             }
             _ => {

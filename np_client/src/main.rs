@@ -29,6 +29,10 @@ pub struct Opts {
     /// Set log level  warn
     #[arg(long, default_value = "info")]
     pub log_level: String,
+
+    /// Set log level
+    #[arg(long, default_value = "error")]
+    pub base_log_level: String,
 }
 
 #[tokio::main]
@@ -40,7 +44,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // 日志初始化
-    let _logger = Logger::try_with_str(format!("{}, np_base=error", ops.log_level))?
+    let _logger = Logger::try_with_str(format!("{}, np_base={}", ops.log_level, ops.base_log_level))?
         .log_to_file(
             FileSpec::default()
                 .directory("logs")

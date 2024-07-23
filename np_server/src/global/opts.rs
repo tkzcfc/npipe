@@ -17,4 +17,8 @@ pub struct Opts {
     /// Set log level  warn
     #[arg(long, default_value = "info")]
     pub log_level: String,
+
+    /// Set log level
+    #[arg(long, default_value = "error")]
+    pub base_log_level: String,
 }

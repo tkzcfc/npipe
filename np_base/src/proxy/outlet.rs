@@ -3,7 +3,7 @@ use crate::proxy::{crypto, OutputFuncType, ProxyMessage};
 use anyhow::anyhow;
 use base64::prelude::*;
 use bytes::BytesMut;
-use log::{debug, error, info};
+use log::{debug, error, info, trace};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -52,6 +52,7 @@ impl Outlet {
                 encryption_key,
                 client_addr,
             ) => {
+                trace!("I2oConnect: session_id:{session_id}, addr:{addr}, is_tcp:{is_tcp}");
                 let output_callback = self.on_output_callback.clone();
                 if let Err(err) = self
                     .on_i2o_connect(
@@ -90,9 +91,11 @@ impl Outlet {
                 }
             }
             ProxyMessage::I2oSendData(session_id, data) => {
+                // trace!("I2oSendData: session_id:{session_id}");
                 self.on_i2o_send_data(session_id, data).await?;
             }
             ProxyMessage::I2oDisconnect(session_id) => {
+                trace!("I2oDisconnect: session_id:{session_id}");
                 self.on_i2o_disconnect(session_id).await?;
             }
             _ => {
