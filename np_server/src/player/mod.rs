@@ -104,6 +104,7 @@ impl Player {
     // 玩家被顶号，需要对旧的会话发送一些消息
     pub async fn on_terminate_old_session(&mut self) {
         //
+        self.close_session();
 
         // 重置会话信息
         self.reset_session_info();
