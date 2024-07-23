@@ -5,17 +5,24 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::UdpSocket;
 use tokio::select;
-use tokio::sync::broadcast;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
+use tokio::sync::{broadcast, RwLock};
 use tokio::task::yield_now;
 use tokio::time::sleep;
+use tokio::time::{Duration, Instant};
 
 async fn poll_read(
     addr: SocketAddr,
     delegate: &mut Box<dyn SessionDelegate>,
     mut udp_recv_receiver: UnboundedReceiver<Vec<u8>>,
+    last_active_time: Arc<RwLock<Instant>>,
 ) {
+    let write_timeout = Duration::from_secs(1);
     while let Some(data) = udp_recv_receiver.recv().await {
+        if last_active_time.read().await.elapsed() >= write_timeout {
+            let mut instant_write = last_active_time.write().await;
+            *instant_write = Instant::now();
+        }
         if let Err(err) = delegate.on_recv_frame(data).await {
             error!("[{addr}] on_recv_frame error: {err}");
             break;
@@ -28,8 +35,15 @@ async fn poll_write(
     addr: SocketAddr,
     mut delegate_receiver: UnboundedReceiver<WriterMessage>,
     socket: Arc<UdpSocket>,
+    last_active_time: Arc<RwLock<Instant>>,
 ) {
+    let write_timeout = Duration::from_secs(1);
     while let Some(message) = delegate_receiver.recv().await {
+        if last_active_time.read().await.elapsed() >= write_timeout {
+            let mut instant_write = last_active_time.write().await;
+            *instant_write = Instant::now();
+        }
+
         match message {
             WriterMessage::Close => break,
             WriterMessage::CloseDelayed(duration) => {
@@ -52,6 +66,16 @@ async fn poll_write(
     }
 
     delegate_receiver.close();
+}
+
+async fn poll_timeout(last_active_time: Arc<RwLock<Instant>>) {
+    let timeout = Duration::from_secs(10);
+    loop {
+        sleep(Duration::from_secs(1)).await;
+        if last_active_time.read().await.elapsed() > timeout {
+            break;
+        }
+    }
 }
 
 /// run
@@ -85,9 +109,12 @@ pub async fn run(
         return;
     }
 
+    let last_active_time = Arc::new(RwLock::new(Instant::now()));
+
     select! {
-        _= poll_read(addr, &mut delegate, udp_recv_receiver) => {},
-        _= poll_write(addr, delegate_receiver, socket) => {},
+        _= poll_read(addr, &mut delegate, udp_recv_receiver, last_active_time.clone()) => {},
+        _= poll_write(addr, delegate_receiver, socket, last_active_time.clone()) => {},
+        _= poll_timeout(last_active_time) => {},
         _ = shutdown.recv() => {}
     }
 

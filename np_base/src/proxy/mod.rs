@@ -56,9 +56,10 @@ mod tests {
             })
         });
 
-        let mut inlet = Inlet::new(InletProxyType::TCP, "".into());
+        let mut inlet = Inlet::new("".into());
         inlet
             .start(
+                InletProxyType::TCP,
                 "0.0.0.0:4000".into(),
                 "www.baidu.com:80".into(),
                 false,
@@ -73,6 +74,7 @@ mod tests {
         inlet.stop().await;
         inlet
             .start(
+                InletProxyType::TCP,
                 "0.0.0.0:4000".into(),
                 "www.baidu.com:80".into(),
                 false,

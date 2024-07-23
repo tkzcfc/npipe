@@ -41,7 +41,7 @@ impl Peer {
                     msg.addr,
                     msg.encryption_method,
                     msg.encryption_key,
-                    msg.client_addr
+                    msg.client_addr,
                 ),
             )
             .await;

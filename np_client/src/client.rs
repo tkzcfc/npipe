@@ -283,16 +283,18 @@ impl Client {
 
                 if let Some(inlet_proxy_type) = InletProxyType::from_u32(tunnel.tunnel_type as u32)
                 {
-                    let mut inlet = Inlet::new(
-                        inlet_description(&tunnel),
-                    );
-                    if let Err(err) = inlet.start(
-                        inlet_proxy_type,
-                        source.clone(),
-                        endpoint.clone(),
-                        tunnel.is_compressed,
-                        tunnel.encryption_method.clone(),
-                        inlet_output).await {
+                    let mut inlet = Inlet::new(inlet_description(&tunnel));
+                    if let Err(err) = inlet
+                        .start(
+                            inlet_proxy_type,
+                            source.clone(),
+                            endpoint.clone(),
+                            tunnel.is_compressed,
+                            tunnel.encryption_method.clone(),
+                            inlet_output,
+                        )
+                        .await
+                    {
                         error!("inlet({}) start error: {}", source, err);
                     } else {
                         self.inlets.write().await.insert(tunnel.id, inlet);
@@ -318,7 +320,7 @@ impl Client {
     ) {
         if self_player_id == player_id {
             match proxy_message {
-                ProxyMessage::I2oConnect(_,..)
+                ProxyMessage::I2oConnect(_, ..)
                 | ProxyMessage::I2oSendData(_, _)
                 | ProxyMessage::I2oDisconnect(_) => {
                     if let Some(outlet) = outlets.read().await.get(&tunnel_id) {
@@ -333,18 +335,24 @@ impl Client {
             };
         } else {
             let message = match proxy_message {
-                ProxyMessage::I2oConnect(session_id, is_tcp, is_compressed, addr, encryption_method, encryption_key, client_addr) => {
-                    MessageType::GenericI2oConnect(generic::I2oConnect {
-                        tunnel_id,
-                        session_id,
-                        is_tcp,
-                        addr,
-                        is_compressed,
-                        encryption_method,
-                        encryption_key,
-                        client_addr,
-                    })
-                }
+                ProxyMessage::I2oConnect(
+                    session_id,
+                    is_tcp,
+                    is_compressed,
+                    addr,
+                    encryption_method,
+                    encryption_key,
+                    client_addr,
+                ) => MessageType::GenericI2oConnect(generic::I2oConnect {
+                    tunnel_id,
+                    session_id,
+                    is_tcp,
+                    addr,
+                    is_compressed,
+                    encryption_method,
+                    encryption_key,
+                    client_addr,
+                }),
                 ProxyMessage::O2iConnect(session_id, success, error_info) => {
                     MessageType::GenericO2iConnect(generic::O2iConnect {
                         tunnel_id,
@@ -440,7 +448,15 @@ impl Client {
                 self.player_id,
                 tunnel.sender,
                 tunnel.id,
-                ProxyMessage::I2oConnect(msg.session_id, msg.is_tcp, msg.is_compressed, msg.addr, msg.encryption_method, msg.encryption_key, msg.client_addr),
+                ProxyMessage::I2oConnect(
+                    msg.session_id,
+                    msg.is_tcp,
+                    msg.is_compressed,
+                    msg.addr,
+                    msg.encryption_method,
+                    msg.encryption_key,
+                    msg.client_addr,
+                ),
             )
             .await;
         }
@@ -587,8 +603,13 @@ fn outlet_description(tunnel: &Tunnel) -> String {
 }
 
 fn inlet_description(tunnel: &Tunnel) -> String {
+    let custom_mapping: String = tunnel
+        .custom_mapping
+        .iter()
+        .map(|(key, value)| format!("{}:{}\n", key, value))
+        .collect();
     format!(
-        "id:{}-source:{}-endpoint:{}-sender:{}-receiver:{}-tunnel_type:{}-username:{}-password:{}-enabled:{}",
+        "id:{}-source:{}-endpoint:{}-sender:{}-receiver:{}-tunnel_type:{}-username:{}-password:{}-enabled:{}-is_compressed:{}-encryption_method:{}-custom_mapping:[{}]",
         tunnel.id,
         fmt_point(&tunnel.source),
         fmt_point(&tunnel.endpoint),
@@ -597,6 +618,9 @@ fn inlet_description(tunnel: &Tunnel) -> String {
         tunnel.tunnel_type,
         tunnel.username,
         tunnel.password,
-        tunnel.enabled
+        tunnel.enabled,
+        tunnel.is_compressed,
+        tunnel.encryption_method,
+        custom_mapping,
     )
 }

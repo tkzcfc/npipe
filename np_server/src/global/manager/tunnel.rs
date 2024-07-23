@@ -251,7 +251,7 @@ impl tunnel::Model {
 
     pub fn inlet_description(&self) -> String {
         format!(
-            "id:{}-source:{}-endpoint:{}-sender:{}-receiver:{}-tunnel_type:{}-username:{}-password:{}-enabled:{}",
+            "id:{}-source:{}-endpoint:{}-sender:{}-receiver:{}-tunnel_type:{}-username:{}-password:{}-enabled:{}-is_compressed:{}-encryption_method:{}-custom_mapping:{}",
             self.id,
             self.source,
             self.endpoint,
@@ -260,7 +260,10 @@ impl tunnel::Model {
             self.tunnel_type,
             self.username,
             self.password,
-            self.enabled
+            self.enabled,
+            self.is_compressed,
+            self.encryption_method,
+            self.custom_mapping,
         )
     }
 }

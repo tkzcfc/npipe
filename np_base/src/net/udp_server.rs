@@ -100,11 +100,8 @@ pub async fn run_server(
     };
 
     select! {
-    _= recv_task => {
-    },
-    _ = shutdown => {
-        info!("UDP Server shutting down");
-    }
+    _= recv_task => {},
+    _ = shutdown => { info!("UDP Server shutting down"); }
     };
 
     // 销毁notify_shutdown 是为了触发 udp_session即将停止服务，立即停止其他操作
