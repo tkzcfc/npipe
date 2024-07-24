@@ -35,6 +35,8 @@ pub async fn run(
     let (reader, writer) = tokio::io::split(stream);
     let (delegate_sender, delegate_receiver) = unbounded_channel::<WriterMessage>();
 
+    trace!("{}#################start------------------>", session_id);
+
     if let Err(err) = delegate
         .on_session_start(session_id, &addr, delegate_sender)
         .await
@@ -53,6 +55,8 @@ pub async fn run(
         _ = shutdown.recv() => {}
     }
 
+    trace!("{}#################close------------------>", session_id);
+
     if let Err(err) = delegate.on_session_close().await {
         error!("[{addr}] on_session_close error:{err}");
     }
@@ -70,9 +74,13 @@ async fn poll_write<S>(
 
     while let Some(message) = delegate_receiver.recv().await {
         match message {
-            WriterMessage::Close => break,
+            WriterMessage::Close => {
+                trace!("write close------------------>");
+                break
+            },
             WriterMessage::CloseDelayed(duration) => {
                 sleep(duration).await;
+                trace!("write close delay------------------>");
                 break;
             }
             WriterMessage::Send(data, flush) => {
@@ -100,6 +108,7 @@ async fn poll_write<S>(
             }
         }
     }
+    trace!("poll write finish------------------>");
 
     delegate_receiver.close();
 }
