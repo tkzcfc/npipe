@@ -2955,6 +2955,7 @@ dependencies = [
  "np_base",
  "np_proto",
  "num",
+ "socket2 0.5.5",
  "tokio",
 ]
 

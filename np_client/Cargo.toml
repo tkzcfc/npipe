@@ -16,3 +16,4 @@ log = "0.4.20"
 flexi_logger = { version = "0.27.3", features = ["async", "dont_minimize_extra_stacks"] }
 bytes = "1.5.0"
 byteorder = "1.5.0"
+socket2 = "0.5"

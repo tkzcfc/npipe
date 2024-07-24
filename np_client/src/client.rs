@@ -9,17 +9,20 @@ use np_base::proxy::outlet::Outlet;
 use np_base::proxy::{OutputFuncType, ProxyMessage};
 use np_proto::class_def::{Tunnel, TunnelPoint};
 use np_proto::client_server::LoginReq;
-use np_proto::generic::{
-    I2oConnect, I2oDisconnect, I2oSendData, O2iConnect, O2iDisconnect, O2iRecvData,
-};
+use np_proto::generic::{I2oConnect, I2oDisconnect, I2oSendData, O2iConnect, O2iDisconnect, O2iRecvData, Ping};
 use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size, MessageType};
 use np_proto::server_client::ModifyTunnelNtf;
 use np_proto::{generic, message_map};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
+use tokio::select;
 use tokio::sync::{Mutex, RwLock};
+use tokio::time::sleep;
+use socket2::{SockRef, TcpKeepalive};
+
 
 type WriterType = Arc<Mutex<WriteHalf<TcpStream>>>;
 
@@ -34,13 +37,19 @@ struct Client {
 }
 
 pub async fn run(opts: &Opts) -> anyhow::Result<()> {
+    info!("Start connecting to server {}", opts.server);
     let stream = TcpStream::connect(&opts.server).await?;
+    let ka = TcpKeepalive::new().with_time(std::time::Duration::from_secs(30));
+    let sf = SockRef::from(&stream);
+    sf.set_tcp_keepalive(&ka)?;
     info!("Successful connection with server {}", opts.server);
 
     let (reader, writer) = tokio::io::split(stream);
 
+    let writer = Arc::new(Mutex::new(writer));
+
     let mut client = Client {
-        writer: Arc::new(Mutex::new(writer)),
+        writer: writer.clone(),
         username: opts.username.clone(),
         password: opts.password.clone(),
         player_id: 0u32,
@@ -50,9 +59,33 @@ pub async fn run(opts: &Opts) -> anyhow::Result<()> {
     };
 
     client.send_login().await?;
-    let result = client.run(reader).await;
+    let result;
+    select! {
+        r1= client.run(reader) => { result = r1 },
+        r2= ping_forever(writer) => { result = r2 },
+    }
     client.sync_tunnels(&Vec::new()).await;
     result
+}
+
+async fn ping_forever(writer: WriterType) -> anyhow::Result<()> {
+    loop {
+        sleep(Duration::from_secs(5)).await;
+
+        // 获取当前时间
+        let now = SystemTime::now();
+
+        // 计算自UNIX_EPOCH以来的持续时间
+        let since_epoch = now.duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+
+        // 将时间转换为毫秒
+        let nanos = since_epoch.as_millis();
+
+        package_and_send_message(writer.clone(), -2, &MessageType::GenericPing(Ping{
+            ticks: nanos as i64
+        })).await?;
+    }
 }
 
 impl Client {
@@ -88,7 +121,7 @@ impl Client {
 
     async fn send_login(&self) -> anyhow::Result<()> {
         info!("Start Login");
-        Self::package_and_send_message(
+        package_and_send_message(
             self.writer.clone(),
             -1,
             &MessageType::ClientServerLoginReq(LoginReq {
@@ -392,32 +425,9 @@ impl Client {
             match message {
                 MessageType::None => {}
                 _ => {
-                    let _ = Self::package_and_send_message(writer, 0, &message).await;
+                    let _ = package_and_send_message(writer, 0, &message).await;
                 }
             }
-        }
-    }
-
-    #[inline]
-    pub(crate) async fn package_and_send_message(
-        writer: WriterType,
-        serial: i32,
-        message: &MessageType,
-    ) -> anyhow::Result<()> {
-        if let Some(message_id) = get_message_id(message) {
-            let message_size = get_message_size(message);
-            let mut buf = Vec::with_capacity(message_size + 14);
-
-            byteorder::WriteBytesExt::write_u8(&mut buf, 33u8)?;
-            byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, (8 + message_size) as u32)?;
-            byteorder::WriteBytesExt::write_i32::<BigEndian>(&mut buf, serial)?;
-            byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, message_id)?;
-            encode_raw_message(message, &mut buf);
-
-            writer.lock().await.write_all(&buf).await?;
-            Ok(())
-        } else {
-            Err(anyhow!("Message id not found"))
         }
     }
 
@@ -548,6 +558,30 @@ impl Client {
                 self.tunnels.clone().into_iter().map(|(_, x)| x).collect();
             self.sync_tunnels(&tunnel_list).await;
         }
+    }
+}
+
+
+#[inline]
+pub(crate) async fn package_and_send_message(
+    writer: WriterType,
+    serial: i32,
+    message: &MessageType,
+) -> anyhow::Result<()> {
+    if let Some(message_id) = get_message_id(message) {
+        let message_size = get_message_size(message);
+        let mut buf = Vec::with_capacity(message_size + 14);
+
+        byteorder::WriteBytesExt::write_u8(&mut buf, 33u8)?;
+        byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, (8 + message_size) as u32)?;
+        byteorder::WriteBytesExt::write_i32::<BigEndian>(&mut buf, serial)?;
+        byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, message_id)?;
+        encode_raw_message(message, &mut buf);
+
+        writer.lock().await.write_all(&buf).await?;
+        Ok(())
+    } else {
+        Err(anyhow!("Message id not found"))
     }
 }
 
