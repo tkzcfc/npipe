@@ -3,7 +3,7 @@ use anyhow::anyhow;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
 use bytes::BytesMut;
-use log::{debug, error, info, trace};
+use log::{debug, error, info};
 use np_base::proxy::inlet::{Inlet, InletProxyType};
 use np_base::proxy::outlet::Outlet;
 use np_base::proxy::{OutputFuncType, ProxyMessage};
@@ -12,7 +12,7 @@ use np_proto::client_server::LoginReq;
 use np_proto::generic::{
     I2oConnect, I2oDisconnect, I2oSendData, O2iConnect, O2iDisconnect, O2iRecvData,
 };
-use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size, MessageType, serialize_to_json};
+use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size, MessageType};
 use np_proto::server_client::ModifyTunnelNtf;
 use np_proto::{generic, message_map};
 use std::collections::HashMap;
@@ -110,8 +110,6 @@ impl Client {
         let msg_id: u32 = BigEndian::read_u32(&frame[4..8]);
 
         let message = message_map::decode_message(msg_id, &frame[8..])?;
-
-        trace!("recv message {}-> {}", msg_id, serialize_to_json(&message).unwrap());
         self.handle_message(serial, message).await
     }
 
@@ -407,8 +405,6 @@ impl Client {
         message: &MessageType,
     ) -> anyhow::Result<()> {
         if let Some(message_id) = get_message_id(message) {
-
-            trace!("send message {}-> {}", message_id, serialize_to_json(&message).unwrap());
             let message_size = get_message_size(message);
             let mut buf = Vec::with_capacity(message_size + 14);
 

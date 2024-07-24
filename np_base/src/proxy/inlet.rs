@@ -257,7 +257,6 @@ impl SessionDelegate for InletSession {
                 encryption_key: self.encryption_key.clone(),
             },
         );
-        trace!("send I2oConnect: session_id:{session_id}, addr:{}", self.output_addr);
         (self.on_output_callback)(ProxyMessage::I2oConnect(
             session_id,
             self.is_tcp,
@@ -300,7 +299,6 @@ impl SessionDelegate for InletSession {
                 )?;
             }
         }
-        trace!("send I2oSendData: session_id:{}", self.session_id);
         (self.on_output_callback)(ProxyMessage::I2oSendData(self.session_id, frame)).await;
         Ok(())
     }
