@@ -2,7 +2,7 @@ use crate::net::session_delegate::SessionDelegate;
 use crate::net::WriterMessage;
 use anyhow::anyhow;
 use bytes::BytesMut;
-use log::{error, info, trace};
+use log::{error, info};
 use std::net::SocketAddr;
 use tokio::io::{
     AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf,
@@ -81,7 +81,6 @@ async fn poll_write<S>(
                     continue;
                 }
 
-                trace!("write data:{}", data.len());
                 if let Err(error) = writer.write_all(&data).await {
                     error!("[{addr}] error when write_all {:?}", error);
                     break;
@@ -121,8 +120,6 @@ where
             return Err(anyhow!("[{addr}] socket closed."));
         }
 
-        trace!("read data:{}", buffer.len());
-
         // 循环解包
         loop {
             if buffer.is_empty() {
@@ -131,11 +128,9 @@ where
             // 处理数据粘包
             let result = delegate.on_try_extract_frame(&mut buffer)?;
             if let Some(frame) = result {
-                trace!("read package");
                 // 收到完整消息
                 delegate.on_recv_frame(frame).await?;
             } else {
-                trace!("read package........");
                 // 消息包接收还未完成
                 break;
             }
