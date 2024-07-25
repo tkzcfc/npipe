@@ -112,7 +112,7 @@ async fn poll_read<S>(
 where
     S: AsyncRead + AsyncWrite + Send + 'static,
 {
-    let mut buffer = BytesMut::with_capacity(1024);
+    let mut buffer = BytesMut::with_capacity(4096);
 
     loop {
         if reader.read_buf(&mut buffer).await? == 0 {

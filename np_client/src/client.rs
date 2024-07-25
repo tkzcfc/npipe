@@ -39,7 +39,7 @@ struct Client {
 pub async fn run(opts: &Opts) -> anyhow::Result<()> {
     info!("Start connecting to server {}", opts.server);
     let stream = TcpStream::connect(&opts.server).await?;
-    let ka = TcpKeepalive::new().with_time(std::time::Duration::from_secs(30));
+    let ka = TcpKeepalive::new().with_time(Duration::from_secs(30));
     let sf = SockRef::from(&stream);
     sf.set_tcp_keepalive(&ka)?;
     info!("Successful connection with server {}", opts.server);

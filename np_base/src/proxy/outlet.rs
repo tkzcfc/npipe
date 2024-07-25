@@ -7,6 +7,7 @@ use log::{debug, error, info, trace};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use socket2::{SockRef, TcpKeepalive};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, WriteHalf};
 use tokio::net::{TcpStream, UdpSocket};
 use tokio::select;
@@ -215,6 +216,9 @@ async fn tcp_connect(
     client_map: Arc<Mutex<HashMap<u32, ClientType>>>,
 ) -> anyhow::Result<TcpWriter> {
     let stream = TcpStream::connect(&addr).await?;
+    let ka = TcpKeepalive::new().with_time(Duration::from_secs(30));
+    let sf = SockRef::from(&stream);
+    sf.set_tcp_keepalive(&ka)?;
     let (mut reader, writer) = tokio::io::split(stream);
 
     tokio::spawn(async move {
@@ -275,7 +279,7 @@ async fn udp_connect(
         let last_active_time_1 = last_active_time.clone();
         let recv_task = async {
             let write_timeout = Duration::from_secs(1);
-            let mut buffer = vec![0u8; 65536];
+            let mut buffer = vec![0u8; 65535];
             loop {
                 match socket.recv_buf(&mut buffer).await {
                     Ok(size) => {

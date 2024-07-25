@@ -2938,8 +2938,8 @@ dependencies = [
  "hex-literal",
  "log",
  "rand",
+ "socket2 0.5.5",
  "tokio",
- "xxtea",
 ]
 
 [[package]]
@@ -5659,12 +5659,6 @@ name = "xml-rs"
 version = "0.8.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fcb9cbac069e033553e8bb871be2fbdffcab578eb25bd0f7c508cedc6dcd75a"
-
-[[package]]
-name = "xxtea"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e52655abf007cc0520d91ac9e89d4fd34d5eb7462269d24b6c29edea6e47c29c"
 
 [[package]]
 name = "yaml-rust"
