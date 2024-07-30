@@ -1,3 +1,4 @@
+use log::trace;
 use super::Peer;
 use crate::global::manager::GLOBAL_MANAGER;
 use crate::global::GLOBAL_DB_POOL;
@@ -91,7 +92,7 @@ impl Peer {
                 .filter(|x| x.receiver == user.id || x.sender == user.id)
                 .map(|x| x.into())
                 .collect();
-
+            trace!("login success, player_id:{}", user.id);
             return Ok(MessageType::ServerClientLoginAck(server_client::LoginAck {
                 player_id: user.id,
                 tunnel_list,

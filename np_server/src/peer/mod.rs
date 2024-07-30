@@ -88,7 +88,7 @@ impl SessionDelegate for Peer {
         self.tx.take();
         // 清退对应玩家
         if let Some(player) = self.player.take() {
-            if player.read().await.get_player_id() == self.session_id {
+            if player.read().await.get_session_id() == self.session_id {
                 player.write().await.on_disconnect_session().await;
             }
         }
