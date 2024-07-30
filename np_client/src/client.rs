@@ -356,13 +356,18 @@ impl Client {
         if self_player_id == player_id {
             match proxy_message {
                 ProxyMessage::I2oConnect(_, ..)
-                | ProxyMessage::I2oSendData(_, _)
-                | ProxyMessage::I2oDisconnect(_) => {
+                | ProxyMessage::I2oSendData(_, ..)
+                | ProxyMessage::I2oDisconnect(_)
+                | ProxyMessage::I2oRecvDataResult(_, ..) => {
                     if let Some(outlet) = outlets.read().await.get(&tunnel_id) {
                         outlet.input(proxy_message).await;
                     }
                 }
-                _ => {
+
+                ProxyMessage::O2iConnect(_, ..)
+                | ProxyMessage::O2iSendDataResult(_, ..)
+                | ProxyMessage::O2iRecvData(_, ..)
+                | ProxyMessage::O2iDisconnect(_, ..) => {
                     if let Some(inlet) = inlets.read().await.get(&tunnel_id) {
                         inlet.input(proxy_message).await;
                     }

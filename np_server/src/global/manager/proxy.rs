@@ -174,7 +174,10 @@ impl ProxyManager {
                         outlet.input(proxy_message).await;
                     }
                 }
-                _ => {
+                ProxyMessage::O2iConnect(_, ..)
+                | ProxyMessage::O2iSendDataResult(_, ..)
+                | ProxyMessage::O2iRecvData(_, ..)
+                | ProxyMessage::O2iDisconnect(_, ..)=>  {
                     if let Some(inlet) = GLOBAL_MANAGER
                         .proxy_manager
                         .read()
@@ -301,7 +304,8 @@ impl ProxyManager {
                         }
                     });
                 }
-                ProxyMessage::I2oSendData(session_id, _) => {
+                ProxyMessage::I2oSendData(session_id, _) |
+                ProxyMessage::I2oRecvDataResult(session_id, _)=> {
                     tokio::spawn(async move {
                         if let Some(inlet) = GLOBAL_MANAGER
                             .proxy_manager
@@ -316,7 +320,8 @@ impl ProxyManager {
                         }
                     });
                 }
-                ProxyMessage::O2iRecvData(session_id, _) => {
+                ProxyMessage::O2iRecvData(session_id, _) |
+                ProxyMessage::O2iSendDataResult(session_id, _)=> {
                     tokio::spawn(async move {
                         if let Some(outlet) = GLOBAL_MANAGER
                             .proxy_manager
@@ -343,13 +348,15 @@ impl ProxyManager {
                         error_info: format!("no sender {to_player_id}"),
                     })
                 }
-                ProxyMessage::I2oSendData(session_id, ..) => {
+                ProxyMessage::I2oSendData(session_id, ..)  |
+                ProxyMessage::I2oRecvDataResult(session_id, ..)=> {
                     MessageType::GenericO2iDisconnect(generic::O2iDisconnect {
                         tunnel_id,
                         session_id,
                     })
                 }
-                ProxyMessage::O2iRecvData(session_id, _) => {
+                ProxyMessage::O2iRecvData(session_id, _) |
+                ProxyMessage::O2iSendDataResult(session_id, _)=> {
                     MessageType::GenericI2oDisconnect(generic::I2oDisconnect {
                         tunnel_id,
                         session_id,

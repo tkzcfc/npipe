@@ -231,6 +231,9 @@ impl Outlet {
             } else {
                 *read_buf_len = *read_buf_len - data_len;
             }
+
+            trace!("on_i2o_recv_data_result: session_id:{session_id}, data_len:{data_len}, read_buf_len:{}", *read_buf_len);
+
             drop(read_buf_len);
         }
         Ok(())
