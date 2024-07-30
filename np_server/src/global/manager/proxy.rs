@@ -125,7 +125,7 @@ impl ProxyManager {
                 });
 
                 if let Some(inlet_proxy_type) = InletProxyType::from_u32(tunnel.tunnel_type) {
-                    let mut inlet = Inlet::new(tunnel.inlet_description());
+                    let mut inlet = Inlet::new(inlet_output, tunnel.inlet_description());
                     if let Err(err) = inlet
                         .start(
                             inlet_proxy_type,
@@ -133,7 +133,6 @@ impl ProxyManager {
                             tunnel.endpoint.clone(),
                             tunnel.is_compressed == 1,
                             tunnel.encryption_method.clone(),
-                            inlet_output,
                         )
                         .await
                     {
@@ -161,7 +160,8 @@ impl ProxyManager {
             match proxy_message {
                 ProxyMessage::I2oConnect(_, ..)
                 | ProxyMessage::I2oSendData(_, ..)
-                | ProxyMessage::I2oDisconnect(_) => {
+                | ProxyMessage::I2oDisconnect(_)
+                | ProxyMessage::I2oRecvDataResult(_, ..)=> {
                     if let Some(outlet) = GLOBAL_MANAGER
                         .proxy_manager
                         .read()
@@ -232,11 +232,25 @@ impl ProxyManager {
                             data,
                         })
                     }
+                    ProxyMessage::O2iSendDataResult(session_id, data_len) => {
+                        MessageType::GenericO2iSendDataResult(generic::O2iSendDataResult {
+                            tunnel_id,
+                            session_id,
+                            data_len: data_len as u32,
+                        })
+                    }
                     ProxyMessage::O2iRecvData(session_id, data) => {
                         MessageType::GenericO2iRecvData(generic::O2iRecvData {
                             tunnel_id,
                             session_id,
                             data,
+                        })
+                    }
+                    ProxyMessage::I2oRecvDataResult(session_id, data_len) => {
+                        MessageType::GenericI2oRecvDataResult(generic::I2oRecvDataResult {
+                            tunnel_id,
+                            session_id,
+                            data_len: data_len as u32,
                         })
                     }
                     ProxyMessage::I2oDisconnect(session_id) => {

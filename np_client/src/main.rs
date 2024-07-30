@@ -44,24 +44,25 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // 日志初始化
-    let _logger = Logger::try_with_str(format!("{}, np_base={}", ops.log_level, ops.base_log_level))?
-        .log_to_file(
-            FileSpec::default()
-                .directory("logs")
-                .suppress_timestamp()
-                .suffix("log"),
-        )
-        .duplicate_to_stdout(Duplicate::All)
-        .format(flexi_logger::opt_format)
-        .format_for_stdout(flexi_logger::colored_opt_format)
-        .rotate(
-            Criterion::AgeOrSize(Age::Day, 1024 * 1024 * 5),
-            Naming::Numbers,
-            Cleanup::KeepLogFiles(30),
-        )
-        .print_message()
-        .write_mode(WriteMode::Async)
-        .start()?;
+    let _logger =
+        Logger::try_with_str(format!("{}, np_base={}", ops.log_level, ops.base_log_level))?
+            .log_to_file(
+                FileSpec::default()
+                    .directory("logs")
+                    .suppress_timestamp()
+                    .suffix("log"),
+            )
+            .duplicate_to_stdout(Duplicate::All)
+            .format(flexi_logger::opt_format)
+            .format_for_stdout(flexi_logger::colored_opt_format)
+            .rotate(
+                Criterion::AgeOrSize(Age::Day, 1024 * 1024 * 5),
+                Naming::Numbers,
+                Cleanup::KeepLogFiles(30),
+            )
+            .print_message()
+            .write_mode(WriteMode::Async)
+            .start()?;
 
     loop {
         if let Err(err) = client::run(&ops).await {

@@ -92,6 +92,18 @@ async fn poll_write<S>(
                     }
                 }
             }
+            WriterMessage::SendAndThen(data, callback) => {
+                if data.is_empty() {
+                    (*callback)().await;
+                    continue;
+                }
+
+                if let Err(error) = writer.write_all(&data).await {
+                    error!("[{addr}] error when write_all {:?}", error);
+                    break;
+                }
+                (*callback)().await;
+            }
             WriterMessage::Flush => {
                 if let Err(error) = writer.flush().await {
                     error!("[{addr}] error when flushing {:?}", error);

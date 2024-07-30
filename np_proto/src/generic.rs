@@ -153,6 +153,38 @@ pub struct O2iDisconnect {
     #[prost(uint32, tag = "2")]
     pub session_id: u32,
 }
+/// 发送结果
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct O2iSendDataResult {
+    /// @build_automatically_generate_message_id@  enum MsgId {None = 0; Id = 150012;}
+    /// 通道id
+    #[prost(uint32, tag = "1")]
+    pub tunnel_id: u32,
+    /// 会话id
+    #[prost(uint32, tag = "2")]
+    pub session_id: u32,
+    /// 完成长度
+    #[prost(uint32, tag = "3")]
+    pub data_len: u32,
+}
+/// 接收数据处理结果
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct I2oRecvDataResult {
+    /// @build_automatically_generate_message_id@  enum MsgId {None = 0; Id = 150013;}
+    /// 通道id
+    #[prost(uint32, tag = "1")]
+    pub tunnel_id: u32,
+    /// 会话id
+    #[prost(uint32, tag = "2")]
+    pub session_id: u32,
+    /// 完成长度
+    #[prost(uint32, tag = "3")]
+    pub data_len: u32,
+}
 /// 通用错误码
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]

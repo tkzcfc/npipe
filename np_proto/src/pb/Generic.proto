@@ -117,3 +117,25 @@ message O2iDisconnect {
   // 会话id
   uint32 session_id = 2;
 }
+
+// 发送结果
+message O2iSendDataResult {
+  enum MsgId {None = 0; Id = 150012;}
+  // 通道id
+  uint32 tunnel_id = 1;
+  // 会话id
+  uint32 session_id = 2;
+  // 完成长度
+  uint32 data_len = 3;
+}
+
+// 接收数据处理结果
+message I2oRecvDataResult {
+  enum MsgId {None = 0; Id = 150013;}
+  // 通道id
+  uint32 tunnel_id = 1;
+  // 会话id
+  uint32 session_id = 2;
+  // 完成长度
+  uint32 data_len = 3;
+}

@@ -61,6 +61,19 @@ async fn poll_write(
                     break;
                 }
             }
+            WriterMessage::SendAndThen(data, callback) => {
+                if data.is_empty() {
+                    (*callback)().await;
+                    yield_now().await;
+                    continue;
+                }
+
+                if let Err(error) = socket.send_to(&data, &addr).await {
+                    error!("[{addr}] Error when udp socket send_to {:?}", error);
+                    break;
+                }
+                (*callback)().await;
+            }
             WriterMessage::Flush => {}
         }
     }

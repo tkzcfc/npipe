@@ -15,8 +15,12 @@ pub enum ProxyMessage {
     O2iConnect(u32, bool, String),
     // 向输出端请求发送数据(u32:会话id  Vec<u8>:数据)
     I2oSendData(u32, Vec<u8>),
+    // 发送结果(u32:会话id, u32:完成长度)
+    O2iSendDataResult(u32, usize),
     // 输出端收到数据返回给输入端(u32:会话id  Vec<u8>:数据)
     O2iRecvData(u32, Vec<u8>),
+    // 接收数据处理结果(u32:会话id, u32:完成长度)
+    I2oRecvDataResult(u32, usize),
     // 断开连接
     I2oDisconnect(u32),
     // 断开连接
@@ -56,7 +60,7 @@ mod tests {
             })
         });
 
-        let mut inlet = Inlet::new("".into());
+        let mut inlet = Inlet::new(output.clone(), "".into());
         inlet
             .start(
                 InletProxyType::TCP,
@@ -64,7 +68,6 @@ mod tests {
                 "www.baidu.com:80".into(),
                 false,
                 "None".into(),
-                output.clone(),
             )
             .await
             .unwrap();
@@ -79,7 +82,6 @@ mod tests {
                 "www.baidu.com:80".into(),
                 false,
                 "None".into(),
-                output.clone(),
             )
             .await
             .unwrap();

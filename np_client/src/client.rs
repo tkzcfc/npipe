@@ -9,10 +9,11 @@ use np_base::proxy::outlet::Outlet;
 use np_base::proxy::{OutputFuncType, ProxyMessage};
 use np_proto::class_def::{Tunnel, TunnelPoint};
 use np_proto::client_server::LoginReq;
-use np_proto::generic::{I2oConnect, I2oDisconnect, I2oSendData, O2iConnect, O2iDisconnect, O2iRecvData, Ping};
+use np_proto::generic::{I2oConnect, I2oDisconnect, I2oRecvDataResult, I2oSendData, O2iConnect, O2iDisconnect, O2iRecvData, O2iSendDataResult, Ping};
 use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size, MessageType};
 use np_proto::server_client::ModifyTunnelNtf;
 use np_proto::{generic, message_map};
+use socket2::{SockRef, TcpKeepalive};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -21,8 +22,6 @@ use tokio::net::TcpStream;
 use tokio::select;
 use tokio::sync::{Mutex, RwLock};
 use tokio::time::sleep;
-use socket2::{SockRef, TcpKeepalive};
-
 
 type WriterType = Arc<Mutex<WriteHalf<TcpStream>>>;
 
@@ -76,15 +75,19 @@ async fn ping_forever(writer: WriterType) -> anyhow::Result<()> {
         let now = SystemTime::now();
 
         // 计算自UNIX_EPOCH以来的持续时间
-        let since_epoch = now.duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
+        let since_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
 
         // 将时间转换为毫秒
         let nanos = since_epoch.as_millis();
 
-        package_and_send_message(writer.clone(), -2, &MessageType::GenericPing(Ping{
-            ticks: nanos as i64
-        })).await?;
+        package_and_send_message(
+            writer.clone(),
+            -2,
+            &MessageType::GenericPing(Ping {
+                ticks: nanos as i64,
+            }),
+        )
+        .await?;
     }
 }
 
@@ -316,7 +319,7 @@ impl Client {
 
                 if let Some(inlet_proxy_type) = InletProxyType::from_u32(tunnel.tunnel_type as u32)
                 {
-                    let mut inlet = Inlet::new(inlet_description(&tunnel));
+                    let mut inlet = Inlet::new(inlet_output, inlet_description(&tunnel));
                     if let Err(err) = inlet
                         .start(
                             inlet_proxy_type,
@@ -324,7 +327,6 @@ impl Client {
                             endpoint.clone(),
                             tunnel.is_compressed,
                             tunnel.encryption_method.clone(),
-                            inlet_output,
                         )
                         .await
                     {
@@ -401,11 +403,25 @@ impl Client {
                         data,
                     })
                 }
+                ProxyMessage::O2iSendDataResult(session_id, data_len) => {
+                    MessageType::GenericO2iSendDataResult(generic::O2iSendDataResult {
+                        tunnel_id,
+                        session_id,
+                        data_len: data_len as u32,
+                    })
+                }
                 ProxyMessage::O2iRecvData(session_id, data) => {
                     MessageType::GenericO2iRecvData(generic::O2iRecvData {
                         tunnel_id,
                         session_id,
                         data,
+                    })
+                }
+                ProxyMessage::I2oRecvDataResult(session_id, data_len) => {
+                    MessageType::GenericI2oRecvDataResult(generic::I2oRecvDataResult {
+                        tunnel_id,
+                        session_id,
+                        data_len: data_len as u32,
                     })
                 }
                 ProxyMessage::I2oDisconnect(session_id) => {
@@ -440,6 +456,8 @@ impl Client {
             MessageType::GenericO2iRecvData(msg) => self.on_generic_o2i_recv_data(msg).await,
             MessageType::GenericI2oDisconnect(msg) => self.on_generic_i2o_disconnect(msg).await,
             MessageType::GenericO2iDisconnect(msg) => self.on_generic_o2i_disconnect(msg).await,
+            MessageType::GenericO2iSendDataResult(msg) => self.on_generic_o2i_send_data_result(msg).await,
+            MessageType::GenericI2oRecvDataResult(msg) => self.on_generic_i2o_recv_data_result(msg).await,
             MessageType::ServerClientModifyTunnelNtf(msg) => {
                 self.on_server_client_modify_tunnel_ntf(msg).await
             }
@@ -547,6 +565,36 @@ impl Client {
         }
     }
 
+    async fn on_generic_i2o_recv_data_result(&self, msg: I2oRecvDataResult) {
+        if let Some(tunnel) = self.tunnels.get(&msg.tunnel_id) {
+            Self::send_proxy_message(
+                self.outlets.clone(),
+                self.inlets.clone(),
+                self.writer.clone(),
+                self.player_id,
+                tunnel.sender,
+                tunnel.id,
+                ProxyMessage::I2oRecvDataResult(msg.session_id, msg.data_len as usize),
+            )
+                .await;
+        }
+    }
+
+    async fn on_generic_o2i_send_data_result(&self, msg: O2iSendDataResult) {
+        if let Some(tunnel) = self.tunnels.get(&msg.tunnel_id) {
+            Self::send_proxy_message(
+                self.outlets.clone(),
+                self.inlets.clone(),
+                self.writer.clone(),
+                self.player_id,
+                tunnel.receiver,
+                tunnel.id,
+                ProxyMessage::O2iSendDataResult(msg.session_id, msg.data_len as usize),
+            )
+                .await;
+        }
+    }
+
     async fn on_server_client_modify_tunnel_ntf(&mut self, msg: ModifyTunnelNtf) {
         if let Some(tunnel) = msg.tunnel {
             self.tunnels.remove(&tunnel.id);
@@ -560,7 +608,6 @@ impl Client {
         }
     }
 }
-
 
 #[inline]
 pub(crate) async fn package_and_send_message(

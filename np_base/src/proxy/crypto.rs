@@ -1,3 +1,4 @@
+use std::fmt;
 use anyhow::anyhow;
 use brotli::CompressorWriter;
 use brotli::DecompressorWriter;
@@ -40,12 +41,19 @@ pub fn get_method(method: &str) -> EncryptionMethod {
     }
 }
 
-pub fn get_method_name(method: &EncryptionMethod) -> String {
-    match method {
-        EncryptionMethod::XSalsa20Poly1305 => "XSalsa20Poly1305".to_string(),
-        _ => "None".to_string(),
+impl fmt::Display for EncryptionMethod {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self { 
+            EncryptionMethod::None=> {
+                write!(f, "None")
+            }
+            EncryptionMethod::XSalsa20Poly1305 => {
+                write!(f, "XSalsa20Poly1305")
+            }
+        }
     }
 }
+
 
 pub fn generate_key(method: &EncryptionMethod) -> Vec<u8> {
     match method {

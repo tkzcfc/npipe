@@ -4,25 +4,47 @@ use anyhow::anyhow;
 use base64::prelude::*;
 use bytes::BytesMut;
 use log::{debug, error, info, trace};
+use socket2::{SockRef, TcpKeepalive};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use socket2::{SockRef, TcpKeepalive};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, WriteHalf};
 use tokio::net::{TcpStream, UdpSocket};
 use tokio::select;
 use tokio::sync::{Mutex, RwLock};
+use tokio::task::yield_now;
 use tokio::time::{sleep, Instant};
+
+const READ_BUF_MAX_LEN: usize = 1024 * 1024;
 
 type TcpWriter = Mutex<WriteHalf<TcpStream>>;
 
-enum ClientType {
-    TCP(TcpWriter, bool, EncryptionMethod, Vec<u8>),
-    UDP(Arc<UdpSocket>, Arc<RwLock<Instant>>, bool, EncryptionMethod, Vec<u8>),
+#[derive(Clone)]
+struct CommonData {
+    // 是否压缩数据
+    is_compressed: bool,
+    // 加密方法
+    encryption_method: EncryptionMethod,
+    // 加密key
+    encryption_key: Vec<u8>,
+    // 读缓存大小
+    read_buf_len: Arc<RwLock<usize>>,
 }
 
+enum ClientType {
+    TCP(TcpWriter, CommonData),
+    UDP(
+        Arc<UdpSocket>,
+        // 最后一次读/写时间点，用于判断udp超时断开
+        Arc<RwLock<Instant>>,
+        CommonData,
+    ),
+}
+
+type ClientMapType = Arc<RwLock<HashMap<u32, ClientType>>>;
+
 pub struct Outlet {
-    client_map: Arc<Mutex<HashMap<u32, ClientType>>>,
+    client_map: ClientMapType,
     on_output_callback: OutputFuncType,
     description: String,
 }
@@ -30,7 +52,7 @@ pub struct Outlet {
 impl Outlet {
     pub fn new(on_output_callback: OutputFuncType, description: String) -> Self {
         Self {
-            client_map: Arc::new(Mutex::new(HashMap::new())),
+            client_map: Arc::new(RwLock::new(HashMap::new())),
             on_output_callback,
             description,
         }
@@ -99,6 +121,10 @@ impl Outlet {
                 trace!("I2oDisconnect: session_id:{session_id}");
                 self.on_i2o_disconnect(session_id).await?;
             }
+            ProxyMessage::I2oRecvDataResult(session_id, data_len) => {
+                // trace!("I2oRecvDataResult: session_id:{session_id}, data_len:{data_len}");
+                self.on_i2o_recv_data_result(session_id, data_len).await?;
+            }
             _ => {
                 return Err(anyhow!("Unknown message"));
             }
@@ -118,66 +144,47 @@ impl Outlet {
         let encryption_method = get_method(&encryption_method);
         let encryption_key = BASE64_STANDARD.decode(encryption_key.as_bytes())?;
 
-        if self.client_map.lock().await.contains_key(&session_id) {
+        if self.client_map.read().await.contains_key(&session_id) {
             return Err(anyhow!("repeated connection"));
         }
 
+        let common_data = CommonData {
+            is_compressed,
+            encryption_method: encryption_method.clone(),
+            encryption_key: encryption_key.clone(),
+            read_buf_len: Arc::new(RwLock::new(0)),
+        };
         if is_tcp {
-            let client = tcp_connect(
+            tcp_connect(
                 addr,
                 session_id,
-                is_compressed,
-                encryption_method.clone(),
-                encryption_key.clone(),
+                common_data,
                 self.on_output_callback.clone(),
                 self.client_map.clone(),
             )
-            .await?;
-
-            self.client_map.lock().await.insert(
-                session_id,
-                ClientType::TCP(client, is_compressed, encryption_method, encryption_key),
-            );
+            .await
         } else {
-            let (client, last_active_time) = udp_connect(
+            udp_connect(
                 addr,
                 session_id,
-                is_compressed,
-                encryption_method.clone(),
-                encryption_key.clone(),
+                common_data,
                 self.on_output_callback.clone(),
                 self.client_map.clone(),
             )
-            .await?;
-
-            self.client_map.lock().await.insert(
-                session_id,
-                ClientType::UDP(client, last_active_time, is_compressed, encryption_method, encryption_key),
-            );
+            .await
         }
-
-        Ok(())
     }
 
     async fn on_i2o_send_data(&self, session_id: u32, mut data: Vec<u8>) -> anyhow::Result<()> {
-        if let Some(client_type) = self.client_map.lock().await.get(&session_id) {
+        if let Some(client_type) = self.client_map.read().await.get(&session_id) {
+            let data_len = data.len();
             match client_type {
-                ClientType::TCP(writer, is_compressed, encryption_method, encryption_key) => {
-                    data = decode_data(
-                        data,
-                        is_compressed.clone(),
-                        encryption_method,
-                        encryption_key,
-                    )?;
+                ClientType::TCP(writer, common_data) => {
+                    data = decode_data(data, common_data)?;
                     writer.lock().await.write_all(&data).await?;
                 }
-                ClientType::UDP(socket, last_active_time, is_compressed, encryption_method, encryption_key) => {
-                    data = decode_data(
-                        data,
-                        is_compressed.clone(),
-                        encryption_method,
-                        encryption_key,
-                    )?;
+                ClientType::UDP(socket, last_active_time, common_data) => {
+                    data = decode_data(data, common_data)?;
                     socket.send(&data).await?;
 
                     if last_active_time.read().await.elapsed() >= Duration::from_secs(1) {
@@ -186,6 +193,7 @@ impl Outlet {
                     }
                 }
             }
+            (self.on_output_callback)(ProxyMessage::O2iSendDataResult(session_id, data_len)).await;
         }
         Ok(())
     }
@@ -193,10 +201,32 @@ impl Outlet {
     async fn on_i2o_disconnect(&self, session_id: u32) -> anyhow::Result<()> {
         info!("disconnect session: {session_id}");
 
-        if let Some(client_type) = self.client_map.lock().await.remove(&session_id) {
+        if let Some(client_type) = self.client_map.write().await.remove(&session_id) {
             if let ClientType::TCP(writer, ..) = client_type {
                 writer.into_inner().shutdown().await?;
             }
+        }
+        Ok(())
+    }
+
+    async fn on_i2o_recv_data_result(
+        &self,
+        session_id: u32,
+        data_len: usize,
+    ) -> anyhow::Result<()> {
+        if let Some(client_type) = self.client_map.read().await.get(&session_id) {
+            let common_data = match client_type {
+                ClientType::TCP(_, common_data) => common_data,
+                ClientType::UDP(_, _, common_data) => common_data,
+            };
+
+            let mut read_buf_len = common_data.read_buf_len.write().await;
+            if *read_buf_len <= data_len {
+                *read_buf_len = 0;
+            } else {
+                *read_buf_len = *read_buf_len - data_len;
+            }
+            drop(read_buf_len);
         }
         Ok(())
     }
@@ -209,17 +239,23 @@ impl Outlet {
 async fn tcp_connect(
     addr: String,
     session_id: u32,
-    is_compressed: bool,
-    encryption_method: EncryptionMethod,
-    encryption_key: Vec<u8>,
+    common_data: CommonData,
     on_output_callback: OutputFuncType,
-    client_map: Arc<Mutex<HashMap<u32, ClientType>>>,
-) -> anyhow::Result<TcpWriter> {
+    client_map: ClientMapType,
+) -> anyhow::Result<()> {
     let stream = TcpStream::connect(&addr).await?;
+
+    // set tcp keepalive
     let ka = TcpKeepalive::new().with_time(Duration::from_secs(30));
     let sf = SockRef::from(&stream);
     sf.set_tcp_keepalive(&ka)?;
+
+    // split
     let (mut reader, writer) = tokio::io::split(stream);
+
+    // clone
+    let client_map_cloned = client_map.clone();
+    let common_data_cloned = common_data.clone();
 
     tokio::spawn(async move {
         let mut buffer = BytesMut::with_capacity(1024);
@@ -232,8 +268,7 @@ async fn tcp_connect(
                         break;
                     } else {
                         let data = buffer.split().to_vec();
-                        match encode_data(data, is_compressed, &encryption_method, &encryption_key)
-                        {
+                        match encode_data(data, &common_data_cloned).await {
                             Ok(data) => {
                                 on_output_callback(ProxyMessage::O2iRecvData(session_id, data))
                                     .await;
@@ -253,26 +288,34 @@ async fn tcp_connect(
             }
         }
         on_output_callback(ProxyMessage::O2iDisconnect(session_id)).await;
-        client_map.lock().await.remove(&session_id);
+        client_map.write().await.remove(&session_id);
     });
 
-    Ok(Mutex::new(writer))
+    client_map_cloned
+        .write()
+        .await
+        .insert(session_id, ClientType::TCP(Mutex::new(writer), common_data));
+
+    Ok(())
 }
 
 async fn udp_connect(
     addr: String,
     session_id: u32,
-    is_compressed: bool,
-    encryption_method: EncryptionMethod,
-    encryption_key: Vec<u8>,
+    common_data: CommonData,
     on_output_callback: OutputFuncType,
-    client_map: Arc<Mutex<HashMap<u32, ClientType>>>,
-) -> anyhow::Result<(Arc<UdpSocket>, Arc<RwLock<Instant>>)> {
+    client_map: ClientMapType,
+) -> anyhow::Result<()> {
     let socket = Arc::new(UdpSocket::bind("0.0.0.0:0").await?);
     socket.connect(addr).await?;
 
+    // 最后活跃时间点
     let last_active_time = Arc::new(RwLock::new(Instant::now()));
+
+    // clone
     let last_active_time_cloned = last_active_time.clone();
+    let client_map_cloned = client_map.clone();
+    let common_data_cloned = common_data.clone();
 
     let socket_cloned = socket.clone();
     tokio::spawn(async move {
@@ -293,12 +336,7 @@ async fn udp_connect(
                             *instant_write = Instant::now();
                         }
 
-                        match encode_data(
-                            received_data.to_vec(),
-                            is_compressed,
-                            &encryption_method,
-                            &encryption_key,
-                        ) {
+                        match encode_data(received_data.to_vec(), &common_data_cloned).await {
                             Ok(data) => {
                                 on_output_callback(ProxyMessage::O2iRecvData(session_id, data))
                                     .await;
@@ -333,55 +371,58 @@ async fn udp_connect(
         }
 
         on_output_callback(ProxyMessage::O2iDisconnect(session_id)).await;
-        client_map.lock().await.remove(&session_id);
+        client_map.write().await.remove(&session_id);
     });
 
-    Ok((socket_cloned, last_active_time_cloned))
+    client_map_cloned.write().await.insert(
+        session_id,
+        ClientType::UDP(socket_cloned, last_active_time_cloned, common_data),
+    );
+
+    Ok(())
 }
 
-fn decode_data(
-    mut data: Vec<u8>,
-    is_compressed: bool,
-    encryption_method: &EncryptionMethod,
-    encryption_key: &Vec<u8>,
-) -> anyhow::Result<Vec<u8>> {
-    match encryption_method {
+fn decode_data(mut data: Vec<u8>, common_data: &CommonData) -> anyhow::Result<Vec<u8>> {
+    match common_data.encryption_method {
         EncryptionMethod::None => {}
         _ => {
             data = crypto::decrypt(
-                encryption_method,
-                encryption_key.as_slice(),
+                &common_data.encryption_method,
+                common_data.encryption_key.as_slice(),
                 data.as_slice(),
             )?;
         }
     }
-    if is_compressed {
+    if common_data.is_compressed {
         data = crypto::decompress_data(data.as_slice())?;
     }
 
     Ok(data)
 }
 
-fn encode_data(
-    mut data: Vec<u8>,
-    is_compressed: bool,
-    encryption_method: &EncryptionMethod,
-    encryption_key: &Vec<u8>,
-) -> anyhow::Result<Vec<u8>> {
-    if is_compressed {
+async fn encode_data(mut data: Vec<u8>, common_data: &CommonData) -> anyhow::Result<Vec<u8>> {
+    if common_data.is_compressed {
         data = crypto::compress_data(data.as_slice())?;
     }
 
-    match encryption_method {
+    match common_data.encryption_method {
         EncryptionMethod::None => {}
         _ => {
             data = crypto::encrypt(
-                encryption_method,
-                encryption_key.as_slice(),
+                &common_data.encryption_method,
+                common_data.encryption_key.as_slice(),
                 data.as_slice(),
             )?;
         }
     }
+
+    while *common_data.read_buf_len.read().await > READ_BUF_MAX_LEN {
+        yield_now().await;
+    }
+
+    let mut read_buf_len_rw = common_data.read_buf_len.write().await;
+    *read_buf_len_rw = *read_buf_len_rw + data.len();
+    drop(read_buf_len_rw);
 
     Ok(data)
 }
