@@ -3,6 +3,7 @@ use np_base::net::WriterMessage;
 use np_proto::generic;
 use np_proto::message_map::MessageType;
 use std::sync::Arc;
+use log::trace;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
 
@@ -72,6 +73,7 @@ impl Player {
 
     #[inline]
     pub fn close_session(&mut self) {
+        trace!("close_session, player_id: {}", self.player_id);
         if let Some(ref tx) = self.tx {
             let _ = tx.send(WriterMessage::Close);
         }
@@ -80,6 +82,7 @@ impl Player {
     // 重置会话信息
     #[inline]
     fn reset_session_info(&mut self) {
+        trace!("reset_session_info, player_id: {}", self.player_id);
         self.session_id = 0;
         self.tx.take();
     }
@@ -90,6 +93,7 @@ impl Player {
         session_id: u32,
         tx: UnboundedSender<WriterMessage>,
     ) {
+        trace!("on_connect_session, player_id: {}", self.player_id);
         assert_eq!(self.is_online(), false);
         self.session_id = session_id;
         self.tx = Some(tx);
@@ -98,11 +102,13 @@ impl Player {
     // 玩家离线
     #[allow(dead_code)]
     pub async fn on_disconnect_session(&mut self) {
+        trace!("on_disconnect_session, player_id: {}", self.player_id);
         self.reset_session_info();
     }
 
     // 玩家被顶号，需要对旧的会话发送一些消息
     pub async fn on_terminate_old_session(&mut self) {
+        trace!("on_terminate_old_session, player_id: {}", self.player_id);
         //
         self.close_session();
 
