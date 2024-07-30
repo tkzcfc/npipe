@@ -178,6 +178,7 @@ impl Inlet {
                 }
             }
             ProxyMessage::O2iSendDataResult(session_id, data_len) => {
+                // trace!("O2iSendDataResult: session_id:{session_id}, data_len:{data_len}");
                 if let Some(session) = self.session_info_map.read().await.get(&session_id) {
                     let mut read_buf_len = session.read_buf_len.write().await;
                     if *read_buf_len <= data_len {
@@ -211,7 +212,7 @@ impl Inlet {
                     let callback: SendMessageFuncType = Box::new(move || {
                         let on_output_callback = on_output_callback.clone();
                         Box::pin(async move {
-                            (on_output_callback)(ProxyMessage::I2oRecvDataResult(
+                            on_output_callback(ProxyMessage::I2oRecvDataResult(
                                 session_id, data_len,
                             ))
                             .await;

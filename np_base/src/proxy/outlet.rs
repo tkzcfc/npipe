@@ -182,6 +182,7 @@ impl Outlet {
                 ClientType::TCP(writer, common_data) => {
                     data = decode_data(data, common_data)?;
                     writer.lock().await.write_all(&data).await?;
+                    writer.lock().await.flush().await?;
                 }
                 ClientType::UDP(socket, last_active_time, common_data) => {
                     data = decode_data(data, common_data)?;
@@ -193,7 +194,11 @@ impl Outlet {
                     }
                 }
             }
-            (self.on_output_callback)(ProxyMessage::O2iSendDataResult(session_id, data_len)).await;
+
+            let on_output_callback = self.on_output_callback.clone();
+            tokio::spawn(async move {
+                on_output_callback(ProxyMessage::O2iSendDataResult(session_id, data_len)).await;
+            });
         }
         Ok(())
     }
