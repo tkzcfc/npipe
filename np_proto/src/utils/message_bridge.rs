@@ -39,22 +39,22 @@ pub fn proxy_message_2_pb(proxy_message: ProxyMessage, tunnel_id: u32) -> Messag
 
 pub fn pb_2_proxy_message(message: MessageType) -> Option<(ProxyMessage, u32)> {
     match message {
-        MessageType::GenericI2oConnect(msg)  => {
+        MessageType::GenericI2oConnect(msg) => {
             let tunnel_id = msg.tunnel_id;
             Some((msg.into(), tunnel_id))
-        },
-        MessageType::GenericI2oSendData(msg)  => {
+        }
+        MessageType::GenericI2oSendData(msg) => {
             let tunnel_id = msg.tunnel_id;
             Some((msg.into(), tunnel_id))
-        },
+        }
         MessageType::GenericI2oRecvDataResult(msg) => {
             let tunnel_id = msg.tunnel_id;
             Some((msg.into(), tunnel_id))
-        },
+        }
         MessageType::GenericI2oDisconnect(msg) => {
             let tunnel_id = msg.tunnel_id;
             Some((msg.into(), tunnel_id))
-        },
+        }
         MessageType::GenericO2iConnect(msg) => {
             let tunnel_id = msg.tunnel_id;
             Some((msg.into(), tunnel_id))
@@ -63,7 +63,7 @@ pub fn pb_2_proxy_message(message: MessageType) -> Option<(ProxyMessage, u32)> {
             let tunnel_id = msg.tunnel_id;
             Some((msg.into(), tunnel_id))
         }
-        MessageType::GenericO2iDisconnect(msg)=> {
+        MessageType::GenericO2iDisconnect(msg) => {
             let tunnel_id = msg.tunnel_id;
             Some((msg.into(), tunnel_id))
         }
@@ -71,9 +71,7 @@ pub fn pb_2_proxy_message(message: MessageType) -> Option<(ProxyMessage, u32)> {
             let tunnel_id = msg.tunnel_id;
             Some((msg.into(), tunnel_id))
         }
-        _ => {
-            None
-        }
+        _ => None,
     }
 }
 
@@ -135,12 +133,8 @@ impl From<generic::I2oDisconnect> for ProxyMessage {
     }
 }
 
-
 impl From<generic::O2iDisconnect> for ProxyMessage {
     fn from(msg: generic::O2iDisconnect) -> Self {
         ProxyMessage::O2iDisconnect(msg.session_id)
     }
 }
-
-
-

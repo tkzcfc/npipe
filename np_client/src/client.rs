@@ -9,10 +9,10 @@ use np_base::proxy::outlet::Outlet;
 use np_base::proxy::{OutputFuncType, ProxyMessage};
 use np_proto::class_def::{Tunnel, TunnelPoint};
 use np_proto::client_server::LoginReq;
-use np_proto::{generic, message_map};
 use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size, MessageType};
 use np_proto::server_client::ModifyTunnelNtf;
 use np_proto::utils::message_bridge;
+use np_proto::{generic, message_map};
 use socket2::{SockRef, TcpKeepalive};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -379,11 +379,8 @@ impl Client {
             }
         } else {
             let message = message_bridge::proxy_message_2_pb(proxy_message, tunnel_id);
-            match message {
-                MessageType::None => {}
-                _ => {
-                    let _ = package_and_send_message(writer, 0, &message).await;
-                }
+            if !message.is_none() {
+                let _ = package_and_send_message(writer, 0, &message).await;
             }
         }
     }
@@ -396,13 +393,10 @@ impl Client {
             }
             _ => {
                 if let Some((msg, tunnel_id)) = message_bridge::pb_2_proxy_message(message) {
-
                     if let Some(tunnel) = self.tunnels.get(&tunnel_id) {
-
                         let player_id = if message_bridge::is_i2o_message(&msg) {
                             tunnel.sender
-                        }
-                        else {
+                        } else {
                             tunnel.receiver
                         };
 
@@ -415,7 +409,7 @@ impl Client {
                             tunnel.id,
                             msg,
                         )
-                            .await;
+                        .await;
                     }
                 }
             }

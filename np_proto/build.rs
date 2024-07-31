@@ -186,6 +186,15 @@ pub enum MessageType {{
 {}
 }}
 
+impl MessageType {{
+    pub fn is_none(&self) -> bool {{
+        match self {{
+            MessageType::None => true,
+            _ => false,
+        }}
+    }}
+}}
+
 pub fn get_message_id(message: &MessageType) -> Option<u32> {{
     match message {{
 {}

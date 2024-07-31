@@ -5,7 +5,6 @@ use log::{debug, error, info};
 use np_base::proxy::inlet::{Inlet, InletProxyType};
 use np_base::proxy::outlet::Outlet;
 use np_base::proxy::{OutputFuncType, ProxyMessage};
-use np_proto::generic;
 use np_proto::message_map::MessageType;
 use np_proto::utils::message_bridge;
 use std::collections::HashMap;
@@ -173,29 +172,9 @@ impl ProxyManager {
     ) {
         if to_player_id == 0 {
             if message_bridge::is_i2o_message(&proxy_message) {
-                if let Some(outlet) = GLOBAL_MANAGER
-                    .proxy_manager
-                    .read()
-                    .await
-                    .outlets
-                    .read()
-                    .await
-                    .get(&tunnel_id)
-                {
-                    outlet.input(proxy_message).await;
-                }
+                send_input_to_outlet(&tunnel_id, proxy_message).await;
             } else {
-                if let Some(inlet) = GLOBAL_MANAGER
-                    .proxy_manager
-                    .read()
-                    .await
-                    .inlets
-                    .read()
-                    .await
-                    .get(&tunnel_id)
-                {
-                    inlet.input(proxy_message).await;
-                }
+                send_input_to_inlet(&tunnel_id, proxy_message).await;
             }
             return;
         }
@@ -208,114 +187,88 @@ impl ProxyManager {
         {
             if player.read().await.is_online() {
                 let message = message_bridge::proxy_message_2_pb(proxy_message, tunnel_id);
-                match message {
-                    MessageType::None => {}
-                    _ => {
-                        let _ = player.read().await.send_push(&message).await;
-                    }
+                if !message.is_none() {
+                    let _ = player.read().await.send_push(&message).await;
                 }
                 return;
             }
         }
 
         // 玩家离线或找不到
-        if from_player_id == 0 {
-            match proxy_message {
-                ProxyMessage::I2oConnect(session_id, ..) => {
-                    tokio::spawn(async move {
-                        if let Some(inlet) = GLOBAL_MANAGER
-                            .proxy_manager
-                            .read()
-                            .await
-                            .inlets
-                            .read()
-                            .await
-                            .get(&tunnel_id)
-                        {
-                            inlet
-                                .input(ProxyMessage::O2iConnect(
-                                    session_id,
-                                    false,
-                                    format!("no sender {to_player_id}"),
-                                ))
-                                .await;
-                        }
-                    });
-                }
-                ProxyMessage::I2oSendData(session_id, _)
-                | ProxyMessage::I2oRecvDataResult(session_id, _) => {
-                    tokio::spawn(async move {
-                        if let Some(inlet) = GLOBAL_MANAGER
-                            .proxy_manager
-                            .read()
-                            .await
-                            .inlets
-                            .read()
-                            .await
-                            .get(&tunnel_id)
-                        {
-                            inlet.input(ProxyMessage::O2iDisconnect(session_id)).await;
-                        }
-                    });
-                }
-                ProxyMessage::O2iRecvData(session_id, _)
-                | ProxyMessage::O2iSendDataResult(session_id, _) => {
-                    tokio::spawn(async move {
-                        if let Some(outlet) = GLOBAL_MANAGER
-                            .proxy_manager
-                            .read()
-                            .await
-                            .outlets
-                            .read()
-                            .await
-                            .get(&tunnel_id)
-                        {
-                            outlet.input(ProxyMessage::I2oDisconnect(session_id)).await;
-                        }
-                    });
-                }
-                _ => {}
-            }
-        } else {
-            let message = match proxy_message {
-                ProxyMessage::I2oConnect(session_id, ..) => {
-                    MessageType::GenericO2iConnect(generic::O2iConnect {
-                        tunnel_id,
-                        session_id,
-                        success: false,
-                        error_info: format!("no sender {to_player_id}"),
-                    })
-                }
-                ProxyMessage::I2oSendData(session_id, ..)
-                | ProxyMessage::I2oRecvDataResult(session_id, ..) => {
-                    MessageType::GenericO2iDisconnect(generic::O2iDisconnect {
-                        tunnel_id,
-                        session_id,
-                    })
-                }
-                ProxyMessage::O2iRecvData(session_id, _)
-                | ProxyMessage::O2iSendDataResult(session_id, _) => {
-                    MessageType::GenericI2oDisconnect(generic::I2oDisconnect {
-                        tunnel_id,
-                        session_id,
-                    })
-                }
-                _ => MessageType::None,
-            };
+        let message = match proxy_message {
+            ProxyMessage::I2oConnect(session_id, ..) => Some(ProxyMessage::O2iConnect(
+                session_id,
+                false,
+                format!("no player {to_player_id} or the player is offline"),
+            )),
 
-            match message {
-                MessageType::None => {}
-                _ => {
-                    if let Some(player) = GLOBAL_MANAGER
-                        .player_manager
-                        .read()
-                        .await
-                        .get_player(from_player_id)
-                    {
-                        let _ = player.read().await.send_push(&message).await;
-                    }
+            ProxyMessage::I2oSendData(session_id, ..)
+            | ProxyMessage::I2oRecvDataResult(session_id, ..) => {
+                Some(ProxyMessage::O2iDisconnect(session_id))
+            }
+
+            ProxyMessage::O2iConnect(session_id, ..)
+            | ProxyMessage::O2iRecvData(session_id, ..)
+            | ProxyMessage::O2iSendDataResult(session_id, ..) => {
+                Some(ProxyMessage::I2oDisconnect(session_id))
+            }
+            _ => None,
+        };
+
+        if let Some(proxy_message) = message {
+            // 入口是服务器自己
+            if from_player_id == 0 {
+                if message_bridge::is_i2o_message(&proxy_message) {
+                    send_input_to_outlet(&tunnel_id, proxy_message).await;
+                } else {
+                    send_input_to_inlet(&tunnel_id, proxy_message).await;
                 }
+            } else {
+                push_message_to_player(
+                    from_player_id,
+                    &message_bridge::proxy_message_2_pb(proxy_message, tunnel_id),
+                )
+                .await;
             }
         }
+    }
+}
+
+async fn push_message_to_player(player_id: PlayerId, message: &MessageType) {
+    if let Some(player) = GLOBAL_MANAGER
+        .player_manager
+        .read()
+        .await
+        .get_player(player_id)
+    {
+        let _ = player.read().await.send_push(message).await;
+    }
+}
+
+async fn send_input_to_outlet(tunnel_id: &u32, proxy_message: ProxyMessage) {
+    if let Some(outlet) = GLOBAL_MANAGER
+        .proxy_manager
+        .read()
+        .await
+        .outlets
+        .read()
+        .await
+        .get(tunnel_id)
+    {
+        outlet.input(proxy_message).await;
+    }
+}
+
+async fn send_input_to_inlet(tunnel_id: &u32, proxy_message: ProxyMessage) {
+    if let Some(inlet) = GLOBAL_MANAGER
+        .proxy_manager
+        .read()
+        .await
+        .inlets
+        .read()
+        .await
+        .get(tunnel_id)
+    {
+        inlet.input(proxy_message).await;
     }
 }
