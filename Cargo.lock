@@ -2966,6 +2966,7 @@ dependencies = [
  "bytes",
  "config",
  "heck",
+ "np_base",
  "prost",
  "prost-build",
  "protoc-prebuilt",

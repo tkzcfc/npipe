@@ -9,10 +9,10 @@ use np_base::proxy::outlet::Outlet;
 use np_base::proxy::{OutputFuncType, ProxyMessage};
 use np_proto::class_def::{Tunnel, TunnelPoint};
 use np_proto::client_server::LoginReq;
-use np_proto::generic::{I2oConnect, I2oDisconnect, I2oRecvDataResult, I2oSendData, O2iConnect, O2iDisconnect, O2iRecvData, O2iSendDataResult, Ping};
+use np_proto::{generic, message_map};
 use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size, MessageType};
 use np_proto::server_client::ModifyTunnelNtf;
-use np_proto::{generic, message_map};
+use np_proto::utils::message_bridge;
 use socket2::{SockRef, TcpKeepalive};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -83,7 +83,7 @@ async fn ping_forever(writer: WriterType) -> anyhow::Result<()> {
         package_and_send_message(
             writer.clone(),
             -2,
-            &MessageType::GenericPing(Ping {
+            &MessageType::GenericPing(generic::Ping {
                 ticks: nanos as i64,
             }),
         )
@@ -182,28 +182,42 @@ impl Client {
     }
 
     async fn sync_tunnels(&mut self, tunnels: &Vec<Tunnel>) {
+        // 收集无效的出口
+        let mut keys_to_remove: Vec<_> = self
+            .outlets
+            .read()
+            .await
+            .iter()
+            .filter(|(id, outlet)| {
+                let retain = tunnels.iter().any(|tunnel| {
+                    **id == tunnel.id
+                        && tunnel.enabled
+                        && tunnel.sender == 0
+                        && &outlet_description(&tunnel) == outlet.description()
+                });
+                !retain
+            })
+            .map(|(key, _)| key.clone())
+            .collect();
+
         // 删除无效的出口
-        self.outlets.write().await.retain(|id, outlet| {
-            let retain = tunnels.iter().any(|tunnel| {
-                id == &tunnel.id && tunnel.enabled && tunnel.sender == self.player_id
-            });
-
-            if !retain {
-                info!("start deleting the outlet({})", outlet.description());
+        for key in keys_to_remove {
+            info!("start deleting the outlet({key})");
+            if let Some(outlet) = self.outlets.write().await.remove(&key) {
+                outlet.stop().await;
             }
-
-            retain
-        });
+            info!("delete outlet({key}) end");
+        }
 
         // 收集无效的入口
-        let keys_to_remove: Vec<_> = self
+        keys_to_remove = self
             .inlets
             .read()
             .await
             .iter()
             .filter(|(id, inlet)| {
                 let retain = tunnels.iter().any(|tunnel| {
-                    id == &&tunnel.id
+                    **id == tunnel.id
                         && tunnel.enabled
                         && tunnel.receiver == self.player_id
                         && &inlet_description(&tunnel) == inlet.description()
@@ -354,95 +368,17 @@ impl Client {
         proxy_message: ProxyMessage,
     ) {
         if self_player_id == player_id {
-            match proxy_message {
-                ProxyMessage::I2oConnect(_, ..)
-                | ProxyMessage::I2oSendData(_, ..)
-                | ProxyMessage::I2oDisconnect(_)
-                | ProxyMessage::I2oRecvDataResult(_, ..) => {
-                    if let Some(outlet) = outlets.read().await.get(&tunnel_id) {
-                        outlet.input(proxy_message).await;
-                    }
+            if message_bridge::is_i2o_message(&proxy_message) {
+                if let Some(outlet) = outlets.read().await.get(&tunnel_id) {
+                    outlet.input(proxy_message).await;
                 }
-
-                ProxyMessage::O2iConnect(_, ..)
-                | ProxyMessage::O2iSendDataResult(_, ..)
-                | ProxyMessage::O2iRecvData(_, ..)
-                | ProxyMessage::O2iDisconnect(_, ..) => {
-                    if let Some(inlet) = inlets.read().await.get(&tunnel_id) {
-                        inlet.input(proxy_message).await;
-                    }
+            } else {
+                if let Some(inlet) = inlets.read().await.get(&tunnel_id) {
+                    inlet.input(proxy_message).await;
                 }
-            };
+            }
         } else {
-            let message = match proxy_message {
-                ProxyMessage::I2oConnect(
-                    session_id,
-                    is_tcp,
-                    is_compressed,
-                    addr,
-                    encryption_method,
-                    encryption_key,
-                    client_addr,
-                ) => MessageType::GenericI2oConnect(generic::I2oConnect {
-                    tunnel_id,
-                    session_id,
-                    is_tcp,
-                    addr,
-                    is_compressed,
-                    encryption_method,
-                    encryption_key,
-                    client_addr,
-                }),
-                ProxyMessage::O2iConnect(session_id, success, error_info) => {
-                    MessageType::GenericO2iConnect(generic::O2iConnect {
-                        tunnel_id,
-                        session_id,
-                        success,
-                        error_info,
-                    })
-                }
-                ProxyMessage::I2oSendData(session_id, data) => {
-                    MessageType::GenericI2oSendData(generic::I2oSendData {
-                        tunnel_id,
-                        session_id,
-                        data,
-                    })
-                }
-                ProxyMessage::O2iSendDataResult(session_id, data_len) => {
-                    MessageType::GenericO2iSendDataResult(generic::O2iSendDataResult {
-                        tunnel_id,
-                        session_id,
-                        data_len: data_len as u32,
-                    })
-                }
-                ProxyMessage::O2iRecvData(session_id, data) => {
-                    MessageType::GenericO2iRecvData(generic::O2iRecvData {
-                        tunnel_id,
-                        session_id,
-                        data,
-                    })
-                }
-                ProxyMessage::I2oRecvDataResult(session_id, data_len) => {
-                    MessageType::GenericI2oRecvDataResult(generic::I2oRecvDataResult {
-                        tunnel_id,
-                        session_id,
-                        data_len: data_len as u32,
-                    })
-                }
-                ProxyMessage::I2oDisconnect(session_id) => {
-                    MessageType::GenericI2oDisconnect(generic::I2oDisconnect {
-                        tunnel_id,
-                        session_id,
-                    })
-                }
-                ProxyMessage::O2iDisconnect(session_id) => {
-                    MessageType::GenericO2iDisconnect(generic::O2iDisconnect {
-                        tunnel_id,
-                        session_id,
-                    })
-                }
-            };
-
+            let message = message_bridge::proxy_message_2_pb(proxy_message, tunnel_id);
             match message {
                 MessageType::None => {}
                 _ => {
@@ -455,149 +391,37 @@ impl Client {
     // 收到玩家向服务器推送消息
     pub(crate) async fn handle_push(&mut self, message: MessageType) -> anyhow::Result<()> {
         match message {
-            MessageType::GenericI2oConnect(msg) => self.on_generic_i2o_connect(msg).await,
-            MessageType::GenericO2iConnect(msg) => self.on_generic_o2i_connect(msg).await,
-            MessageType::GenericI2oSendData(msg) => self.on_generic_i2o_send_data(msg).await,
-            MessageType::GenericO2iRecvData(msg) => self.on_generic_o2i_recv_data(msg).await,
-            MessageType::GenericI2oDisconnect(msg) => self.on_generic_i2o_disconnect(msg).await,
-            MessageType::GenericO2iDisconnect(msg) => self.on_generic_o2i_disconnect(msg).await,
-            MessageType::GenericO2iSendDataResult(msg) => self.on_generic_o2i_send_data_result(msg).await,
-            MessageType::GenericI2oRecvDataResult(msg) => self.on_generic_i2o_recv_data_result(msg).await,
             MessageType::ServerClientModifyTunnelNtf(msg) => {
                 self.on_server_client_modify_tunnel_ntf(msg).await
             }
-            _ => {}
+            _ => {
+                if let Some((msg, tunnel_id)) = message_bridge::pb_2_proxy_message(message) {
+
+                    if let Some(tunnel) = self.tunnels.get(&tunnel_id) {
+
+                        let player_id = if message_bridge::is_i2o_message(&msg) {
+                            tunnel.sender
+                        }
+                        else {
+                            tunnel.receiver
+                        };
+
+                        Self::send_proxy_message(
+                            self.outlets.clone(),
+                            self.inlets.clone(),
+                            self.writer.clone(),
+                            self.player_id,
+                            player_id,
+                            tunnel.id,
+                            msg,
+                        )
+                            .await;
+                    }
+                }
+            }
         }
 
         Ok(())
-    }
-
-    async fn on_generic_i2o_connect(&self, msg: I2oConnect) {
-        if let Some(tunnel) = self.tunnels.get(&msg.tunnel_id) {
-            Self::send_proxy_message(
-                self.outlets.clone(),
-                self.inlets.clone(),
-                self.writer.clone(),
-                self.player_id,
-                tunnel.sender,
-                tunnel.id,
-                ProxyMessage::I2oConnect(
-                    msg.session_id,
-                    msg.is_tcp,
-                    msg.is_compressed,
-                    msg.addr,
-                    msg.encryption_method,
-                    msg.encryption_key,
-                    msg.client_addr,
-                ),
-            )
-            .await;
-        }
-    }
-
-    async fn on_generic_o2i_connect(&self, msg: O2iConnect) {
-        if let Some(tunnel) = self.tunnels.get(&msg.tunnel_id) {
-            Self::send_proxy_message(
-                self.outlets.clone(),
-                self.inlets.clone(),
-                self.writer.clone(),
-                self.player_id,
-                tunnel.receiver,
-                tunnel.id,
-                ProxyMessage::O2iConnect(msg.session_id, msg.success, msg.error_info),
-            )
-            .await;
-        }
-    }
-
-    async fn on_generic_i2o_send_data(&self, msg: I2oSendData) {
-        if let Some(tunnel) = self.tunnels.get(&msg.tunnel_id) {
-            Self::send_proxy_message(
-                self.outlets.clone(),
-                self.inlets.clone(),
-                self.writer.clone(),
-                self.player_id,
-                tunnel.sender,
-                tunnel.id,
-                ProxyMessage::I2oSendData(msg.session_id, msg.data),
-            )
-            .await;
-        }
-    }
-
-    async fn on_generic_o2i_recv_data(&self, msg: O2iRecvData) {
-        if let Some(tunnel) = self.tunnels.get(&msg.tunnel_id) {
-            Self::send_proxy_message(
-                self.outlets.clone(),
-                self.inlets.clone(),
-                self.writer.clone(),
-                self.player_id,
-                tunnel.receiver,
-                tunnel.id,
-                ProxyMessage::O2iRecvData(msg.session_id, msg.data),
-            )
-            .await;
-        }
-    }
-
-    async fn on_generic_i2o_disconnect(&self, msg: I2oDisconnect) {
-        if let Some(tunnel) = self.tunnels.get(&msg.tunnel_id) {
-            Self::send_proxy_message(
-                self.outlets.clone(),
-                self.inlets.clone(),
-                self.writer.clone(),
-                self.player_id,
-                tunnel.sender,
-                tunnel.id,
-                ProxyMessage::I2oDisconnect(msg.session_id),
-            )
-            .await;
-        }
-    }
-
-    async fn on_generic_o2i_disconnect(&self, msg: O2iDisconnect) {
-        if let Some(tunnel) = self.tunnels.get(&msg.tunnel_id) {
-            Self::send_proxy_message(
-                self.outlets.clone(),
-                self.inlets.clone(),
-                self.writer.clone(),
-                self.player_id,
-                tunnel.receiver,
-                tunnel.id,
-                ProxyMessage::O2iDisconnect(msg.session_id),
-            )
-            .await;
-        }
-    }
-
-    async fn on_generic_i2o_recv_data_result(&self, msg: I2oRecvDataResult) {
-        if let Some(tunnel) = self.tunnels.get(&msg.tunnel_id) {
-            Self::send_proxy_message(
-                self.outlets.clone(),
-                self.inlets.clone(),
-                self.writer.clone(),
-                self.player_id,
-                tunnel.sender,
-                tunnel.id,
-                ProxyMessage::I2oRecvDataResult(msg.session_id, msg.data_len as usize),
-            )
-                .await;
-        }
-    }
-
-    async fn on_generic_o2i_send_data_result(&self, msg: O2iSendDataResult) {
-        if let Some(tunnel) = self.tunnels.get(&msg.tunnel_id) {
-            Self::send_proxy_message(
-                self.outlets.clone(),
-                self.inlets.clone(),
-                self.writer.clone(),
-                self.player_id,
-                tunnel.receiver,
-                tunnel.id,
-                ProxyMessage::O2iSendDataResult(msg.session_id, msg.data_len as usize),
-            )
-                .await;
-        }
     }
 
     async fn on_server_client_modify_tunnel_ntf(&mut self, msg: ModifyTunnelNtf) {

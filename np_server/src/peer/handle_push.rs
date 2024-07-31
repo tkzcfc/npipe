@@ -2,7 +2,10 @@ use super::Peer;
 use crate::global::manager::proxy::ProxyManager;
 use crate::global::manager::GLOBAL_MANAGER;
 use np_base::proxy::ProxyMessage;
-use np_proto::generic::{I2oConnect, I2oDisconnect, I2oRecvDataResult, I2oSendData, O2iConnect, O2iDisconnect, O2iRecvData, O2iSendDataResult};
+use np_proto::generic::{
+    I2oConnect, I2oDisconnect, I2oRecvDataResult, I2oSendData, O2iConnect, O2iDisconnect,
+    O2iRecvData, O2iSendDataResult,
+};
 use np_proto::message_map::MessageType;
 
 impl Peer {
@@ -15,8 +18,12 @@ impl Peer {
             MessageType::GenericO2iRecvData(msg) => self.on_generic_o2i_recv_data(msg).await,
             MessageType::GenericI2oDisconnect(msg) => self.on_generic_i2o_disconnect(msg).await,
             MessageType::GenericO2iDisconnect(msg) => self.on_generic_o2i_disconnect(msg).await,
-            MessageType::GenericO2iSendDataResult(msg) => self.on_generic_o2i_send_data_result(msg).await,
-            MessageType::GenericI2oRecvDataResult(msg) => self.on_generic_i2o_recv_data_result(msg).await,
+            MessageType::GenericO2iSendDataResult(msg) => {
+                self.on_generic_o2i_send_data_result(msg).await
+            }
+            MessageType::GenericI2oRecvDataResult(msg) => {
+                self.on_generic_i2o_recv_data_result(msg).await
+            }
             _ => {}
         }
 
@@ -146,7 +153,7 @@ impl Peer {
                 tunnel.id,
                 ProxyMessage::I2oRecvDataResult(msg.session_id, msg.data_len as usize),
             )
-                .await;
+            .await;
         }
     }
 
@@ -163,7 +170,7 @@ impl Peer {
                 tunnel.id,
                 ProxyMessage::O2iSendDataResult(msg.session_id, msg.data_len as usize),
             )
-                .await;
+            .await;
         }
     }
 }

@@ -10,6 +10,7 @@ default = ["serde-serialize"]
 serde-serialize = ["serde"]
 
 [dependencies]
+np_base = { path = "../np_base" }
 prost = "0.12"
 bytes = { version = "1.5.0", features = [] }
 config = "0.13.4"

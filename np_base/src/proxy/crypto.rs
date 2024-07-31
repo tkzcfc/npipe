@@ -1,10 +1,10 @@
-use std::fmt;
 use anyhow::anyhow;
 use brotli::CompressorWriter;
 use brotli::DecompressorWriter;
 use crypto_secretbox::aead::{generic_array::GenericArray, Aead, KeyInit, OsRng};
 use crypto_secretbox::XSalsa20Poly1305;
 use hex_literal::hex;
+use std::fmt;
 use std::io::{self, Write};
 
 // Function to compress data using Brotli
@@ -43,8 +43,8 @@ pub fn get_method(method: &str) -> EncryptionMethod {
 
 impl fmt::Display for EncryptionMethod {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self { 
-            EncryptionMethod::None=> {
+        match self {
+            EncryptionMethod::None => {
                 write!(f, "None")
             }
             EncryptionMethod::XSalsa20Poly1305 => {
@@ -53,7 +53,6 @@ impl fmt::Display for EncryptionMethod {
         }
     }
 }
-
 
 pub fn generate_key(method: &EncryptionMethod) -> Vec<u8> {
     match method {

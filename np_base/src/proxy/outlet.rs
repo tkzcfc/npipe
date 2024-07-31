@@ -15,7 +15,7 @@ use tokio::sync::{Mutex, RwLock};
 use tokio::task::yield_now;
 use tokio::time::{sleep, Instant};
 
-const READ_BUF_MAX_LEN: usize = 1024 * 1024;
+const READ_BUF_MAX_LEN: usize = 1024 * 1024 * 2;
 
 type TcpWriter = Mutex<WriteHalf<TcpStream>>;
 
@@ -62,6 +62,20 @@ impl Outlet {
         if let Err(err) = self.input_internal(message).await {
             error!("outlet input error: {}", err.to_string());
         }
+    }
+
+    pub async fn stop(&self) {
+        let ids: Vec<_> = self
+            .client_map
+            .read()
+            .await
+            .iter()
+            .map(|x| x.0.clone())
+            .collect();
+        for id in ids {
+            let _ = self.on_i2o_disconnect(id).await;
+        }
+        self.client_map.write().await.clear();
     }
 
     async fn input_internal(&self, message: ProxyMessage) -> anyhow::Result<()> {
@@ -176,9 +190,9 @@ impl Outlet {
     }
 
     async fn on_i2o_send_data(&self, session_id: u32, mut data: Vec<u8>) -> anyhow::Result<()> {
-        if let Some(client_type) = self.client_map.read().await.get(&session_id) {
+        if let Some(client) = self.client_map.read().await.get(&session_id) {
             let data_len = data.len();
-            match client_type {
+            match client {
                 ClientType::TCP(writer, common_data) => {
                     data = decode_data(data, common_data)?;
                     writer.lock().await.write_all(&data).await?;
@@ -206,9 +220,16 @@ impl Outlet {
     async fn on_i2o_disconnect(&self, session_id: u32) -> anyhow::Result<()> {
         info!("disconnect session: {session_id}");
 
-        if let Some(client_type) = self.client_map.write().await.remove(&session_id) {
-            if let ClientType::TCP(writer, ..) = client_type {
-                writer.into_inner().shutdown().await?;
+        if let Some(client) = self.client_map.write().await.remove(&session_id) {
+            match client {
+                ClientType::TCP(writer, ..) => {
+                    writer.into_inner().shutdown().await?;
+                }
+                ClientType::UDP(_, instant, _) => {
+                    let mut instant_rw = instant.write().await;
+                    *instant_rw = *instant_rw - Duration::from_secs(1000);
+                    drop(instant_rw);
+                }
             }
         }
         Ok(())
@@ -219,8 +240,8 @@ impl Outlet {
         session_id: u32,
         data_len: usize,
     ) -> anyhow::Result<()> {
-        if let Some(client_type) = self.client_map.read().await.get(&session_id) {
-            let common_data = match client_type {
+        if let Some(client) = self.client_map.read().await.get(&session_id) {
+            let common_data = match client {
                 ClientType::TCP(_, common_data) => common_data,
                 ClientType::UDP(_, _, common_data) => common_data,
             };
@@ -232,7 +253,7 @@ impl Outlet {
                 *read_buf_len = *read_buf_len - data_len;
             }
 
-            trace!("on_i2o_recv_data_result: session_id:{session_id}, data_len:{data_len}, read_buf_len:{}", *read_buf_len);
+            // trace!("on_i2o_recv_data_result: session_id:{session_id}, data_len:{data_len}, read_buf_len:{}", *read_buf_len);
 
             drop(read_buf_len);
         }

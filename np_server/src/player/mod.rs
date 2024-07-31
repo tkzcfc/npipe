@@ -1,9 +1,9 @@
 use crate::peer::package_and_send_message;
+use log::trace;
 use np_base::net::WriterMessage;
 use np_proto::generic;
 use np_proto::message_map::MessageType;
 use std::sync::Arc;
-use log::trace;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
 

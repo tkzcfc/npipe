@@ -11,13 +11,15 @@ use bytes::BytesMut;
 use log::{debug, error, trace};
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::net::TcpStream;
-use tokio::sync::mpsc::{Sender, UnboundedSender};
-use tokio::sync::{mpsc, Notify, RwLock};
+use tokio::select;
+use tokio::sync::mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender};
+use tokio::sync::{mpsc, RwLock};
 use tokio::task::yield_now;
 
-const READ_BUF_MAX_LEN: usize = 1024 * 1024;
+const READ_BUF_MAX_LEN: usize = 1024 * 1024 * 2;
 
 pub enum InletProxyType {
     TCP,
@@ -48,8 +50,8 @@ struct SessionInfo {
 type SessionInfoMap = Arc<RwLock<HashMap<u32, SessionInfo>>>;
 
 pub struct Inlet {
-    shutdown_tx: Option<Sender<()>>,
-    notify: Arc<Notify>,
+    is_running: Arc<AtomicBool>,
+    input: Option<UnboundedSender<ProxyMessage>>,
     session_info_map: SessionInfoMap,
     description: String,
     on_output_callback: OutputFuncType,
@@ -58,9 +60,9 @@ pub struct Inlet {
 impl Inlet {
     pub fn new(on_output_callback: OutputFuncType, description: String) -> Self {
         Self {
-            shutdown_tx: None,
-            notify: Arc::new(Notify::new()),
+            is_running: Arc::new(AtomicBool::new(false)),
             session_info_map: Arc::new(RwLock::new(HashMap::new())),
+            input: None,
             description,
             on_output_callback,
         }
@@ -75,19 +77,22 @@ impl Inlet {
         encryption_method: String,
     ) -> anyhow::Result<()> {
         // 重复调用启动函数
-        if self.shutdown_tx.is_some() {
+        if self.running() {
             return Err(anyhow!("Repeated start"));
         }
 
-        let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
-        let worker_notify = self.notify.clone();
-        let session_info_map = self.session_info_map.clone();
-        let on_output_callback = self.on_output_callback.clone();
+        let (input_tx, input_rx) = mpsc::unbounded_channel();
+        let (output_tx, output_rx) = mpsc::channel::<ProxyMessage>(1000);
+
+        self.input = Some(input_tx);
+
         let is_tcp = match inlet_proxy_type {
             InletProxyType::TCP => true,
             InletProxyType::UDP => false,
             InletProxyType::SOCKS5 => true,
         };
+        let session_info_map = self.session_info_map.clone();
+        let output_tx_cloned = output_tx.clone();
 
         let create_session_delegate_func = Box::new(move || -> Box<dyn SessionDelegate> {
             Box::new(InletSession::new(
@@ -96,69 +101,112 @@ impl Inlet {
                 session_info_map.clone(),
                 is_compressed,
                 encryption_method.clone(),
-                on_output_callback.clone(),
+                output_tx.clone(),
             ))
         });
+
+        let on_output_callback = self.on_output_callback.clone();
+        let session_info_map = self.session_info_map.clone();
+        let is_running = self.is_running.clone();
+        is_running.store(true, Ordering::Relaxed);
 
         match inlet_proxy_type {
             InletProxyType::TCP => {
                 let listener = tcp_server::bind(&listen_addr).await?;
-                self.shutdown_tx = Some(shutdown_tx);
+
                 tokio::spawn(async move {
-                    tcp_server::run_server(
+                    let server_task = tcp_server::run_server(
                         listener,
                         create_session_delegate_func,
                         |stream: TcpStream| async move { Ok(stream) },
-                        async move {
-                            let _ = shutdown_rx.recv().await;
-                        },
-                    )
-                    .await;
-                    worker_notify.notify_one();
+                        Self::async_receive_input(input_rx, output_tx_cloned, session_info_map),
+                    );
+
+                    select! {
+                        _= server_task => {},
+                        _= Self::async_receive_output(output_rx, on_output_callback) => {}
+                    }
+
+                    is_running.store(false, Ordering::Relaxed);
                 });
             }
             InletProxyType::UDP => {
                 let socket = udp_server::bind(&listen_addr).await?;
-                self.shutdown_tx = Some(shutdown_tx);
+
                 tokio::spawn(async move {
-                    udp_server::run_server(socket, create_session_delegate_func, async move {
-                        let _ = shutdown_rx.recv().await;
-                    })
-                    .await;
-                    worker_notify.notify_one();
+                    let server_task = udp_server::run_server(
+                        socket,
+                        create_session_delegate_func,
+                        Self::async_receive_input(input_rx, output_tx_cloned, session_info_map),
+                    );
+
+                    select! {
+                        _= server_task => {},
+                        _= Self::async_receive_output(output_rx, on_output_callback) => {}
+                    }
+
+                    is_running.store(false, Ordering::Relaxed);
                 });
             }
             InletProxyType::SOCKS5 => {
+                is_running.store(false, Ordering::Relaxed);
                 return Err(anyhow!("SOCKS5 (Not implemented)"));
             }
-        }
+        };
 
         Ok(())
     }
 
-    pub async fn stop(&mut self) {
-        if self.shutdown_tx.is_some() {
-            self.shutdown_tx.take();
-            // 等待退出完毕
-            self.notify.notified().await;
+    pub async fn input(&self, proxy_message: ProxyMessage) {
+        if let Some(sender) = &self.input {
+            let _ = sender.send(proxy_message);
         }
     }
 
     pub fn running(&self) -> bool {
-        self.shutdown_tx.is_some()
+        self.is_running.load(Ordering::Relaxed)
     }
 
-    pub async fn input(&self, message: ProxyMessage) {
-        if let Err(err) = self.input_internal(message).await {
-            error!("inlet input error: {}", err.to_string());
+    pub async fn stop(&mut self) {
+        self.input.take();
+        while self.running() {
+            yield_now().await;
         }
+        self.session_info_map.write().await.clear();
     }
 
     pub fn description(&self) -> &String {
         &self.description
     }
 
-    async fn input_internal(&self, message: ProxyMessage) -> anyhow::Result<()> {
+    async fn async_receive_output(
+        mut output_rx: Receiver<ProxyMessage>,
+        on_output_callback: OutputFuncType,
+    ) {
+        loop {
+            if let Some(message) = output_rx.recv().await {
+                on_output_callback(message).await;
+            }
+        }
+    }
+
+    async fn async_receive_input(
+        mut input: UnboundedReceiver<ProxyMessage>,
+        output: Sender<ProxyMessage>,
+        session_info_map: SessionInfoMap,
+    ) {
+        while let Some(message) = input.recv().await {
+            if let Err(err) = Self::input_internal(message, &output, &session_info_map).await {
+                error!("inlet async_receive_input error: {}", err.to_string());
+            }
+        }
+    }
+
+    async fn input_internal(
+        message: ProxyMessage,
+        output: &Sender<ProxyMessage>,
+        session_info_map: &SessionInfoMap,
+    ) -> anyhow::Result<()> {
         match message {
             ProxyMessage::O2iConnect(session_id, success, error_msg) => {
                 trace!(
@@ -166,27 +214,27 @@ impl Inlet {
                 );
                 if !success {
                     error!("connect error: {error_msg}");
-                    if let Some(session) = self.session_info_map.read().await.get(&session_id) {
+                    if let Some(session) = session_info_map.read().await.get(&session_id) {
                         session.sender.send(WriterMessage::Close)?;
                     }
                 }
             }
             ProxyMessage::O2iDisconnect(session_id) => {
                 trace!("O2iDisconnect: session_id:{session_id}");
-                if let Some(session) = self.session_info_map.read().await.get(&session_id) {
+                if let Some(session) = session_info_map.read().await.get(&session_id) {
                     session.sender.send(WriterMessage::Close)?;
                 }
             }
             ProxyMessage::O2iSendDataResult(session_id, data_len) => {
                 // trace!("O2iSendDataResult: session_id:{session_id}, data_len:{data_len}");
-                if let Some(session) = self.session_info_map.read().await.get(&session_id) {
+                if let Some(session) = session_info_map.read().await.get(&session_id) {
                     let mut read_buf_len = session.read_buf_len.write().await;
                     if *read_buf_len <= data_len {
                         *read_buf_len = 0;
                     } else {
                         *read_buf_len = *read_buf_len - data_len;
                     }
-                    trace!("O2iSendDataResult: session_id:{session_id}, data_len:{data_len}, read_buf_len:{}", *read_buf_len);
+                    // trace!("O2iSendDataResult: session_id:{session_id}, data_len:{data_len}, read_buf_len:{}", *read_buf_len);
                     drop(read_buf_len);
                 }
             }
@@ -194,7 +242,7 @@ impl Inlet {
                 // trace!("O2iRecvData: session_id:{session_id}");
                 let data_len = data.len();
 
-                if let Some(session) = self.session_info_map.read().await.get(&session_id) {
+                if let Some(session) = session_info_map.read().await.get(&session_id) {
                     match session.encryption_method {
                         EncryptionMethod::None => {}
                         _ => {
@@ -209,14 +257,13 @@ impl Inlet {
                         data = crypto::decompress_data(data.as_slice())?;
                     }
 
-                    let on_output_callback = self.on_output_callback.clone();
+                    let output = output.clone();
                     let callback: SendMessageFuncType = Box::new(move || {
-                        let on_output_callback = on_output_callback.clone();
+                        let output = output.clone();
                         Box::pin(async move {
-                            on_output_callback(ProxyMessage::I2oRecvDataResult(
-                                session_id, data_len,
-                            ))
-                            .await;
+                            let _ = output
+                                .send(ProxyMessage::I2oRecvDataResult(session_id, data_len))
+                                .await;
                         })
                     });
 
@@ -241,7 +288,7 @@ struct InletSession {
     output_addr: String,
     session_info_map: SessionInfoMap,
     session_id: u32,
-    on_output_callback: OutputFuncType,
+    output: Sender<ProxyMessage>,
     is_compressed: bool,
     encryption_method: EncryptionMethod,
     encryption_key: Vec<u8>,
@@ -255,7 +302,7 @@ impl InletSession {
         session_info_map: SessionInfoMap,
         is_compressed: bool,
         encryption_method: String,
-        on_output_callback: OutputFuncType,
+        output: Sender<ProxyMessage>,
     ) -> Self {
         let encryption_method = crypto::get_method(encryption_method.as_str());
         let encryption_key = crypto::generate_key(&encryption_method);
@@ -265,7 +312,7 @@ impl InletSession {
             output_addr,
             session_info_map,
             session_id: 0,
-            on_output_callback,
+            output,
             is_compressed,
             encryption_method,
             encryption_key,
@@ -295,23 +342,27 @@ impl SessionDelegate for InletSession {
                 read_buf_len: self.read_buf_len.clone(),
             },
         );
-        (self.on_output_callback)(ProxyMessage::I2oConnect(
-            session_id,
-            self.is_tcp,
-            self.is_compressed,
-            self.output_addr.clone(),
-            self.encryption_method.to_string(),
-            BASE64_STANDARD.encode(&self.encryption_key),
-            addr.to_string(),
-        ))
-        .await;
+        self.output
+            .send(ProxyMessage::I2oConnect(
+                session_id,
+                self.is_tcp,
+                self.is_compressed,
+                self.output_addr.clone(),
+                self.encryption_method.to_string(),
+                BASE64_STANDARD.encode(&self.encryption_key),
+                addr.to_string(),
+            ))
+            .await?;
+
         Ok(())
     }
 
     async fn on_session_close(&mut self) -> anyhow::Result<()> {
         debug!("inlet on session({}) close", self.session_id);
         self.session_info_map.write().await.remove(&self.session_id);
-        (self.on_output_callback)(ProxyMessage::I2oDisconnect(self.session_id)).await;
+        self.output
+            .send(ProxyMessage::I2oDisconnect(self.session_id))
+            .await?;
         Ok(())
     }
 
@@ -346,7 +397,9 @@ impl SessionDelegate for InletSession {
         *read_buf_len = *read_buf_len + frame.len();
         drop(read_buf_len);
 
-        (self.on_output_callback)(ProxyMessage::I2oSendData(self.session_id, frame)).await;
+        self.output
+            .send(ProxyMessage::I2oSendData(self.session_id, frame))
+            .await?;
         Ok(())
     }
 }

@@ -1,9 +1,9 @@
-use log::trace;
 use super::Peer;
 use crate::global::manager::GLOBAL_MANAGER;
 use crate::global::GLOBAL_DB_POOL;
 use crate::orm_entity::prelude::User;
 use crate::orm_entity::user;
+use log::trace;
 use np_proto::message_map::MessageType;
 use np_proto::{client_server, generic, server_client};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
