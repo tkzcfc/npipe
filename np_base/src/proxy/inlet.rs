@@ -1,25 +1,22 @@
 use crate::net::session_delegate::SessionDelegate;
 use crate::net::{tcp_server, udp_server};
 use crate::net::{SendMessageFuncType, WriterMessage};
-use crate::proxy::crypto::EncryptionMethod;
-use crate::proxy::{crypto, InputSenderType};
-use crate::proxy::{OutputFuncType, ProxyMessage};
+use crate::proxy::common::{SessionCommonInfo, SessionInfo, SessionInfoMap};
+use crate::proxy::{common, OutputFuncType, ProxyMessage};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use base64::prelude::*;
 use bytes::BytesMut;
-use log::{debug, error, trace};
+use log::{error, trace};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::select;
-use tokio::sync::mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{Sender, UnboundedReceiver, UnboundedSender};
 use tokio::sync::{mpsc, RwLock};
 use tokio::task::yield_now;
-
-const READ_BUF_MAX_LEN: usize = 1024 * 1024 * 2;
 
 pub enum InletProxyType {
     TCP,
@@ -38,16 +35,6 @@ impl InletProxyType {
         }
     }
 }
-
-struct SessionInfo {
-    sender: InputSenderType,
-    is_compressed: bool,
-    encryption_method: EncryptionMethod,
-    encryption_key: Vec<u8>,
-    read_buf_len: Arc<RwLock<usize>>,
-}
-
-type SessionInfoMap = Arc<RwLock<HashMap<u32, SessionInfo>>>;
 
 pub struct Inlet {
     is_running: Arc<AtomicBool>,
@@ -124,7 +111,7 @@ impl Inlet {
 
                     select! {
                         _= server_task => {},
-                        _= Self::async_receive_output(output_rx, on_output_callback) => {}
+                        _= common::async_receive_output(output_rx, on_output_callback) => {}
                     }
 
                     is_running.store(false, Ordering::Relaxed);
@@ -142,7 +129,7 @@ impl Inlet {
 
                     select! {
                         _= server_task => {},
-                        _= Self::async_receive_output(output_rx, on_output_callback) => {}
+                        _= common::async_receive_output(output_rx, on_output_callback) => {}
                     }
 
                     is_running.store(false, Ordering::Relaxed);
@@ -177,17 +164,6 @@ impl Inlet {
 
     pub fn description(&self) -> &String {
         &self.description
-    }
-
-    async fn async_receive_output(
-        mut output_rx: Receiver<ProxyMessage>,
-        on_output_callback: OutputFuncType,
-    ) {
-        loop {
-            if let Some(message) = output_rx.recv().await {
-                on_output_callback(message).await;
-            }
-        }
     }
 
     async fn async_receive_input(
@@ -228,7 +204,7 @@ impl Inlet {
             ProxyMessage::O2iSendDataResult(session_id, data_len) => {
                 // trace!("O2iSendDataResult: session_id:{session_id}, data_len:{data_len}");
                 if let Some(session) = session_info_map.read().await.get(&session_id) {
-                    let mut read_buf_len = session.read_buf_len.write().await;
+                    let mut read_buf_len = session.common_info.read_buf_len.write().await;
                     if *read_buf_len <= data_len {
                         *read_buf_len = 0;
                     } else {
@@ -243,20 +219,9 @@ impl Inlet {
                 let data_len = data.len();
 
                 if let Some(session) = session_info_map.read().await.get(&session_id) {
-                    match session.encryption_method {
-                        EncryptionMethod::None => {}
-                        _ => {
-                            data = crypto::decrypt(
-                                &session.encryption_method,
-                                session.encryption_key.as_slice(),
-                                data.as_slice(),
-                            )?;
-                        }
-                    }
-                    if session.is_compressed {
-                        data = crypto::decompress_data(data.as_slice())?;
-                    }
+                    data = session.common_info.decode_data(data)?;
 
+                    // 写入完毕回调
                     let output = output.clone();
                     let callback: SendMessageFuncType = Box::new(move || {
                         let output = output.clone();
@@ -289,10 +254,7 @@ struct InletSession {
     session_info_map: SessionInfoMap,
     session_id: u32,
     output: Sender<ProxyMessage>,
-    is_compressed: bool,
-    encryption_method: EncryptionMethod,
-    encryption_key: Vec<u8>,
-    read_buf_len: Arc<RwLock<usize>>,
+    common_data: SessionCommonInfo,
 }
 
 impl InletSession {
@@ -304,19 +266,13 @@ impl InletSession {
         encryption_method: String,
         output: Sender<ProxyMessage>,
     ) -> Self {
-        let encryption_method = crypto::get_method(encryption_method.as_str());
-        let encryption_key = crypto::generate_key(&encryption_method);
-
         Self {
             is_tcp,
             output_addr,
             session_info_map,
             session_id: 0,
             output,
-            is_compressed,
-            encryption_method,
-            encryption_key,
-            read_buf_len: Arc::new(RwLock::new(0)),
+            common_data: SessionCommonInfo::from_method_name(is_compressed, encryption_method),
         }
     }
 }
@@ -329,27 +285,24 @@ impl SessionDelegate for InletSession {
         addr: &SocketAddr,
         tx: UnboundedSender<WriterMessage>,
     ) -> anyhow::Result<()> {
-        debug!("inlet on session({session_id}) start {addr}");
+        trace!("inlet on session({session_id}) start {addr}");
 
         self.session_id = session_id;
         self.session_info_map.write().await.insert(
             session_id,
             SessionInfo {
                 sender: tx,
-                is_compressed: self.is_compressed,
-                encryption_method: self.encryption_method.clone(),
-                encryption_key: self.encryption_key.clone(),
-                read_buf_len: self.read_buf_len.clone(),
+                common_info: self.common_data.clone(),
             },
         );
         self.output
             .send(ProxyMessage::I2oConnect(
                 session_id,
                 self.is_tcp,
-                self.is_compressed,
+                self.common_data.is_compressed,
                 self.output_addr.clone(),
-                self.encryption_method.to_string(),
-                BASE64_STANDARD.encode(&self.encryption_key),
+                self.common_data.encryption_method.to_string(),
+                BASE64_STANDARD.encode(&self.common_data.encryption_key),
                 addr.to_string(),
             ))
             .await?;
@@ -358,7 +311,7 @@ impl SessionDelegate for InletSession {
     }
 
     async fn on_session_close(&mut self) -> anyhow::Result<()> {
-        debug!("inlet on session({}) close", self.session_id);
+        trace!("inlet on session({}) close", self.session_id);
         self.session_info_map.write().await.remove(&self.session_id);
         self.output
             .send(ProxyMessage::I2oDisconnect(self.session_id))
@@ -375,28 +328,7 @@ impl SessionDelegate for InletSession {
     }
 
     async fn on_recv_frame(&mut self, mut frame: Vec<u8>) -> anyhow::Result<()> {
-        if self.is_compressed {
-            frame = crypto::compress_data(frame.as_slice())?;
-        }
-        match &self.encryption_method {
-            EncryptionMethod::None => {}
-            _ => {
-                frame = crypto::encrypt(
-                    &self.encryption_method,
-                    self.encryption_key.as_slice(),
-                    frame.as_slice(),
-                )?;
-            }
-        }
-
-        while *self.read_buf_len.read().await > READ_BUF_MAX_LEN {
-            yield_now().await;
-        }
-
-        let mut read_buf_len = self.read_buf_len.write().await;
-        *read_buf_len = *read_buf_len + frame.len();
-        drop(read_buf_len);
-
+        frame = self.common_data.encode_data_and_limiting(frame).await?;
         self.output
             .send(ProxyMessage::I2oSendData(self.session_id, frame))
             .await?;

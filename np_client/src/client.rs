@@ -30,7 +30,7 @@ struct Client {
     username: String,
     password: String,
     player_id: u32,
-    outlets: Arc<RwLock<HashMap<u32, Outlet>>>,
+    outlets: Arc<RwLock<HashMap<u32, Arc<Outlet>>>>,
     inlets: Arc<RwLock<HashMap<u32, Inlet>>>,
     tunnels: HashMap<u32, Tunnel>,
 }
@@ -359,7 +359,7 @@ impl Client {
     }
 
     async fn send_proxy_message(
-        outlets: Arc<RwLock<HashMap<u32, Outlet>>>,
+        outlets: Arc<RwLock<HashMap<u32, Arc<Outlet>>>>,
         inlets: Arc<RwLock<HashMap<u32, Inlet>>>,
         writer: WriterType,
         self_player_id: u32,

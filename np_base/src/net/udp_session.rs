@@ -11,7 +11,7 @@ use tokio::task::yield_now;
 use tokio::time::sleep;
 use tokio::time::{Duration, Instant};
 
-async fn poll_read(
+async fn poll_read_from_unbounded_receiver(
     addr: SocketAddr,
     delegate: &mut Box<dyn SessionDelegate>,
     mut udp_recv_receiver: UnboundedReceiver<Vec<u8>>,
@@ -29,6 +29,35 @@ async fn poll_read(
         }
     }
     udp_recv_receiver.close();
+}
+
+async fn poll_read(
+    addr: SocketAddr,
+    delegate: &mut Box<dyn SessionDelegate>,
+    socket: Arc<UdpSocket>,
+    last_active_time: Arc<RwLock<Instant>>,
+) {
+    let write_timeout = Duration::from_secs(1);
+    let mut buf = [0; 65535]; // 最大允许的UDP数据包大小
+    loop {
+        let result = socket.recv_from(&mut buf).await;
+        if result.is_err() {
+            continue;
+        }
+
+        if last_active_time.read().await.elapsed() >= write_timeout {
+            let mut instant_write = last_active_time.write().await;
+            *instant_write = Instant::now();
+        }
+
+        let (amt, _peer_addr) = result.unwrap();
+
+        let received_data = Vec::from(&buf[..amt]);
+        if let Err(err) = delegate.on_recv_frame(received_data).await {
+            error!("[{addr}] on_recv_frame error: {err}");
+            break;
+        }
+    }
 }
 
 async fn poll_write(
@@ -108,7 +137,7 @@ pub async fn run(
     session_id: u32,
     addr: SocketAddr,
     mut delegate: Box<dyn SessionDelegate>,
-    udp_recv_receiver: UnboundedReceiver<Vec<u8>>,
+    udp_recv_receiver: Option<UnboundedReceiver<Vec<u8>>>,
     mut shutdown: broadcast::Receiver<()>,
     socket: Arc<UdpSocket>,
 ) {
@@ -124,11 +153,20 @@ pub async fn run(
 
     let last_active_time = Arc::new(RwLock::new(Instant::now()));
 
-    select! {
-        _= poll_read(addr, &mut delegate, udp_recv_receiver, last_active_time.clone()) => {},
-        _= poll_write(addr, delegate_receiver, socket, last_active_time.clone()) => {},
-        _= poll_timeout(last_active_time) => {},
-        _ = shutdown.recv() => {}
+    if let Some(udp_recv_receiver) = udp_recv_receiver {
+        select! {
+            _= poll_read_from_unbounded_receiver(addr, &mut delegate, udp_recv_receiver, last_active_time.clone()) => {},
+            _= poll_write(addr, delegate_receiver, socket, last_active_time.clone()) => {},
+            _= poll_timeout(last_active_time) => {},
+            _ = shutdown.recv() => {}
+        }
+    } else {
+        select! {
+            _= poll_read(addr, &mut delegate, socket.clone(), last_active_time.clone()) => {},
+            _= poll_write(addr, delegate_receiver, socket, last_active_time.clone()) => {},
+            _= poll_timeout(last_active_time) => {},
+            _ = shutdown.recv() => {}
+        }
     }
 
     if let Err(err) = delegate.on_session_close().await {

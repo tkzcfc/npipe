@@ -12,7 +12,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 pub struct ProxyManager {
-    outlets: Arc<RwLock<HashMap<u32, Outlet>>>,
+    outlets: Arc<RwLock<HashMap<u32, Arc<Outlet>>>>,
     inlets: Arc<RwLock<HashMap<u32, Inlet>>>,
 }
 

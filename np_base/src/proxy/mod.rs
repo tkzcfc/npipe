@@ -1,9 +1,8 @@
-use crate::net::WriterMessage;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use tokio::sync::mpsc::UnboundedSender;
 
+pub(crate) mod common;
 pub mod crypto;
 pub mod inlet;
 pub mod outlet;
@@ -30,9 +29,6 @@ pub enum ProxyMessage {
 // 输出函数类型
 pub type OutputFuncType =
     Arc<dyn Fn(ProxyMessage) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
-
-// 输入通道发送端类型
-pub type InputSenderType = UnboundedSender<WriterMessage>;
 
 #[cfg(test)]
 mod tests {

@@ -33,6 +33,15 @@ pub enum EncryptionMethod {
     XSalsa20Poly1305,
 }
 
+impl EncryptionMethod {
+    pub fn is_none(&self) -> bool {
+        match self {
+            EncryptionMethod::None => true,
+            _ => false,
+        }
+    }
+}
+
 pub fn get_method(method: &str) -> EncryptionMethod {
     match method {
         "XSalsa20Poly1305" => EncryptionMethod::XSalsa20Poly1305,

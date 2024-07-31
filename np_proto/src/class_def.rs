@@ -47,10 +47,7 @@ pub struct Tunnel {
     pub encryption_method: ::prost::alloc::string::String,
     /// 自定义域名映射关系
     #[prost(map = "string, string", tag = "12")]
-    pub custom_mapping: ::std::collections::HashMap<
-        ::prost::alloc::string::String,
-        ::prost::alloc::string::String,
-    >,
+    pub custom_mapping: ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
 }
 /// 通道类型
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]

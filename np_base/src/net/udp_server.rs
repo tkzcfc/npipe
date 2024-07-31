@@ -41,59 +41,61 @@ pub async fn run_server(
             Arc::new(Mutex::new(HashMap::new()));
         let mut buf = [0; 65535]; // 最大允许的UDP数据包大小
         let socket = Arc::new(socket);
+
         loop {
-            // 接收数据
-            if let Ok((amt, addr)) = socket.recv_from(&mut buf).await {
-                let received_data = Vec::from(&buf[..amt]);
+            let result = socket.recv_from(&mut buf).await;
+            if result.is_err() {
+                continue;
+            }
+            let (amt, addr) = result.unwrap();
 
-                let contains_addr = hashmap.lock().await.contains_key(&addr);
-                if !contains_addr {
-                    // 新的会话id
-                    session_id_seed += 1;
-                    let session_id = session_id_seed;
+            let received_data = Vec::from(&buf[..amt]);
 
-                    let delegate = on_create_session_delegate_callback();
+            let contains_addr = hashmap.lock().await.contains_key(&addr);
+            if !contains_addr {
+                // 新的会话id
+                session_id_seed += 1;
+                let session_id = session_id_seed;
 
-                    // 通知会话结束
-                    let shutdown = receiver_shutdown.resubscribe();
-                    // 反向通知会话结束完毕
-                    let shutdown_complete = shutdown_complete_tx.clone();
-                    // UdpSocket cloned
-                    let socket_cloned = socket.clone();
+                let delegate = on_create_session_delegate_callback();
 
-                    // 创建无界通道
-                    let (udp_recv_sender, udp_recv_receiver) = mpsc::unbounded_channel::<Vec<u8>>();
-                    hashmap
-                        .lock()
-                        .await
-                        .insert(addr.clone(), udp_recv_sender.clone());
+                // 通知会话结束
+                let shutdown = receiver_shutdown.resubscribe();
+                // 反向通知会话结束完毕
+                let shutdown_complete = shutdown_complete_tx.clone();
+                // UdpSocket cloned
+                let socket_cloned = socket.clone();
 
-                    let hashmap_cloned = hashmap.clone();
-                    // 新连接单独起一个异步任务处理
-                    tokio::spawn(async move {
-                        trace!("UDP Server new connection: {}", addr);
-                        udp_session::run(
-                            session_id,
-                            addr,
-                            delegate,
-                            udp_recv_receiver,
-                            shutdown,
-                            socket_cloned,
-                        )
-                        .await;
-                        hashmap_cloned.lock().await.remove(&addr);
-                        trace!("UDP Server disconnect: {}", addr);
-                        // 反向通知会话结束
-                        drop(shutdown_complete);
-                    });
-                }
+                // 创建无界通道
+                let (udp_recv_sender, udp_recv_receiver) = mpsc::unbounded_channel::<Vec<u8>>();
+                hashmap
+                    .lock()
+                    .await
+                    .insert(addr.clone(), udp_recv_sender.clone());
 
-                if let Some(sender) = hashmap.lock().await.get(&addr) {
-                    if let Err(err) = sender.send(received_data) {
-                        error!(
-                            "Unable to process received data, data address: {addr}, error: {err}"
-                        );
-                    }
+                let hashmap_cloned = hashmap.clone();
+                // 新连接单独起一个异步任务处理
+                tokio::spawn(async move {
+                    trace!("UDP Server new connection: {}", addr);
+                    udp_session::run(
+                        session_id,
+                        addr,
+                        delegate,
+                        Some(udp_recv_receiver),
+                        shutdown,
+                        socket_cloned,
+                    )
+                    .await;
+                    hashmap_cloned.lock().await.remove(&addr);
+                    trace!("UDP Server disconnect: {}", addr);
+                    // 反向通知会话结束
+                    drop(shutdown_complete);
+                });
+            }
+
+            if let Some(sender) = hashmap.lock().await.get(&addr) {
+                if let Err(err) = sender.send(received_data) {
+                    error!("Unable to process received data, data address: {addr}, error: {err}");
                 }
             }
         }
