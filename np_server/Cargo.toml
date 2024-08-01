@@ -22,7 +22,7 @@ clap = { version = "4.4.12", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sqlx = { version = "0.7", features = [ "mysql", "sqlite", "runtime-tokio"] }
-sea-orm = { version = "0.12", features = ["sqlx-mysql", "sqlx-sqlite", "runtime-tokio"] }
+sea-orm = { version = "0.12.14", features = ["sqlx-mysql", "sqlx-sqlite", "runtime-tokio"] }
 rand = "0.8.5"
 actix-web = { version = "4.4" }
 actix-files = { version = "0.6" }
@@ -31,8 +31,6 @@ actix-identity = { version = "0.7" }
 actix-session = { version = "0.9", features = ["cookie-session"] }
 chrono = "0.4.31"
 md5 = "0.7"
-aes = "0.8"
-aes-gcm = "0.10"
 
 [dev-dependencies]
 

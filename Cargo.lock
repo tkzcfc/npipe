@@ -3053,8 +3053,6 @@ dependencies = [
  "actix-identity",
  "actix-session",
  "actix-web",
- "aes 0.8.3",
- "aes-gcm",
  "anyhow",
  "async-trait",
  "byteorder",
