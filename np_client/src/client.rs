@@ -93,7 +93,7 @@ async fn ping_forever(writer: WriterType) -> anyhow::Result<()> {
 
 impl Client {
     async fn run(&mut self, mut reader: ReadHalf<TcpStream>) -> anyhow::Result<()> {
-        let mut buffer = BytesMut::with_capacity(1024);
+        let mut buffer = BytesMut::with_capacity(65536);
         loop {
             let len = reader.read_buf(&mut buffer).await?;
             // len为0表示对端已经关闭连接。
@@ -192,7 +192,7 @@ impl Client {
                 let retain = tunnels.iter().any(|tunnel| {
                     **id == tunnel.id
                         && tunnel.enabled
-                        && tunnel.sender == 0
+                        && tunnel.sender == self.player_id
                         && &outlet_description(&tunnel) == outlet.description()
                 });
                 !retain

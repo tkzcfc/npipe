@@ -38,6 +38,7 @@ impl TestUnitLogic for Test {
 
     fn call(&mut self, rpc: &mut RpcClient, unit_arc: Arc<TestUnitMutexType>) {
         let msg = MessageType::ClientServerLoginReq(client_server::LoginReq {
+            version: "".to_string(),
             username: self.username.clone(),
             password: self.password.clone(),
         });

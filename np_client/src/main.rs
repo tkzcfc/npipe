@@ -11,19 +11,19 @@ mod client;
 #[command(author, version, about, long_about = None)]
 pub struct Opts {
     /// Print backtracking information
-    #[arg(short, long, default_value_t = false, action = clap::ArgAction::Set)]
+    #[arg(long, default_value_t = false, action = clap::ArgAction::Set)]
     pub backtrace: bool,
 
     /// Server address
-    #[arg(long, default_value = "127.0.0.1:8118")]
+    #[arg(short, long)]
     pub server: String,
 
     /// username
-    #[arg(short, long, default_value = "f123456")]
+    #[arg(short, long)]
     pub username: String,
 
     /// password
-    #[arg(short, long, default_value = "f123456")]
+    #[arg(short, long)]
     pub password: String,
 
     /// Set log level  warn
@@ -45,7 +45,7 @@ async fn main() -> anyhow::Result<()> {
 
     // 日志初始化
     let _logger =
-        Logger::try_with_str(format!("{}, np_base={}", ops.log_level, ops.base_log_level))?
+        Logger::try_with_str(format!("{}, mio=error, np_base={}", ops.log_level, ops.base_log_level))?
             .log_to_file(
                 FileSpec::default()
                     .directory("logs")
