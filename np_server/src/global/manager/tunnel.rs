@@ -144,6 +144,9 @@ impl TunnelManager {
             db_tunnel.tunnel_type = Set(tunnel.tunnel_type);
             db_tunnel.password = Set(tunnel.password.to_owned());
             db_tunnel.username = Set(tunnel.username.to_owned());
+            db_tunnel.is_compressed = Set(tunnel.is_compressed.to_owned());
+            db_tunnel.custom_mapping = Set(tunnel.custom_mapping.to_owned());
+            db_tunnel.encryption_method = Set(tunnel.encryption_method.to_owned());
             db_tunnel.update(GLOBAL_DB_POOL.get().unwrap()).await?;
 
             let old_sender = self.tunnels[index].sender;

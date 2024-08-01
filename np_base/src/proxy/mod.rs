@@ -93,8 +93,8 @@ mod tests {
     fn test_crypto() {
         let raw_str = String::from("xxtea-nostd is an implementation of the XXTEA encryption algorithm designed for no-std environments. The code uses native endianess to interpret the byte slices passed to the library as 4-byte words.");
 
-        // XSalsa20Poly1305
-        let method = crypto::get_method("XSalsa20Poly1305");
+        // Aes128
+        let method = crypto::get_method("Xor");
         let key = crypto::generate_key(&method);
         println!("key:{:?}", key);
 

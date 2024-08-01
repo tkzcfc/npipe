@@ -16,8 +16,7 @@ anyhow = "1.0.79"
 # 加密相关
 rand = "0.8"
 base64 = "0.22"
-brotli = "6.0"
-crypto_secretbox = "0.1.1"
-hex-literal = "0.4.1"
+simplestcrypt = "0.1.3"
+lz4_flex = { version = "0.11" }
 socket2 = "0.5"
 

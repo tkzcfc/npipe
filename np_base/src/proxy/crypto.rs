@@ -1,36 +1,26 @@
 use anyhow::anyhow;
-use brotli::CompressorWriter;
-use brotli::DecompressorWriter;
-use crypto_secretbox::aead::{generic_array::GenericArray, Aead, KeyInit, OsRng};
-use crypto_secretbox::XSalsa20Poly1305;
-use hex_literal::hex;
-use std::fmt;
-use std::io::{self, Write};
+use rand::Rng;
+use std::{fmt, io};
+use lz4_flex::block::{compress_prepend_size, decompress_size_prepended};
+
 
 // Function to compress data using Brotli
 pub fn compress_data(input: &[u8]) -> Result<Vec<u8>, io::Error> {
-    let mut compressed_data = Vec::new();
-    {
-        let mut compressor = CompressorWriter::new(&mut compressed_data, 4096, 11, 22);
-        compressor.write_all(input)?;
-    }
-    Ok(compressed_data)
+    let compressed = compress_prepend_size(input);
+    Ok(compressed)
 }
 
 // Function to decompress data using Brotli
-pub fn decompress_data(input: &[u8]) -> Result<Vec<u8>, io::Error> {
-    let mut decompressed_data = Vec::new();
-    {
-        let mut decompressor = DecompressorWriter::new(&mut decompressed_data, 4096);
-        decompressor.write_all(input)?;
-    }
-    Ok(decompressed_data)
+pub fn decompress_data(compressed: &[u8]) -> Result<Vec<u8>, io::Error> {
+    let uncompressed = decompress_size_prepended(&compressed).unwrap();
+    Ok(uncompressed)
 }
 
 #[derive(Clone)]
 pub enum EncryptionMethod {
     None,
-    XSalsa20Poly1305,
+    Aes128,
+    Xor,
 }
 
 impl EncryptionMethod {
@@ -44,8 +34,9 @@ impl EncryptionMethod {
 
 pub fn get_method(method: &str) -> EncryptionMethod {
     match method {
-        "XSalsa20Poly1305" => EncryptionMethod::XSalsa20Poly1305,
+        "Aes128" => EncryptionMethod::Aes128,
         "None" => EncryptionMethod::None,
+        "Xor" => EncryptionMethod::Xor,
         _ => EncryptionMethod::None,
     }
 }
@@ -56,8 +47,11 @@ impl fmt::Display for EncryptionMethod {
             EncryptionMethod::None => {
                 write!(f, "None")
             }
-            EncryptionMethod::XSalsa20Poly1305 => {
-                write!(f, "XSalsa20Poly1305")
+            EncryptionMethod::Aes128 => {
+                write!(f, "Aes128")
+            }
+            EncryptionMethod::Xor => {
+                write!(f, "Xor")
             }
         }
     }
@@ -66,9 +60,20 @@ impl fmt::Display for EncryptionMethod {
 pub fn generate_key(method: &EncryptionMethod) -> Vec<u8> {
     match method {
         EncryptionMethod::None => "None".into(),
-        EncryptionMethod::XSalsa20Poly1305 => {
-            let key = XSalsa20Poly1305::generate_key(&mut OsRng);
-            key.to_vec()
+        EncryptionMethod::Aes128 => {
+            let mut rng = rand::thread_rng();
+            (0..32).map(|_| {
+                let n: u8 = rng.gen_range(33..127);
+                n
+            }).collect::<Vec<u8>>()
+        }
+        EncryptionMethod::Xor => {
+            let mut rng = rand::thread_rng();
+            let key_len = rng.gen_range(1..32);
+            (0..key_len).map(|_| {
+                let n: u8 = rng.gen_range(1..255);
+                n
+            }).collect::<Vec<u8>>()
         }
     }
 }
@@ -76,17 +81,18 @@ pub fn generate_key(method: &EncryptionMethod) -> Vec<u8> {
 pub fn encrypt(method: &EncryptionMethod, key: &[u8], data: &[u8]) -> anyhow::Result<Vec<u8>> {
     match method {
         EncryptionMethod::None => Ok(data.to_vec()),
-        EncryptionMethod::XSalsa20Poly1305 => {
-            const NONCE: &[u8; 24] = &hex!("69696ee955b62b73cd622da855fc73d68219e0036b7a0b37");
-
-            let key = GenericArray::from_slice(key);
-            let nonce = GenericArray::from_slice(NONCE); // 24-bytes; unique
-            let cipher = XSalsa20Poly1305::new(key);
-            let ciphertext = cipher.encrypt(nonce, data);
+        EncryptionMethod::Aes128 => {
+            let ciphertext = simplestcrypt::encrypt_and_serialize(key, data);
             match ciphertext {
                 Ok(data) => Ok(data),
-                Err(err) => Err(anyhow!(err.to_string())),
+                Err(err) => Err(anyhow!("encrypt_and_serialize error: {:?}", err)),
             }
+        }
+        EncryptionMethod::Xor => {
+            if key.is_empty() {
+                return Ok(data.to_vec());
+            }
+            Ok(xor_encrypt_decrypt(data, key))
         }
     }
 }
@@ -94,17 +100,25 @@ pub fn encrypt(method: &EncryptionMethod, key: &[u8], data: &[u8]) -> anyhow::Re
 pub fn decrypt(method: &EncryptionMethod, key: &[u8], data: &[u8]) -> anyhow::Result<Vec<u8>> {
     match method {
         EncryptionMethod::None => Ok(data.to_vec()),
-        EncryptionMethod::XSalsa20Poly1305 => {
-            const NONCE: &[u8; 24] = &hex!("69696ee955b62b73cd622da855fc73d68219e0036b7a0b37");
-
-            let key = GenericArray::from_slice(key);
-            let nonce = GenericArray::from_slice(NONCE); // 24-bytes; unique
-            let cipher = XSalsa20Poly1305::new(key);
-            let ciphertext = cipher.decrypt(nonce, data);
-            match ciphertext {
+        EncryptionMethod::Aes128 => {
+            let plaintext = simplestcrypt::deserialize_and_decrypt(key, data);
+            match plaintext {
                 Ok(data) => Ok(data),
-                Err(err) => Err(anyhow!(err.to_string())),
+                Err(err) => Err(anyhow!("deserialize_and_decrypt error: {:?}", err)),
             }
         }
+        EncryptionMethod::Xor => {
+            if key.is_empty() {
+                return Ok(data.to_vec());
+            }
+            Ok(xor_encrypt_decrypt(data, key))
+        }
     }
+}
+
+fn xor_encrypt_decrypt(data: &[u8], key: &[u8]) -> Vec<u8> {
+    data.iter()
+        .zip(key.iter().cycle())
+        .map(|(&data_byte, &key_byte)| data_byte ^ key_byte)
+        .collect()
 }
