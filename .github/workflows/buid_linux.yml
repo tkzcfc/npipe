@@ -26,7 +26,11 @@ jobs:
     - name: Install Rust
       uses: actions-rs/toolchain@v1
       with:
-        toolchain: stable
+        # stable: 使用稳定版本的Rust。
+        # beta: 使用测试版本的Rust。
+        # nightly: 使用最新的夜间版本的Rust。
+        # 具体版本号: 如1.56.0，指定特定的Rust版本。
+        toolchain: 1.80.0
         target: x86_64-unknown-linux-musl
 
     - name: Build
