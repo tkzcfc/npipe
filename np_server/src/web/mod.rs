@@ -261,7 +261,7 @@ async fn update_player(
     if !is_valid_username(&req.username) || !is_valid_password(&req.password) {
         return Ok(HttpResponse::Ok().json(proto::GeneralResponse {
             code: -1,
-            msg: "Bad parameter".into(),
+            msg: "usernames may not exceed 30 characters, and passwords may not exceed 15 characters.".into(),
         }));
     }
 

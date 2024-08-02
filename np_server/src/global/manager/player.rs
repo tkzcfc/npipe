@@ -96,7 +96,7 @@ impl PlayerManager {
     ) -> anyhow::Result<(i32, String)> {
         // 参数长度越界检查
         if !is_valid_username(username) || !is_valid_password(password) {
-            return Ok((-1, "Bad parameter".into()));
+            return Ok((-1, "usernames may not exceed 30 characters, and passwords may not exceed 15 characters.".into()));
         }
 
         // 执行查询以检查用户名是否存在
@@ -106,7 +106,7 @@ impl PlayerManager {
             .await?
             .is_some()
         {
-            return Ok((-2, "User already exists".into()));
+            return Ok((-2, "user already exists".into()));
         }
 
         let mut rng = StdRng::from_entropy();
@@ -115,7 +115,7 @@ impl PlayerManager {
             count += 1;
             // 循环次数过多
             if count > 10000 {
-                return Ok((-3, "Too many cycles".into()));
+                return Ok((-3, "too many cycles".into()));
             }
 
             // 随机新的玩家id
@@ -142,7 +142,7 @@ impl PlayerManager {
         let user = User::find_by_id(data.id)
             .one(GLOBAL_DB_POOL.get().unwrap())
             .await?;
-        anyhow::ensure!(user.is_some(), "Can't find user: {}", data.id);
+        anyhow::ensure!(user.is_some(), "can't find user: {}", data.id);
 
         let mut user: user::ActiveModel = user.unwrap().into();
         user.password = Set(data.username.to_owned());

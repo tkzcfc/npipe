@@ -31,20 +31,7 @@ impl TunnelManager {
 
     /// 增加通道
     pub async fn add_tunnel(&mut self, mut tunnel: tunnel::Model) -> anyhow::Result<()> {
-        if !is_valid_tunnel_source_address(&tunnel.source)
-            || !is_valid_tunnel_endpoint_address(&tunnel.endpoint)
-        {
-            return Err(anyhow!("Address format error"));
-        }
-
-        // 端口冲突检测
-        if self.port_conflict_detection(
-            tunnel.sender,
-            get_tunnel_address_port(&tunnel.source),
-            None,
-        ) {
-            return Err(anyhow!("Port Conflict"));
-        }
+        self.tunnel_detection(&tunnel).await?;
 
         let new_tunnel = tunnel::ActiveModel {
             id: Default::default(),
@@ -113,20 +100,7 @@ impl TunnelManager {
 
     /// 更新通道
     pub async fn update_tunnel(&mut self, tunnel: tunnel::Model) -> anyhow::Result<()> {
-        // 地址合法性检测
-        if !is_valid_tunnel_source_address(&tunnel.source)
-            || !is_valid_tunnel_endpoint_address(&tunnel.endpoint)
-        {
-            return Err(anyhow!("Address format error"));
-        }
-        // 端口冲突检测
-        if self.port_conflict_detection(
-            tunnel.sender,
-            get_tunnel_address_port(&tunnel.source),
-            Some(tunnel.id),
-        ) {
-            return Err(anyhow!("Port Conflict"));
-        }
+        self.tunnel_detection(&tunnel).await?;
 
         if let Some(index) = self.tunnels.iter().position(|it| it.id == tunnel.id) {
             let db_tunnel = Tunnel::find_by_id(tunnel.id)
@@ -175,6 +149,7 @@ impl TunnelManager {
         Err(anyhow!(format!("Unable to find tunnel_id: {}", tunnel.id)))
     }
 
+    /// 广播通道修改通知
     async fn broadcast_tunnel_info(player_id: PlayerId, tunnel: &tunnel::Model, is_delete: bool) {
         if player_id != 0 {
             if let Some(player) = GLOBAL_MANAGER
@@ -197,17 +172,57 @@ impl TunnelManager {
         }
     }
 
+    async fn tunnel_detection(&self, tunnel: &tunnel::Model) -> anyhow::Result<()> {
+        // 地址合法性检测
+        if !is_valid_tunnel_source_address(&tunnel.source) {
+            return Err(anyhow!("source address format error"));
+        }
+
+        if !is_valid_tunnel_endpoint_address(&tunnel.endpoint) {
+            return Err(anyhow!("endpoint address format error"));
+        }
+
+        // 玩家id检测
+        self.player_id_detection(tunnel.sender).await?;
+        self.player_id_detection(tunnel.receiver).await?;
+
+        // 端口冲突检测
+        if self.port_conflict_detection(
+            tunnel.receiver,
+            get_tunnel_address_port(&tunnel.source),
+            Some(tunnel.id),
+        ) {
+            return Err(anyhow!("port already in use"));
+        }
+        Ok(())
+    }
+
+    /// 检测玩家id是否合法
+    async fn player_id_detection(&self, player_id: PlayerId) -> anyhow::Result<()> {
+        if player_id != 0
+            && !GLOBAL_MANAGER
+                .player_manager
+                .read()
+                .await
+                .contain(player_id)
+        {
+            Err(anyhow!("player id {} does not exist", player_id))
+        } else {
+            Ok(())
+        }
+    }
+
     /// 检测端口是否冲突
     fn port_conflict_detection(
         &self,
-        sender: u32,
+        receiver: u32,
         port: Option<u16>,
         tunnel_id: Option<u32>,
     ) -> bool {
         self.tunnels
             .iter()
             .position(|x| {
-                x.sender == sender
+                x.receiver == receiver
                     && tunnel_id != Some(x.id)
                     && get_tunnel_address_port(&x.source) == port
             })

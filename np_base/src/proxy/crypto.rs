@@ -1,8 +1,7 @@
 use anyhow::anyhow;
+use lz4_flex::block::{compress_prepend_size, decompress_size_prepended};
 use rand::Rng;
 use std::{fmt, io};
-use lz4_flex::block::{compress_prepend_size, decompress_size_prepended};
-
 
 // Function to compress data using Brotli
 pub fn compress_data(input: &[u8]) -> Result<Vec<u8>, io::Error> {
@@ -62,18 +61,22 @@ pub fn generate_key(method: &EncryptionMethod) -> Vec<u8> {
         EncryptionMethod::None => "None".into(),
         EncryptionMethod::Aes128 => {
             let mut rng = rand::thread_rng();
-            (0..32).map(|_| {
-                let n: u8 = rng.gen_range(33..127);
-                n
-            }).collect::<Vec<u8>>()
+            (0..32)
+                .map(|_| {
+                    let n: u8 = rng.gen_range(33..127);
+                    n
+                })
+                .collect::<Vec<u8>>()
         }
         EncryptionMethod::Xor => {
             let mut rng = rand::thread_rng();
             let key_len = rng.gen_range(1..32);
-            (0..key_len).map(|_| {
-                let n: u8 = rng.gen_range(1..255);
-                n
-            }).collect::<Vec<u8>>()
+            (0..key_len)
+                .map(|_| {
+                    let n: u8 = rng.gen_range(1..255);
+                    n
+                })
+                .collect::<Vec<u8>>()
         }
     }
 }
