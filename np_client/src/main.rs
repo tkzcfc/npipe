@@ -40,7 +40,7 @@ async fn main() -> anyhow::Result<()> {
     let ops = Opts::parse();
 
     if ops.backtrace {
-        env::set_var("RUST_BACKTRACE", "1")
+        unsafe { env::set_var("RUST_BACKTRACE", "1") }
     }
 
     // 日志初始化
