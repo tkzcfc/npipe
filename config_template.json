@@ -1,0 +1,8 @@
+{
+	"database_url": "sqlite://data.db?mode=rwc",
+	"listen_addr": "0.0.0.0:8118",
+	"web_base_dir": "./dist",
+	"web_addr": "0.0.0.0:8120",
+	"web_username": "admin",
+	"web_password": "admin@1234"
+}
