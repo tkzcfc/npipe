@@ -59,7 +59,7 @@ Usage: np_client.exe [OPTIONS] --server <SERVER> --username <USERNAME> --passwor
    sender配置 1234（如1234是用户xxx的id）
    receiver配置 0
    
-启动 np_client
+启动 np_client登录用户xxx
 在np_client所在的电脑上访问 127.0.0.1:3000 即代表从服务端访问 www.baidu.com:80
 
 ```
