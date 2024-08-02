@@ -19,6 +19,11 @@ const ANNOTATION_PREFIX: &'static str = "//@build_automatically_generate_message
 
 // https://docs.rs/prost-build/latest/prost_build/
 fn main() -> io::Result<()> {
+    let profile = env::var("PROFILE").unwrap();
+    if profile == "release" {
+        return Ok(());
+    }
+
     // github访问太慢了,windows直接用下载好的
     if cfg!(windows) {
         set_var("PROTOC", "bin/protoc.exe");
