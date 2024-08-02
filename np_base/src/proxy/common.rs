@@ -60,7 +60,7 @@ impl SessionCommonInfo {
             data = crypto::encrypt(
                 &self.encryption_method,
                 self.encryption_key.as_slice(),
-                data.as_slice(),
+                data,
             )?;
         }
 
@@ -80,7 +80,7 @@ impl SessionCommonInfo {
             data = crypto::decrypt(
                 &self.encryption_method,
                 self.encryption_key.as_slice(),
-                data.as_slice(),
+                data,
             )?;
         }
         if self.is_compressed {

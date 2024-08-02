@@ -78,11 +78,11 @@ pub fn generate_key(method: &EncryptionMethod) -> Vec<u8> {
     }
 }
 
-pub fn encrypt(method: &EncryptionMethod, key: &[u8], data: &[u8]) -> anyhow::Result<Vec<u8>> {
+pub fn encrypt(method: &EncryptionMethod, key: &[u8], data: Vec<u8>) -> anyhow::Result<Vec<u8>> {
     match method {
-        EncryptionMethod::None => Ok(data.to_vec()),
+        EncryptionMethod::None => Ok(data),
         EncryptionMethod::Aes128 => {
-            let ciphertext = simplestcrypt::encrypt_and_serialize(key, data);
+            let ciphertext = simplestcrypt::encrypt_and_serialize(key, data.as_slice());
             match ciphertext {
                 Ok(data) => Ok(data),
                 Err(err) => Err(anyhow!("encrypt_and_serialize error: {:?}", err)),
@@ -97,11 +97,11 @@ pub fn encrypt(method: &EncryptionMethod, key: &[u8], data: &[u8]) -> anyhow::Re
     }
 }
 
-pub fn decrypt(method: &EncryptionMethod, key: &[u8], data: &[u8]) -> anyhow::Result<Vec<u8>> {
+pub fn decrypt(method: &EncryptionMethod, key: &[u8], data: Vec<u8>) -> anyhow::Result<Vec<u8>> {
     match method {
         EncryptionMethod::None => Ok(data.to_vec()),
         EncryptionMethod::Aes128 => {
-            let plaintext = simplestcrypt::deserialize_and_decrypt(key, data);
+            let plaintext = simplestcrypt::deserialize_and_decrypt(key, data.as_slice());
             match plaintext {
                 Ok(data) => Ok(data),
                 Err(err) => Err(anyhow!("deserialize_and_decrypt error: {:?}", err)),
@@ -116,9 +116,14 @@ pub fn decrypt(method: &EncryptionMethod, key: &[u8], data: &[u8]) -> anyhow::Re
     }
 }
 
-fn xor_encrypt_decrypt(data: &[u8], key: &[u8]) -> Vec<u8> {
-    data.iter()
-        .zip(key.iter().cycle())
-        .map(|(&data_byte, &key_byte)| data_byte ^ key_byte)
-        .collect()
+fn xor_encrypt_decrypt(mut data: Vec<u8>, key: &[u8]) -> Vec<u8> {
+    for (data_byte, key_byte) in data.iter_mut().zip(key.iter().cycle()) {
+        *data_byte ^= *key_byte;
+    }
+    data
+
+    // data.iter()
+    //     .zip(key.iter().cycle())
+    //     .map(|(&data_byte, &key_byte)| data_byte ^ key_byte)
+    //     .collect()
 }

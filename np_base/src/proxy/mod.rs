@@ -98,7 +98,7 @@ mod tests {
         let key = crypto::generate_key(&method);
         println!("key:{:?}", key);
 
-        let cipher_text = crypto::encrypt(&method, key.as_slice(), raw_str.as_bytes()).unwrap();
+        let cipher_text = crypto::encrypt(&method, key.as_slice(), raw_str.as_bytes().to_vec()).unwrap();
         println!("cipher_text:{:?}", cipher_text);
 
         let compressed_data = crypto::compress_data(cipher_text.as_slice()).unwrap();
@@ -110,7 +110,7 @@ mod tests {
         let decompressed_data = crypto::decompress_data(compressed_data.as_slice()).unwrap();
 
         let plain_text =
-            crypto::decrypt(&method, key.as_slice(), decompressed_data.as_slice()).unwrap();
+            crypto::decrypt(&method, key.as_slice(), decompressed_data.as_slice().to_vec()).unwrap();
         println!(
             "plain_text len:{} data: {}",
             plain_text.len(),
@@ -122,7 +122,7 @@ mod tests {
         let key = crypto::generate_key(&method);
         println!("key:{:?}", key);
 
-        let cipher_text = crypto::encrypt(&method, key.as_slice(), raw_str.as_bytes()).unwrap();
+        let cipher_text = crypto::encrypt(&method, key.as_slice(), raw_str.as_bytes().to_vec()).unwrap();
         println!("cipher_text:{:?}", cipher_text);
 
         let compressed_data = crypto::compress_data(cipher_text.as_slice()).unwrap();
@@ -134,7 +134,7 @@ mod tests {
         let decompressed_data = crypto::decompress_data(compressed_data.as_slice()).unwrap();
 
         let plain_text =
-            crypto::decrypt(&method, key.as_slice(), decompressed_data.as_slice()).unwrap();
+            crypto::decrypt(&method, key.as_slice(), decompressed_data.as_slice().to_vec()).unwrap();
         println!(
             "plain_text len:{} data: {}",
             plain_text.len(),
