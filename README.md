@@ -2,25 +2,41 @@
 
 
 
-
-
-
-
-### .env 文件内容
-
-安装sqlx-cli
-cargo install sqlx-cli --features mysql
-
-更新离线模式缓存
-cargo sqlx prepare --database-url mysql://npipe:np%40123@192.168.175.129:5306/npipe
+## 客户端
 
 ```
+Usage: np_client.exe [OPTIONS] --server <SERVER> --username <USERNAME> --password <PASSWORD>
+```
 
-DATABASE_URL=mysql://npipe:np%40123@192.168.175.129:5306/npipe
+------
 
 
-离线模式
-SQLX_OFFLINE=true
+
+## 服务端
+
+### 服务端配置文件
+
+| 名称         | 含义            | 示例                                                         |
+| ------------ | --------------- | ------------------------------------------------------------ |
+| database_url | 数据库地址      | sqlite格式 sqlite://data.db?mode=rwc<br />mysql格式 mysql://username:password@server:port/dbname, 如:mysql://admin:password@127.0.0.1:3306/npipe |
+| listen_addr  | 服务端监听地址  | 0.0.0.0:8118                                                 |
+| web_base_dir | web后台管理路径 | ./dist                                                       |
+| web_addr     | web管理监听地址 | 0.0.0.0:8120                                                 |
+| web_username | web界面管理账号 | admin                                                        |
+| web_password | web界面管理密码 | admin@1234                                                   |
+
+### 使用方法
 
 ```
+1. 启动服务器 ./np_server
+
+2. 访问web管理后台 127.0.0.1:8120，添加用户和隧道
+```
+
+
+
+
+
+
+
 
