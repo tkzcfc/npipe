@@ -26,10 +26,6 @@ jobs:
           #   target: x86_64-unknown-linux-musl
           #   use-cross: false
 
-          # - os: ubuntu-latest
-          #   target: arm-unknown-linux-gnueabihf
-          #   use-cross: true
-
           # - os: windows-latest
           #   target: x86_64-pc-windows-gnu
           #   use-cross: false
@@ -38,13 +34,17 @@ jobs:
           #   target: x86_64-pc-windows-msvc
           #   use-cross: false
 
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            use-cross: false
+          # - os: macos-latest
+          #   target: x86_64-apple-darwin
+          #   use-cross: false
 
           # - os: macos-latest
           #   target: aarch64-apple-darwin
           #   use-cross: false
+
+          - os: ubuntu-latest
+            target: arm-unknown-linux-gnueabihf
+            use-cross: true
 
           # - os: ubuntu-latest
           #   target: aarch64-unknown-linux-musl
@@ -64,7 +64,7 @@ jobs:
       shell: bash
       if: env.BIN_VERSION == ''
       run: |
-        echo "BIN_VERSION=$GITHUB_REF" >> $GITHUB_ENV
+        echo "BIN_VERSION=$GITHUB_REF_NAME" >> $GITHUB_ENV
         echo "version is: ${{ env.BIN_VERSION }}"
 
     - name: Install dependencies
@@ -131,6 +131,8 @@ jobs:
         unzip dist.zip
         rm ./dist.zip
         cd ../
+
+        cp config_template.json "$staging/config.json"
 
         if [ "${{ matrix.os }}" = "windows-latest" ]; then
           cp "target/${{ matrix.target }}/release/np_client.exe" "$staging/"
