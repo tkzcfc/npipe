@@ -1,0 +1,153 @@
+name: build_for_linux
+
+on:
+  push:
+    # Sequence of patterns matched against refs/tags
+    tags:
+      - "v*" # Push events to matching v*, i.e. v1.0, v20.15.10
+
+  workflow_dispatch:
+
+# env:
+#   CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          # - os: ubuntu-latest
+          #   target: x86_64-unknown-linux-gnu
+          #   use-cross: false
+
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            use-cross: false
+
+          # - os: windows-latest
+          #   target: x86_64-pc-windows-gnu
+          #   use-cross: false
+
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            use-cross: false
+
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            use-cross: false
+
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            use-cross: false
+
+          # - os: ubuntu-latest
+          #   target: arm-unknown-linux-gnueabihf
+          #   use-cross: true
+
+          # - os: ubuntu-latest
+          #   target: aarch64-unknown-linux-musl
+          #   use-cross: true
+
+          # - os: ubuntu-latest
+          #   target: armv7-unknown-linux-gnueabihf
+          #   use-cross: true
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+
+    - name: Set the version
+      shell: bash
+      if: env.BIN_VERSION == ''
+      run: |
+        echo "BIN_VERSION=$GITHUB_REF_NAME" >> $GITHUB_ENV
+        echo "version is: ${{ env.BIN_VERSION }}"
+
+    - name: Install dependencies
+      if: matrix.target == 'x86_64-unknown-linux-musl'
+      run: sudo apt update && sudo apt install musl-tools -y
+      
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        # stable: 使用稳定版本的Rust。
+        # beta: 使用测试版本的Rust。
+        # nightly: 使用最新的夜间版本的Rust。
+        # 具体版本号: 如1.56.0，指定特定的Rust版本。
+        toolchain: 1.80.0
+        target: ${{ matrix.target }}
+
+    # - name: Add target
+    #   run: rustup target add ${{ matrix.target }}
+      
+    - name: Setup native compilation
+      if: ${{ matrix.use-cross == false }}
+      shell: bash
+      run: |
+        echo "CARGO=cargo" >> $GITHUB_ENV
+
+    - name: Setup cross compilation
+      if: ${{ matrix.use-cross == true }}
+      shell: bash
+      run: |
+        dir="$RUNNER_TEMP/cross-download"
+        mkdir "$dir"
+        echo "$dir" >> $GITHUB_PATH
+        cd "$dir"
+        curl -LO "https://github.com/cross-rs/cross/releases/download/v0.2.5/cross-x86_64-unknown-linux-musl.tar.gz"
+        tar xf cross-x86_64-unknown-linux-musl.tar.gz
+        echo "CARGO=cross" >> $GITHUB_ENV
+        echo "TARGET_DIR=./target/${{ matrix.target }}" >> $GITHUB_ENV
+
+    - name: Build
+      shell: bash
+      run: |
+        $CARGO --version
+        $CARGO build --bin np_client --release --locked --target ${{ matrix.target }}
+        $CARGO build --bin np_server --release --locked --target ${{ matrix.target }}
+
+    # - name: Build
+    #   id: build
+    #   env:
+    #     CC: musl-gcc
+    #     RUSTFLAGS: "-C target-feature=+crt-static -C relocation-model=static"
+    #     CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+    #   run: |
+    #     cargo build --bin np_client --release --target ${{ matrix.target }}
+    #     cargo build --bin np_server --release --target ${{ matrix.target }}
+      
+
+    - name: Setup archive
+      shell: bash
+      run: |
+        staging="np-${{ env.BIN_VERSION }}-${{ matrix.target }}"
+        mkdir -p "$staging"
+        cd "$staging"
+        curl -LO "https://github.com/tkzcfc/npipe_web/releases/download/v1.0.0/dist.zip"
+        unzip dist.zip
+        rm ./dist.zip
+        cd ../
+
+        cp config_template.json "$staging/config.json"
+
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          cp "target/${{ matrix.target }}/release/np_client.exe" "$staging/"
+          cp "target/${{ matrix.target }}/release/np_server.exe" "$staging/"
+          7z a "$staging.zip" "$staging"
+          echo "ASSET=$staging.zip" >> $GITHUB_ENV
+        else
+          cp "target/${{ matrix.target }}/release/np_client" "$staging/"
+          cp "target/${{ matrix.target }}/release/np_server" "$staging/"
+          tar czf "$staging.tar.gz" "$staging"
+          echo "ASSET=$staging.tar.gz" >> $GITHUB_ENV
+        fi
+
+    - name: Upload binaries to release
+      uses: softprops/action-gh-release@v2
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: ${{ env.ASSET }}
