@@ -34,13 +34,13 @@ jobs:
           #   target: x86_64-pc-windows-gnu
           #   use-cross: false
 
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            use-cross: false
+          # - os: windows-latest
+          #   target: x86_64-pc-windows-msvc
+          #   use-cross: false
 
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            use-cross: false
+          # - os: macos-latest
+          #   target: x86_64-apple-darwin
+          #   use-cross: false
 
           # - os: macos-latest
           #   target: aarch64-apple-darwin
@@ -67,8 +67,9 @@ jobs:
         echo "BIN_VERSION=$GITHUB_REF_NAME" >> $GITHUB_ENV
         echo "version is: ${{ env.BIN_VERSION }}"
 
-    # - name: Install dependencies
-    #   run: sudo apt update && sudo apt install musl-tools -y
+    - name: Install dependencies
+      if: matrix.target == 'x86_64-unknown-linux-musl'
+      run: sudo apt update && sudo apt install musl-tools -y
       
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
@@ -80,8 +81,8 @@ jobs:
         toolchain: 1.80.0
         target: ${{ matrix.target }}
 
-    # - name: Add target
-    #   run: rustup target add ${{ matrix.target }}
+    - name: Add target
+      run: rustup target add ${{ matrix.target }}
       
     - name: Setup native compilation
       if: ${{ matrix.use-cross == false }}
