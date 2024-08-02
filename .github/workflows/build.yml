@@ -124,7 +124,7 @@ jobs:
     - name: Setup archive
       shell: bash
       run: |
-        staging="${{ env.BIN_VERSION }}-${{ matrix.target }}"
+        staging="np-${{ env.BIN_VERSION }}-${{ matrix.target }}"
         mkdir -p "$staging"
         cd "$staging"
         curl -LO "https://github.com/tkzcfc/npipe_web/releases/download/v1.0.0/dist.zip"
