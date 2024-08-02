@@ -8,8 +8,8 @@ on:
 
   workflow_dispatch:
 
-env:
-  CARGO_TERM_COLOR: always
+# env:
+#   CARGO_TERM_COLOR: always
 
 jobs:
   build:
@@ -30,17 +30,17 @@ jobs:
           #   target: arm-unknown-linux-gnueabihf
           #   use-cross: true
 
-          - os: windows-latest
-            target: x86_64-pc-windows-gnu
-            use-cross: false
+          # - os: windows-latest
+          #   target: x86_64-pc-windows-gnu
+          #   use-cross: false
 
           # - os: windows-latest
           #   target: x86_64-pc-windows-msvc
           #   use-cross: false
 
-          # - os: macos-latest
-          #   target: x86_64-apple-darwin
-          #   use-cross: false
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            use-cross: false
 
           # - os: macos-latest
           #   target: aarch64-apple-darwin
@@ -64,7 +64,7 @@ jobs:
       shell: bash
       if: env.BIN_VERSION == ''
       run: |
-        echo "BIN_VERSION=$GITHUB_REF_NAME" >> $GITHUB_ENV
+        echo "BIN_VERSION=$GITHUB_REF" >> $GITHUB_ENV
         echo "version is: ${{ env.BIN_VERSION }}"
 
     - name: Install dependencies
