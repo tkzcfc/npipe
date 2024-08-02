@@ -7,7 +7,7 @@ use tokio::sync::mpsc::{Receiver, UnboundedSender};
 use tokio::sync::RwLock;
 use tokio::task::yield_now;
 
-const READ_BUF_MAX_LEN: usize = 1024 * 1024 * 2;
+const READ_BUF_MAX_LEN: usize = 1024 * 1024 * 1;
 
 // 输入通道发送端类型
 pub type InputSenderType = UnboundedSender<WriterMessage>;
