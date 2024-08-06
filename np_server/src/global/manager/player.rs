@@ -11,6 +11,7 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::global::manager::GLOBAL_MANAGER;
 use tokio::sync::RwLock;
 
 pub struct PlayerDbData {
@@ -64,6 +65,30 @@ impl PlayerManager {
 
     /// 删除玩家
     pub async fn delete_player(&mut self, player_id: u32) -> anyhow::Result<()> {
+        let player_tunnels: Vec<_> = GLOBAL_MANAGER
+            .tunnel_manager
+            .read()
+            .await
+            .tunnels
+            .iter()
+            .filter_map(|x| {
+                if x.sender == player_id || x.receiver == player_id {
+                    Some(x.id)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for tunnel_id in player_tunnels {
+            GLOBAL_MANAGER
+                .tunnel_manager
+                .write()
+                .await
+                .delete_tunnel(tunnel_id)
+                .await?;
+        }
+
         let db = GLOBAL_DB_POOL.get().unwrap();
         let rows_affected = User::delete_by_id(player_id).exec(db).await?.rows_affected;
         anyhow::ensure!(
