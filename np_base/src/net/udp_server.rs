@@ -3,7 +3,6 @@ use crate::net::udp_session;
 use log::{error, info, trace};
 use std::collections::HashMap;
 use std::future::Future;
-use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -11,20 +10,6 @@ use tokio::net::UdpSocket;
 use tokio::select;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::{broadcast, mpsc, Mutex};
-
-pub async fn bind(addr: &str) -> io::Result<UdpSocket> {
-    let addr = addr.parse::<SocketAddr>();
-    match addr {
-        Ok(addr) => {
-            info!("UDP Server start listening: {}", addr);
-            UdpSocket::bind(addr).await
-        }
-        Err(parse_error) => Err(std::io::Error::new(
-            io::ErrorKind::InvalidInput,
-            parse_error.to_string(),
-        )),
-    }
-}
 
 pub async fn run_server(
     socket: UdpSocket,

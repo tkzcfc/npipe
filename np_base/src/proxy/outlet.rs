@@ -373,14 +373,6 @@ impl SessionDelegate for OutletSession {
         Ok(())
     }
 
-    fn on_try_extract_frame(&self, buffer: &mut BytesMut) -> anyhow::Result<Option<Vec<u8>>> {
-        // 此处使用 buffer.split().to_vec(); 而不是 buffer.to_vec();
-        // 因为split().to_vec()更高效，少了一次内存分配和拷贝
-        // 并且在 on_try_extract_frame 函数中只能使用消耗 buffer 数据的函数，否则框架会一直循环调用 on_try_extract_frame 来驱动处理消息
-        let frame = buffer.split().to_vec();
-        Ok(Some(frame))
-    }
-
     async fn on_recv_frame(&mut self, mut frame: Vec<u8>) -> anyhow::Result<()> {
         frame = self.common_data.encode_data_and_limiting(frame).await?;
         self.output

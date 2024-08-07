@@ -6,22 +6,21 @@ use crate::proxy::{common, OutputFuncType, ProxyMessage};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use base64::prelude::*;
-use bytes::BytesMut;
 use log::{error, trace};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tokio::net::TcpStream;
+use tokio::net::{TcpStream, UdpSocket};
 use tokio::select;
 use tokio::sync::mpsc::{Sender, UnboundedReceiver, UnboundedSender};
 use tokio::sync::{mpsc, RwLock};
 use tokio::task::yield_now;
 
+#[derive(Clone)]
 pub enum InletProxyType {
     TCP,
     UDP,
-    // Not implemented
     SOCKS5,
 }
 
@@ -73,17 +72,13 @@ impl Inlet {
 
         self.input = Some(input_tx);
 
-        let is_tcp = match inlet_proxy_type {
-            InletProxyType::TCP => true,
-            InletProxyType::UDP => false,
-            InletProxyType::SOCKS5 => true,
-        };
         let session_info_map = self.session_info_map.clone();
         let output_tx_cloned = output_tx.clone();
+        let inlet_proxy_type_cloned = inlet_proxy_type.clone();
 
         let create_session_delegate_func = Box::new(move || -> Box<dyn SessionDelegate> {
             Box::new(InletSession::new(
-                is_tcp,
+                inlet_proxy_type.clone(),
                 output_addr.clone(),
                 session_info_map.clone(),
                 is_compressed,
@@ -97,8 +92,8 @@ impl Inlet {
         let is_running = self.is_running.clone();
         is_running.store(true, Ordering::Relaxed);
 
-        match inlet_proxy_type {
-            InletProxyType::TCP => {
+        match inlet_proxy_type_cloned {
+            InletProxyType::TCP | InletProxyType::SOCKS5 => {
                 let listener = tcp_server::bind(&listen_addr).await?;
 
                 tokio::spawn(async move {
@@ -118,7 +113,7 @@ impl Inlet {
                 });
             }
             InletProxyType::UDP => {
-                let socket = udp_server::bind(&listen_addr).await?;
+                let socket = UdpSocket::bind(&listen_addr).await?;
 
                 tokio::spawn(async move {
                     let server_task = udp_server::run_server(
@@ -134,10 +129,6 @@ impl Inlet {
 
                     is_running.store(false, Ordering::Relaxed);
                 });
-            }
-            InletProxyType::SOCKS5 => {
-                is_running.store(false, Ordering::Relaxed);
-                return Err(anyhow!("SOCKS5 (Not implemented)"));
             }
         };
 
@@ -249,7 +240,7 @@ impl Inlet {
 }
 
 struct InletSession {
-    is_tcp: bool,
+    inlet_proxy_type: InletProxyType,
     output_addr: String,
     session_info_map: SessionInfoMap,
     session_id: u32,
@@ -259,7 +250,7 @@ struct InletSession {
 
 impl InletSession {
     pub fn new(
-        is_tcp: bool,
+        inlet_proxy_type: InletProxyType,
         output_addr: String,
         session_info_map: SessionInfoMap,
         is_compressed: bool,
@@ -267,7 +258,7 @@ impl InletSession {
         output: Sender<ProxyMessage>,
     ) -> Self {
         Self {
-            is_tcp,
+            inlet_proxy_type,
             output_addr,
             session_info_map,
             session_id: 0,
@@ -295,17 +286,26 @@ impl SessionDelegate for InletSession {
                 common_info: self.common_data.clone(),
             },
         );
-        self.output
-            .send(ProxyMessage::I2oConnect(
-                session_id,
-                self.is_tcp,
-                self.common_data.is_compressed,
-                self.output_addr.clone(),
-                self.common_data.encryption_method.to_string(),
-                BASE64_STANDARD.encode(&self.common_data.encryption_key),
-                addr.to_string(),
-            ))
-            .await?;
+
+        let is_tcp = match &self.inlet_proxy_type {
+            InletProxyType::TCP => Some(true),
+            InletProxyType::UDP => Some(false),
+            InletProxyType::SOCKS5 => None,
+        };
+
+        if let Some(is_tcp) = is_tcp {
+            self.output
+                .send(ProxyMessage::I2oConnect(
+                    session_id,
+                    is_tcp,
+                    self.common_data.is_compressed,
+                    self.output_addr.clone(),
+                    self.common_data.encryption_method.to_string(),
+                    BASE64_STANDARD.encode(&self.common_data.encryption_key),
+                    addr.to_string(),
+                ))
+                .await?;
+        }
 
         Ok(())
     }
@@ -317,14 +317,6 @@ impl SessionDelegate for InletSession {
             .send(ProxyMessage::I2oDisconnect(self.session_id))
             .await?;
         Ok(())
-    }
-
-    fn on_try_extract_frame(&self, buffer: &mut BytesMut) -> anyhow::Result<Option<Vec<u8>>> {
-        // 此处使用 buffer.split().to_vec(); 而不是 buffer.to_vec();
-        // 因为split().to_vec()更高效，少了一次内存分配和拷贝
-        // 并且在 on_try_extract_frame 函数中只能使用消耗 buffer 数据的函数，否则框架会一直循环调用 on_try_extract_frame 来驱动处理消息
-        let frame = buffer.split().to_vec();
-        Ok(Some(frame))
     }
 
     async fn on_recv_frame(&mut self, mut frame: Vec<u8>) -> anyhow::Result<()> {
