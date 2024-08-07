@@ -4,9 +4,59 @@
 
 ## 客户端
 
+### Windows上将客户端注册为服务（必须在有管理员权限的控制台中执行）
+
 ```
-Usage: np_client.exe [OPTIONS] --server <SERVER> --username <USERNAME> --password <PASSWORD>
+Usage: np_client.exe install [OPTIONS] --server <SERVER> --username <USERNAME> --password <PASSWORD>
+
+Options:
+      --backtrace <BACKTRACE>
+          Print backtracking information [default: false] [possible values: true, false]
+  -s, --server <SERVER>
+          Server address
+  -u, --username <USERNAME>
+          username
+  -p, --password <PASSWORD>
+          password
+      --log-level <LOG_LEVEL>
+          Set log level  warn [default: info]
+      --base-log-level <BASE_LOG_LEVEL>
+          Set log level [default: error]
+
 ```
+
+### Windows上卸载服务
+
+````
+Usage: np_client.exe uninstall
+````
+
+### Windows上和其他平台以常规模式运行
+
+```
+
+Usage: np_client.exe run [OPTIONS] --server <SERVER> --username <USERNAME> --password <PASSWORD>
+
+Options:
+      --backtrace <BACKTRACE>
+          Print backtracking information [default: false] [possible values: true, false]
+  -s, --server <SERVER>
+          Server address
+  -u, --username <USERNAME>
+          username
+  -p, --password <PASSWORD>
+          password
+      --log-level <LOG_LEVEL>
+          Set log level  warn [default: info]
+      --base-log-level <BASE_LOG_LEVEL>
+          Set log level [default: error]
+  -h, --help
+          Print help
+```
+
+
+
+
 
 ------
 
