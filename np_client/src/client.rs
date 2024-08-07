@@ -21,7 +21,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::select;
 use tokio::sync::{Mutex, RwLock};
-use tokio::time::sleep;
+use tokio::time::{sleep, Instant};
 
 type WriterType = Arc<Mutex<WriteHalf<TcpStream>>>;
 
@@ -58,18 +58,29 @@ pub async fn run(common_args: &CommonArgs) -> anyhow::Result<()> {
     };
 
     client.send_login().await?;
+
+    let last_active_time = Arc::new(RwLock::new(Instant::now()));
+
     let result;
     select! {
-        r1= client.run(reader) => { result = r1 },
-        r2= ping_forever(writer) => { result = r2 },
+        r1= client.run(reader, last_active_time.clone()) => { result = r1 },
+        r2= ping_forever(writer, last_active_time.clone()) => { result = r2 },
     }
     client.sync_tunnels(&Vec::new()).await;
     result
 }
 
-async fn ping_forever(writer: WriterType) -> anyhow::Result<()> {
+async fn ping_forever(
+    writer: WriterType,
+    last_active_time: Arc<RwLock<Instant>>,
+) -> anyhow::Result<()> {
+    const PING_INTERVAL: Duration = Duration::from_secs(5);
     loop {
-        sleep(Duration::from_secs(5)).await;
+        sleep(Duration::from_secs(1)).await;
+
+        if last_active_time.read().await.elapsed() < PING_INTERVAL {
+            continue;
+        }
 
         // 获取当前时间
         let now = SystemTime::now();
@@ -92,10 +103,21 @@ async fn ping_forever(writer: WriterType) -> anyhow::Result<()> {
 }
 
 impl Client {
-    async fn run(&mut self, mut reader: ReadHalf<TcpStream>) -> anyhow::Result<()> {
+    async fn run(
+        &mut self,
+        mut reader: ReadHalf<TcpStream>,
+        last_active_time: Arc<RwLock<Instant>>,
+    ) -> anyhow::Result<()> {
+        const WRITE_TIMEOUT: Duration = Duration::from_secs(1);
         let mut buffer = BytesMut::with_capacity(65536);
         loop {
             let len = reader.read_buf(&mut buffer).await?;
+
+            if last_active_time.read().await.elapsed() >= WRITE_TIMEOUT {
+                let mut instant_write = last_active_time.write().await;
+                *instant_write = Instant::now();
+            }
+
             // len为0表示对端已经关闭连接。
             if len == 0 {
                 info!("Disconnect from the server");
