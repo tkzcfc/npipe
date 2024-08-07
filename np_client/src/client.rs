@@ -1,4 +1,4 @@
-use crate::Opts;
+use crate::CommonArgs;
 use anyhow::anyhow;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
@@ -35,13 +35,13 @@ struct Client {
     tunnels: HashMap<u32, Tunnel>,
 }
 
-pub async fn run(opts: &Opts) -> anyhow::Result<()> {
-    info!("Start connecting to server {}", opts.server);
-    let stream = TcpStream::connect(&opts.server).await?;
+pub async fn run(common_args: &CommonArgs) -> anyhow::Result<()> {
+    info!("Start connecting to server {}", common_args.server);
+    let stream = TcpStream::connect(&common_args.server).await?;
     let ka = TcpKeepalive::new().with_time(Duration::from_secs(30));
     let sf = SockRef::from(&stream);
     sf.set_tcp_keepalive(&ka)?;
-    info!("Successful connection with server {}", opts.server);
+    info!("Successful connection with server {}", common_args.server);
 
     let (reader, writer) = tokio::io::split(stream);
 
@@ -49,8 +49,8 @@ pub async fn run(opts: &Opts) -> anyhow::Result<()> {
 
     let mut client = Client {
         writer: writer.clone(),
-        username: opts.username.clone(),
-        password: opts.password.clone(),
+        username: common_args.username.clone(),
+        password: common_args.password.clone(),
         player_id: 0u32,
         outlets: Arc::new(RwLock::new(HashMap::new())),
         inlets: Arc::new(RwLock::new(HashMap::new())),

@@ -17,3 +17,8 @@ flexi_logger = { version = "0.27.3", features = ["async", "dont_minimize_extra_s
 bytes = "1.5.0"
 byteorder = "1.5.0"
 socket2 = "0.5"
+once_cell = "1.19"
+
+
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.7"

@@ -1,15 +1,19 @@
-use clap::Parser;
-use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming, WriteMode};
+use clap::{Args, Parser, Subcommand};
+use flexi_logger::{
+    Age, Cleanup, Criterion, Duplicate, FileSpec, Logger, LoggerHandle, Naming, WriteMode,
+};
 use log::error;
-use std::env;
+use once_cell::sync::OnceCell;
 use std::time::Duration;
+use std::{env, panic};
 use tokio::time::sleep;
 
 mod client;
+#[cfg(windows)]
+mod winservice;
 
-#[derive(Parser)]
-#[command(author, version, about, long_about = None)]
-pub struct Opts {
+#[derive(Args)]
+pub(crate) struct CommonArgs {
     /// Print backtracking information
     #[arg(long, default_value_t = false, action = clap::ArgAction::Set)]
     pub backtrace: bool,
@@ -35,18 +39,59 @@ pub struct Opts {
     pub base_log_level: String,
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let ops = Opts::parse();
+#[derive(Parser)]
+#[command(author = "https://github.com/tkzcfc/npipe", version, about, long_about = None)]
+pub struct Opts {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
 
-    if ops.backtrace {
+#[cfg(not(windows))]
+#[derive(Subcommand)]
+enum Commands {
+    /// Run
+    Run {
+        #[command(flatten)]
+        common_args: CommonArgs,
+    },
+}
+
+#[cfg(windows)]
+#[derive(Subcommand)]
+enum Commands {
+    /// Installs service
+    Install {
+        #[command(flatten)]
+        common_args: CommonArgs,
+    },
+    /// Uninstalls service
+    Uninstall,
+
+    /// Run as windows service
+    RunService {
+        #[command(flatten)]
+        common_args: CommonArgs,
+    },
+
+    /// Run
+    Run {
+        #[command(flatten)]
+        common_args: CommonArgs,
+    },
+}
+
+// 全局日志记录器
+static LOGGER: OnceCell<LoggerHandle> = OnceCell::new();
+
+pub(crate) fn init_logger(common_args: &CommonArgs) -> anyhow::Result<()> {
+    if common_args.backtrace {
         unsafe { env::set_var("RUST_BACKTRACE", "1") }
     }
 
     // 日志初始化
-    let _logger = Logger::try_with_str(format!(
+    let logger = Logger::try_with_str(format!(
         "{}, mio=error, np_base={}",
-        ops.log_level, ops.base_log_level
+        common_args.log_level, common_args.base_log_level
     ))?
     .log_to_file(
         FileSpec::default()
@@ -63,15 +108,57 @@ async fn main() -> anyhow::Result<()> {
         Cleanup::KeepLogFiles(30),
     )
     .print_message()
-    .write_mode(WriteMode::Async)
-    .start()?;
+    .write_mode(WriteMode::Async);
 
+    if LOGGER.set(logger.start()?).is_err() {
+        panic!("set logger error");
+    }
+
+    panic::set_hook(Box::new(|panic_info| {
+        error!("Panic occurred: {:?}", panic_info);
+    }));
+
+    Ok(())
+}
+
+pub(crate) async fn run_with_args(common_args: CommonArgs) -> anyhow::Result<()> {
     loop {
-        if let Err(err) = client::run(&ops).await {
+        if let Err(err) = client::run(&common_args).await {
             error!("{err}");
             sleep(Duration::from_secs(5)).await;
         } else {
             sleep(Duration::from_millis(100)).await;
+        }
+    }
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let ops = Opts::parse();
+
+    #[cfg(windows)]
+    {
+        match ops.command {
+            Some(Commands::Install { common_args }) => {
+                return winservice::install_service(common_args);
+            }
+            Some(Commands::Uninstall) => {
+                return winservice::uninstall_service();
+            }
+            Some(Commands::RunService { common_args }) => {
+                return winservice::run_server_as_service(common_args);
+            }
+            _ => {}
+        }
+    }
+
+    match ops.command {
+        Some(Commands::Run { common_args }) => {
+            init_logger(&common_args)?;
+            return run_with_args(common_args).await;
+        }
+        _ => {
+            panic!("unknown command")
         }
     }
 }
