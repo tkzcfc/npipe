@@ -6,6 +6,7 @@ use crate::player::Player;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use byteorder::{BigEndian, ByteOrder};
+use bytes::BytesMut;
 use log::{debug, error, trace};
 use np_base::net::session_delegate::SessionDelegate;
 use np_base::net::WriterMessage;
@@ -13,7 +14,6 @@ use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size
 use np_proto::{generic, message_map};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use bytes::BytesMut;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
@@ -130,7 +130,7 @@ impl SessionDelegate for Peer {
 
         Ok(Some(frame))
     }
-    
+
     // 收到一个完整的消息包
     async fn on_recv_frame(&mut self, frame: Vec<u8>) -> anyhow::Result<()> {
         if frame.len() < 8 {

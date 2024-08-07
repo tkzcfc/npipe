@@ -7,7 +7,6 @@ use crate::proxy::{common, OutputFuncType};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use base64::prelude::*;
-use bytes::BytesMut;
 use log::{error, info, trace};
 use socket2::{SockRef, TcpKeepalive};
 use std::collections::HashMap;
