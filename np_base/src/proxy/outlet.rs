@@ -8,7 +8,7 @@ use crate::proxy::{common, OutputFuncType};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use base64::prelude::*;
-use log::{error, info, trace};
+use log::{debug, error, info, trace};
 use socket2::{SockRef, TcpKeepalive};
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -306,6 +306,7 @@ impl Outlet {
         session_id: u32,
         common_info: SessionCommonInfo,
     ) -> anyhow::Result<()> {
+        debug!("tcp_connect: {}", addr);
         let stream = TcpStream::connect(&addr).await?;
 
         // set tcp keepalive
@@ -345,6 +346,7 @@ impl Outlet {
         common_info: SessionCommonInfo,
         tunnel_type: InletProxyType,
     ) -> anyhow::Result<()> {
+        debug!("udp_connect: {}", addr);
         let any_addr = "0.0.0.0:0".parse::<SocketAddr>()?;
         let socket = Arc::new(UdpSocket::bind(any_addr).await?);
 
