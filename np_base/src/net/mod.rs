@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::net::SocketAddr;
 use std::pin::Pin;
 use std::time::Duration;
 
@@ -17,5 +18,6 @@ pub enum WriterMessage {
     Flush,
     CloseDelayed(Duration),
     Send(Vec<u8>, bool),
+    SendTo(Vec<u8>, SocketAddr),
     SendAndThen(Vec<u8>, SendMessageFuncType),
 }

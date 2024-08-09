@@ -92,6 +92,9 @@ async fn poll_write<S>(
                     }
                 }
             }
+            WriterMessage::SendTo(_, ..) => {
+                panic!("not support");
+            }
             WriterMessage::SendAndThen(data, callback) => {
                 if data.is_empty() {
                     callback().await;

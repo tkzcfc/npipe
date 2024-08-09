@@ -4,7 +4,7 @@ use byteorder::BigEndian;
 use byteorder::ByteOrder;
 use bytes::BytesMut;
 use log::{debug, error, info};
-use np_base::proxy::inlet::{Inlet, InletProxyType};
+use np_base::proxy::inlet::{Inlet, InletDataEx, InletProxyType};
 use np_base::proxy::outlet::Outlet;
 use np_base::proxy::{OutputFuncType, ProxyMessage};
 use np_proto::class_def::{Tunnel, TunnelPoint};
@@ -363,6 +363,7 @@ impl Client {
                             endpoint.clone(),
                             tunnel.is_compressed,
                             tunnel.encryption_method.clone(),
+                            InletDataEx::new(tunnel.username.clone(), tunnel.password.clone()),
                         )
                         .await
                     {

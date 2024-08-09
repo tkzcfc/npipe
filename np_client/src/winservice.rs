@@ -7,6 +7,7 @@ use std::thread;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 use tokio::select;
+use tokio::sync::oneshot;
 
 use crate::{init_logger, run_with_args, Commands, CommonArgs, Opts};
 use windows_service::{
@@ -74,7 +75,7 @@ async fn run_service() -> anyhow::Result<()> {
     let ops = Opts::parse();
     info!("windows service: starting service setup");
 
-    let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel::<()>(1);
+    let (shutdown_tx, shutdown_rx) = oneshot::channel();
     let mut shutdown_tx = Some(shutdown_tx);
 
     // Define system service event handler that will be receiving service events.
@@ -90,7 +91,7 @@ async fn run_service() -> anyhow::Result<()> {
                 if let Some(sender) = shutdown_tx.take() {
                     debug!("windows service: delegated 'ServiceControl::Stop' event");
                     tokio::spawn(async move {
-                        let _ = sender.send(()).await;
+                        let _ = sender.send(());
                     });
                 }
                 ServiceControlHandlerResult::NoError
@@ -116,7 +117,6 @@ async fn run_service() -> anyhow::Result<()> {
 
     match ops.command {
         Some(Commands::RunService { common_args }) => {
-            println!("RunService success");
 
             let run_task = async {
                 if let Err(err) = run_with_args(common_args).await {
@@ -127,13 +127,9 @@ async fn run_service() -> anyhow::Result<()> {
                 }
             };
 
-            let cancel_tash = async {
-                shutdown_rx.recv().await;
-            };
-
             select! {
                 _= run_task =>{},
-                _= cancel_tash =>{},
+                _= shutdown_rx =>{},
             };
 
             match set_service_state(

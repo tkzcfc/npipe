@@ -50,10 +50,10 @@ async fn poll_read(
             *instant_write = Instant::now();
         }
 
-        let (amt, _peer_addr) = result.unwrap();
+        let (amt, peer_addr) = result.unwrap();
 
         let received_data = Vec::from(&buf[..amt]);
-        if let Err(err) = delegate.on_recv_frame(received_data).await {
+        if let Err(err) = delegate.on_recv_frame_from(received_data, peer_addr).await {
             error!("[{addr}] on_recv_frame error: {err}");
             break;
         }
@@ -86,6 +86,17 @@ async fn poll_write(
                 }
 
                 if let Err(error) = socket.send_to(&data, &addr).await {
+                    error!("[{addr}] Error when udp socket send_to {:?}", error);
+                    break;
+                }
+            }
+            WriterMessage::SendTo(data, target_addr) => {
+                if data.is_empty() {
+                    yield_now().await;
+                    continue;
+                }
+
+                if let Err(error) = socket.send_to(&data, &target_addr).await {
                     error!("[{addr}] Error when udp socket send_to {:?}", error);
                     break;
                 }

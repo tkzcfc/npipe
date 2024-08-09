@@ -40,6 +40,14 @@ where
 
     /// 收到一个完整的消息包
     async fn on_recv_frame(&mut self, frame: Vec<u8>) -> anyhow::Result<()>;
+
+    async fn on_recv_frame_from(
+        &mut self,
+        _frame: Vec<u8>,
+        _peer_addr: SocketAddr,
+    ) -> anyhow::Result<()> {
+        panic!("Not implemented");
+    }
 }
 
 pub type CreateSessionDelegateCallback = Box<dyn Fn() -> Box<dyn SessionDelegate> + Send + Sync>;

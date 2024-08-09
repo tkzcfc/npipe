@@ -51,18 +51,20 @@ message I2oConnect {
   uint32 tunnel_id = 1;
   // 会话id
   uint32 session_id = 2;
-  // 是否是TCP连接
-  bool is_tcp = 3;
+  // 通道类型
+  uint32  tunnel_type = 3;
+  // 是否是TCP
+  bool is_tcp = 4;
   // 是否压缩数据
-  bool is_compressed = 4;
+  bool is_compressed = 5;
   // 目标地址
-  string addr = 5;
+  string addr = 6;
   // 加密方式
-  string encryption_method = 6;
+  string encryption_method = 7;
   // 加密key
-  string encryption_key = 7;
+  string encryption_key = 8;
   // 客户端地址
-  string client_addr = 8;
+  string client_addr = 9;
 }
 
 // 连接结果
@@ -138,4 +140,31 @@ message I2oRecvDataResult {
   uint32 session_id = 2;
   // 完成长度
   uint32 data_len = 3;
+}
+
+
+// 输出端收到数据返回给输入端
+message I2oSendToData {
+  enum MsgId {None = 0; Id = 150014;}
+  // 通道id
+  uint32 tunnel_id = 1;
+  // 会话id
+  uint32 session_id = 2;
+  // 数据
+  bytes data = 3;
+  // 目标地址
+  string target_addr = 4;
+}
+
+// 输出端收到数据返回给输入端
+message O2iRecvDataFrom {
+  enum MsgId {None = 0; Id = 150015;}
+  // 通道id
+  uint32 tunnel_id = 1;
+  // 会话id
+  uint32 session_id = 2;
+  // 数据
+  bytes data = 3;
+  // 远程地址
+  string remote_addr = 4;
 }

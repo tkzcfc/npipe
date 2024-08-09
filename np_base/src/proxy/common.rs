@@ -1,7 +1,8 @@
 use crate::net::WriterMessage;
 use crate::proxy::crypto::EncryptionMethod;
 use crate::proxy::{crypto, OutputFuncType, ProxyMessage};
-use std::collections::HashMap;
+use anyhow::anyhow;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, UnboundedSender};
 use tokio::sync::RwLock;
@@ -23,13 +24,6 @@ pub struct SessionCommonInfo {
     // 读缓存大小
     pub read_buf_len: Arc<RwLock<usize>>,
 }
-
-pub struct SessionInfo {
-    pub sender: InputSenderType,
-    pub common_info: SessionCommonInfo,
-}
-
-pub type SessionInfoMap = Arc<RwLock<HashMap<u32, SessionInfo>>>;
 
 impl SessionCommonInfo {
     pub fn new(
@@ -100,4 +94,15 @@ pub async fn async_receive_output(
             on_output_callback(message).await;
         }
     }
+}
+
+pub async fn parse_addr(host: &String) -> anyhow::Result<SocketAddr> {
+    if let Ok(addr) = host.parse::<SocketAddr>() {
+        return Ok(addr);
+    } else {
+        for addr in tokio::net::lookup_host(host).await? {
+            return Ok(addr);
+        }
+    }
+    return Err(anyhow!("The address format is invalid: '{}'", host));
 }

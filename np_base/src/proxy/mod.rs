@@ -6,17 +6,22 @@ pub(crate) mod common;
 pub mod crypto;
 pub mod inlet;
 pub mod outlet;
+pub(crate) mod socks5;
 
 pub enum ProxyMessage {
-    // 向输出端请求发起连接(u32:会话id  bool:是否是TCP连接 bool:是否压缩数据 String:目标地址 String:加密方式 String:加密密码 String:客户端地址)
-    I2oConnect(u32, bool, bool, String, String, String, String),
+    // 向输出端请求发起连接(u32:会话id  u8:通道类型 bool 是否TCP bool:是否压缩数据 String:目标地址 String:加密方式 String:加密密码 String:客户端地址)
+    I2oConnect(u32, u8, bool, bool, String, String, String, String),
     // 连接结果(u32:会话id  bool:是否是成功 String:错误信息)
     O2iConnect(u32, bool, String),
     // 向输出端请求发送数据(u32:会话id  Vec<u8>:数据)
     I2oSendData(u32, Vec<u8>),
+    // 向输出端请求发送数据(u32:会话id  Vec<u8>:数据 String:udp包目标地址)
+    I2oSendToData(u32, Vec<u8>, String),
     // 发送结果(u32:会话id, u32:完成长度)
     O2iSendDataResult(u32, usize),
-    // 输出端收到数据返回给输入端(u32:会话id  Vec<u8>:数据)
+    // 输出端收到数据返回给输入端(u32:会话id  Vec<u8>:数据 String:udp包远端地址)
+    O2iRecvDataFrom(u32, Vec<u8>, String),
+    // 输出端收到数据返回给输入端(u32:会话id)
     O2iRecvData(u32, Vec<u8>),
     // 接收数据处理结果(u32:会话id, u32:完成长度)
     I2oRecvDataResult(u32, usize),

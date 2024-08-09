@@ -1,7 +1,8 @@
 use crate::net::session_delegate::SessionDelegate;
 use crate::net::{tcp_session, udp_session, SendMessageFuncType, WriterMessage};
-use crate::proxy::common::{SessionCommonInfo, SessionInfo, SessionInfoMap};
+use crate::proxy::common::{InputSenderType, SessionCommonInfo};
 use crate::proxy::crypto::get_method;
+use crate::proxy::inlet::InletProxyType;
 use crate::proxy::ProxyMessage;
 use crate::proxy::{common, OutputFuncType};
 use anyhow::anyhow;
@@ -18,6 +19,13 @@ use tokio::select;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio::task::yield_now;
+
+struct SessionInfo {
+    sender: InputSenderType,
+    common_info: SessionCommonInfo,
+}
+
+type SessionInfoMap = Arc<RwLock<HashMap<u32, SessionInfo>>>;
 
 pub struct Outlet {
     session_info_map: SessionInfoMap,
@@ -97,6 +105,7 @@ impl Outlet {
         match message {
             ProxyMessage::I2oConnect(
                 session_id,
+                tunnel_type,
                 is_tcp,
                 is_compressed,
                 addr,
@@ -104,10 +113,13 @@ impl Outlet {
                 encryption_key,
                 client_addr,
             ) => {
-                trace!("I2oConnect: session_id:{session_id}, addr:{addr}, is_tcp:{is_tcp}");
+                trace!(
+                    "I2oConnect: session_id:{session_id}, addr:{addr}, tunnel_type:{tunnel_type}"
+                );
                 if let Err(err) = self
                     .on_i2o_connect(
                         session_id,
+                        tunnel_type,
                         is_tcp,
                         is_compressed,
                         addr.clone(),
@@ -140,6 +152,10 @@ impl Outlet {
                 // trace!("I2oSendData: session_id:{session_id}");
                 self.on_i2o_send_data(session_id, data).await?;
             }
+            ProxyMessage::I2oSendToData(session_id, data, target_addr) => {
+                self.on_i2o_send_to_data(session_id, data, target_addr)
+                    .await?;
+            }
             ProxyMessage::I2oDisconnect(session_id) => {
                 trace!("I2oDisconnect: session_id:{session_id}");
                 self.on_i2o_disconnect(session_id).await?;
@@ -158,6 +174,7 @@ impl Outlet {
     async fn on_i2o_connect(
         &self,
         session_id: u32,
+        tunnel_type: u8,
         is_tcp: bool,
         is_compressed: bool,
         addr: String,
@@ -172,10 +189,23 @@ impl Outlet {
         let encryption_key = BASE64_STANDARD.decode(encryption_key.as_bytes())?;
         let common_info = SessionCommonInfo::new(is_compressed, encryption_method, encryption_key);
 
-        if is_tcp {
-            self.tcp_connect(addr, session_id, common_info).await?
-        } else {
-            self.udp_connect(addr, session_id, common_info).await?
+        let tunnel_type = InletProxyType::from_u32(tunnel_type as u32)
+            .ok_or(anyhow!("unsupported tunnel_type: {tunnel_type}"))?;
+        match tunnel_type {
+            InletProxyType::TCP => self.tcp_connect(addr, session_id, common_info).await?,
+            InletProxyType::UDP => {
+                self.udp_connect(addr, session_id, common_info, tunnel_type)
+                    .await?
+            }
+            InletProxyType::SOCKS5 => {
+                if is_tcp {
+                    self.tcp_connect(addr, session_id, common_info).await?
+                }
+                else {
+                    self.udp_connect("".to_string(), session_id, common_info, tunnel_type)
+                        .await?
+                }
+            }
         }
 
         let condition = async {
@@ -215,6 +245,31 @@ impl Outlet {
             session
                 .sender
                 .send(WriterMessage::SendAndThen(data, callback))?;
+        }
+        Ok(())
+    }
+
+    async fn on_i2o_send_to_data(
+        &self,
+        session_id: u32,
+        mut data: Vec<u8>,
+        target_addr: String,
+    ) -> anyhow::Result<()> {
+        if let Some(session) = self.session_info_map.read().await.get(&session_id) {
+            let data_len = data.len();
+
+            data = session.common_info.decode_data(data)?;
+
+            let target_addr = common::parse_addr(&target_addr).await?;
+            session
+                .sender
+                .send(WriterMessage::SendTo(data, target_addr))?;
+
+            // 写入完毕回调
+            let _ = self
+                .output
+                .send(ProxyMessage::O2iSendDataResult(session_id, data_len))
+                .await;
         }
         Ok(())
     }
@@ -268,7 +323,12 @@ impl Outlet {
             tcp_session::run(
                 session_id,
                 addr,
-                Box::new(OutletSession::new(session_info_map, common_info, output)),
+                Box::new(OutletSession::new(
+                    session_info_map,
+                    common_info,
+                    output,
+                    InletProxyType::TCP,
+                )),
                 shutdown,
                 stream,
             )
@@ -284,11 +344,18 @@ impl Outlet {
         addr: String,
         session_id: u32,
         common_info: SessionCommonInfo,
+        tunnel_type: InletProxyType,
     ) -> anyhow::Result<()> {
-        let socket = Arc::new(UdpSocket::bind("0.0.0.0:0").await?);
-        socket.connect(addr).await?;
+        let any_addr = "0.0.0.0:0".parse::<SocketAddr>()?;
+        let socket = Arc::new(UdpSocket::bind(any_addr).await?);
 
-        let addr = socket.peer_addr()?;
+        let addr = if addr.is_empty() {
+            any_addr
+        } else {
+            socket.connect(addr).await?;
+            socket.peer_addr()?
+        };
+
         let output = self.output.clone();
         let session_info_map = self.session_info_map.clone();
         let shutdown = self.receiver_shutdown.resubscribe();
@@ -297,7 +364,12 @@ impl Outlet {
             udp_session::run(
                 session_id,
                 addr,
-                Box::new(OutletSession::new(session_info_map, common_info, output)),
+                Box::new(OutletSession::new(
+                    session_info_map,
+                    common_info,
+                    output,
+                    tunnel_type,
+                )),
                 None,
                 shutdown,
                 socket.clone(),
@@ -315,6 +387,7 @@ struct OutletSession {
     session_id: u32,
     common_data: SessionCommonInfo,
     output: mpsc::Sender<ProxyMessage>,
+    tunnel_type: InletProxyType,
 }
 
 impl OutletSession {
@@ -322,12 +395,14 @@ impl OutletSession {
         session_info_map: SessionInfoMap,
         common_data: SessionCommonInfo,
         output: mpsc::Sender<ProxyMessage>,
+        tunnel_type: InletProxyType,
     ) -> Self {
         Self {
             session_info_map,
             session_id: 0,
             common_data,
             output,
+            tunnel_type,
         }
     }
 }
@@ -377,6 +452,26 @@ impl SessionDelegate for OutletSession {
         self.output
             .send(ProxyMessage::O2iRecvData(self.session_id, frame))
             .await?;
+        Ok(())
+    }
+
+    async fn on_recv_frame_from(
+        &mut self,
+        mut frame: Vec<u8>,
+        peer_addr: SocketAddr,
+    ) -> anyhow::Result<()> {
+        if self.tunnel_type.is_socks5() {
+            frame = self.common_data.encode_data_and_limiting(frame).await?;
+            self.output
+                .send(ProxyMessage::O2iRecvDataFrom(
+                    self.session_id,
+                    frame,
+                    peer_addr.to_string(),
+                ))
+                .await?;
+        } else {
+            self.on_recv_frame(frame).await?;
+        }
         Ok(())
     }
 }

@@ -23,6 +23,8 @@ pub enum MessageType {
     GenericO2iDisconnect(super::generic::O2iDisconnect),
     GenericO2iSendDataResult(super::generic::O2iSendDataResult),
     GenericI2oRecvDataResult(super::generic::I2oRecvDataResult),
+    GenericI2oSendToData(super::generic::I2oSendToData),
+    GenericO2iRecvDataFrom(super::generic::O2iRecvDataFrom),
 }
 
 impl MessageType {
@@ -55,6 +57,8 @@ pub fn get_message_id(message: &MessageType) -> Option<u32> {
         MessageType::GenericO2iDisconnect(_) => Some(150011u32),
         MessageType::GenericO2iSendDataResult(_) => Some(150012u32),
         MessageType::GenericI2oRecvDataResult(_) => Some(150013u32),
+        MessageType::GenericI2oSendToData(_) => Some(150014u32),
+        MessageType::GenericO2iRecvDataFrom(_) => Some(150015u32),
         _ => None,
     }
 }
@@ -137,6 +141,14 @@ pub fn decode_message(message_id: u32, bytes: &[u8]) -> Result<MessageType, Deco
             Ok(message) => Ok(MessageType::GenericI2oRecvDataResult(message)),
             Err(err) => Err(err),
         },
+        150014u32 => match super::generic::I2oSendToData::decode(bytes) {
+            Ok(message) => Ok(MessageType::GenericI2oSendToData(message)),
+            Err(err) => Err(err),
+        },
+        150015u32 => match super::generic::O2iRecvDataFrom::decode(bytes) {
+            Ok(message) => Ok(MessageType::GenericO2iRecvDataFrom(message)),
+            Err(err) => Err(err),
+        },
         _ => Err(DecodeError::new("unknown message id")),
     }
 }
@@ -162,6 +174,8 @@ pub fn encode_message(message: &MessageType) -> Option<(u32, Vec<u8>)> {
         MessageType::GenericO2iDisconnect(msg) => Some((150011u32, msg.encode_to_vec())),
         MessageType::GenericO2iSendDataResult(msg) => Some((150012u32, msg.encode_to_vec())),
         MessageType::GenericI2oRecvDataResult(msg) => Some((150013u32, msg.encode_to_vec())),
+        MessageType::GenericI2oSendToData(msg) => Some((150014u32, msg.encode_to_vec())),
+        MessageType::GenericO2iRecvDataFrom(msg) => Some((150015u32, msg.encode_to_vec())),
         _ => None,
     }
 }
@@ -187,6 +201,8 @@ pub fn get_message_size(message: &MessageType) -> usize {
         MessageType::GenericO2iDisconnect(msg) => msg.encoded_len(),
         MessageType::GenericO2iSendDataResult(msg) => msg.encoded_len(),
         MessageType::GenericI2oRecvDataResult(msg) => msg.encoded_len(),
+        MessageType::GenericI2oSendToData(msg) => msg.encoded_len(),
+        MessageType::GenericO2iRecvDataFrom(msg) => msg.encoded_len(),
         _ => 0,
     }
 }
@@ -212,6 +228,8 @@ pub fn encode_raw_message(message: &MessageType, buf: &mut impl BufMut) {
         MessageType::GenericO2iDisconnect(msg) => msg.encode_raw(buf),
         MessageType::GenericO2iSendDataResult(msg) => msg.encode_raw(buf),
         MessageType::GenericI2oRecvDataResult(msg) => msg.encode_raw(buf),
+        MessageType::GenericI2oSendToData(msg) => msg.encode_raw(buf),
+        MessageType::GenericO2iRecvDataFrom(msg) => msg.encode_raw(buf),
         _ => {}
     }
 }
@@ -238,6 +256,8 @@ pub fn serialize_to_json(message: &MessageType) -> serde_json::Result<String> {
         MessageType::GenericO2iDisconnect(msg) => serde_json::to_string(&msg),
         MessageType::GenericO2iSendDataResult(msg) => serde_json::to_string(&msg),
         MessageType::GenericI2oRecvDataResult(msg) => serde_json::to_string(&msg),
+        MessageType::GenericI2oSendToData(msg) => serde_json::to_string(&msg),
+        MessageType::GenericO2iRecvDataFrom(msg) => serde_json::to_string(&msg),
         _ => Ok("null".into()),
     }
 }
