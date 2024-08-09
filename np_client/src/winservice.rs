@@ -117,7 +117,6 @@ async fn run_service() -> anyhow::Result<()> {
 
     match ops.command {
         Some(Commands::RunService { common_args }) => {
-
             let run_task = async {
                 if let Err(err) = run_with_args(common_args).await {
                     error!(

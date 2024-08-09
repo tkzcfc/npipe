@@ -273,10 +273,7 @@ impl Inlet {
                 // trace!("O2iRecvData: session_id:{session_id}");
                 if let Some(session) = session_info_map.read().await.get(&session_id) {
                     if let Some(ref proxy_message_tx) = session.proxy_message_tx {
-                        proxy_message_tx.send(ProxyMessage::O2iRecvData(
-                            session_id,
-                            data,
-                        ))?;
+                        proxy_message_tx.send(ProxyMessage::O2iRecvData(session_id, data))?;
                     } else {
                         let data_len = data.len();
                         data = session.common_info.decode_data(data)?;

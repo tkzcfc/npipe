@@ -200,8 +200,7 @@ impl Outlet {
             InletProxyType::SOCKS5 => {
                 if is_tcp {
                     self.tcp_connect(addr, session_id, common_info).await?
-                }
-                else {
+                } else {
                     self.udp_connect("".to_string(), session_id, common_info, tunnel_type)
                         .await?
                 }

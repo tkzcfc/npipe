@@ -9,7 +9,7 @@ use anyhow::anyhow;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use log::{error, warn};
-use std::net::{SocketAddr};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::UdpSocket;
@@ -131,7 +131,6 @@ impl Socks5Context {
     }
 
     pub async fn recv_frame(&mut self, mut frame: Vec<u8>) -> anyhow::Result<()> {
-        println!("recv_frame:{:?}", frame);
         match &self.status {
             Status::Init => {
                 self.buffer.extend_from_slice(&frame);
@@ -249,7 +248,6 @@ impl Socks5Context {
         // | 1  |  1  |
         // +----+-----+
         // 0x00 表示成功，0x01 表示失败
-
         if unm == self.data_ex.username.as_bytes() && pwd == self.data_ex.password.as_bytes() {
             let response: Vec<u8> = vec![ver, 0x00];
             self.write_msg_tx
@@ -277,15 +275,12 @@ impl Socks5Context {
         if self.buffer.len() < 8 {
             return Ok(());
         }
-
         let head_data: Vec<_> = self.buffer.drain(0..4).collect();
 
         let ver = head_data[0];
         let cmd = head_data[1];
         let rsv = head_data[2];
         let address_type = head_data[3];
-
-        println!("cmd:{cmd}");
 
         let mut support = true;
         if ver != SOCKS5_VERSION || rsv != 0x00 {
@@ -297,10 +292,15 @@ impl Socks5Context {
                 SOCKS5_CMD_TCP_CONNECT | SOCKS5_CMD_UDP_ASSOCIATE => {
                     let addr_result = target_addr::read_address(&self.buffer, address_type)?;
 
-                    if let Some((target_addr, addr_data_len)) = addr_result {
+                    if let Some((mut target_addr, addr_data_len)) = addr_result {
                         let is_tcp = match cmd {
                             SOCKS5_CMD_TCP_CONNECT => true,
-                            SOCKS5_CMD_UDP_ASSOCIATE => false,
+                            SOCKS5_CMD_UDP_ASSOCIATE => {
+                                let mut addr = self.addr.clone();
+                                addr.set_port(target_addr.port());
+                                target_addr = TargetAddr::Ip(addr);
+                                false
+                            }
                             _ => {
                                 panic!("unknown cmd:{cmd}")
                             }
@@ -478,7 +478,6 @@ impl Socks5Context {
                             0x00,
                         ]
                     } else {
-                        println!("run with udp");
                         if let Ok(data) = self.udp_bind().await {
                             data
                         } else {
@@ -596,7 +595,7 @@ async fn recv_udp_data(
     match target_addr::read_address(&received_data[4..], address_type) {
         Ok(Some((addr, addr_data_len))) => {
             let start = 4 + addr_data_len;
-            let data = common_data.decode_data(buf[start..].to_vec())?;
+            let data = common_data.decode_data(buf[start..amt].to_vec())?;
 
             output
                 .send(ProxyMessage::I2oSendToData(

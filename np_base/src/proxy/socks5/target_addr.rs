@@ -64,6 +64,13 @@ impl TargetAddr {
         }
         Ok(buf)
     }
+
+    pub fn port(&self) -> u16 {
+        match self {
+            TargetAddr::Ip(addr) => addr.port(),
+            TargetAddr::Domain(_, port) => *port,
+        }
+    }
 }
 
 // async-std ToSocketAddrs doesn't supports external trait implementation
