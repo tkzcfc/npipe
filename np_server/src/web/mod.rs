@@ -56,6 +56,7 @@ pub async fn run_http_server(addr: &SocketAddr, web_base_dir: String) -> anyhow:
             )
             .wrap(middleware::NormalizePath::trim())
     })
+    .workers(1)
     .bind(addr)?
     .run()
     .await?;
