@@ -100,27 +100,12 @@ pub(crate) async fn init_global() -> anyhow::Result<()> {
     }
 
     // 加载所有通道信息
-    GLOBAL_MANAGER
-        .tunnel_manager
-        .write()
-        .await
-        .load_all_tunnel()
-        .await?;
+    GLOBAL_MANAGER.tunnel_manager.load_all_tunnel().await?;
 
     // 加载所有的玩家信息
-    GLOBAL_MANAGER
-        .player_manager
-        .write()
-        .await
-        .load_all_player()
-        .await?;
+    GLOBAL_MANAGER.player_manager.load_all_player().await?;
 
-    GLOBAL_MANAGER
-        .proxy_manager
-        .read()
-        .await
-        .sync_tunnels(&GLOBAL_MANAGER.tunnel_manager.read().await.tunnels)
-        .await;
+    GLOBAL_MANAGER.proxy_manager.sync_tunnels().await;
 
     Ok(())
 }

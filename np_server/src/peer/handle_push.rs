@@ -10,9 +10,11 @@ impl Peer {
         if let Some((msg, tunnel_id)) = message_bridge::pb_2_proxy_message(message) {
             if let Some(tunnel) = GLOBAL_MANAGER
                 .tunnel_manager
+                .tunnels
                 .read()
                 .await
-                .get_tunnel(tunnel_id)
+                .iter()
+                .find(|x| x.id == tunnel_id)
             {
                 let (from_player_id, to_player_id) = if message_bridge::is_i2o_message(&msg) {
                     (tunnel.receiver, tunnel.sender)

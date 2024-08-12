@@ -71,7 +71,8 @@ impl Outlet {
     }
 
     pub async fn stop(&self) {
-        if let Some(notify_shutdown) = self.notify_shutdown.write().await.take() {
+        let notify_shutdown = self.notify_shutdown.write().await.take();
+        if let Some(notify_shutdown) = notify_shutdown {
             drop(notify_shutdown);
 
             let condition = async {

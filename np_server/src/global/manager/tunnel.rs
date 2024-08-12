@@ -12,25 +12,26 @@ use np_proto::{class_def, server_client};
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ActiveModelTrait, EntityTrait};
 use std::collections::HashMap;
+use tokio::sync::RwLock;
 
 pub struct TunnelManager {
-    pub tunnels: Vec<tunnel::Model>,
+    pub tunnels: RwLock<Vec<tunnel::Model>>,
 }
 
 impl TunnelManager {
     pub fn new() -> Self {
         Self {
-            tunnels: Vec::new(),
+            tunnels: RwLock::new(Vec::new()),
         }
     }
 
-    pub async fn load_all_tunnel(&mut self) -> anyhow::Result<()> {
-        self.tunnels = Tunnel::find().all(GLOBAL_DB_POOL.get().unwrap()).await?;
+    pub async fn load_all_tunnel(&self) -> anyhow::Result<()> {
+        (*self.tunnels.write().await) = Tunnel::find().all(GLOBAL_DB_POOL.get().unwrap()).await?;
         Ok(())
     }
 
     /// 增加通道
-    pub async fn add_tunnel(&mut self, mut tunnel: tunnel::Model) -> anyhow::Result<()> {
+    pub async fn add_tunnel(&self, mut tunnel: tunnel::Model) -> anyhow::Result<()> {
         self.tunnel_detection(&tunnel).await?;
 
         let new_tunnel = tunnel::ActiveModel {
@@ -56,20 +57,15 @@ impl TunnelManager {
         if tunnel.sender != tunnel.receiver {
             Self::broadcast_tunnel_info(tunnel.receiver, &tunnel, false).await;
         }
-        self.tunnels.push(tunnel);
+        self.tunnels.write().await.push(tunnel);
 
-        GLOBAL_MANAGER
-            .proxy_manager
-            .write()
-            .await
-            .sync_tunnels(&self.tunnels)
-            .await;
+        GLOBAL_MANAGER.proxy_manager.sync_tunnels().await;
 
         Ok(())
     }
 
     /// 删除通道
-    pub async fn delete_tunnel(&mut self, tunnel_id: u32) -> anyhow::Result<()> {
+    pub async fn delete_tunnel(&self, tunnel_id: u32) -> anyhow::Result<()> {
         let rows_affected = Tunnel::delete_by_id(tunnel_id)
             .exec(GLOBAL_DB_POOL.get().unwrap())
             .await?
@@ -81,28 +77,38 @@ impl TunnelManager {
             rows_affected
         );
 
-        if let Some(index) = self.tunnels.iter().position(|it| it.id == tunnel_id) {
-            let tunnel = self.tunnels.remove(index);
+        let position = {
+            self.tunnels
+                .read()
+                .await
+                .iter()
+                .position(|it| it.id == tunnel_id)
+        };
+        if let Some(index) = position {
+            let tunnel = self.tunnels.write().await.remove(index);
             Self::broadcast_tunnel_info(tunnel.sender, &tunnel, true).await;
             if tunnel.sender != tunnel.receiver {
                 Self::broadcast_tunnel_info(tunnel.receiver, &tunnel, true).await;
             }
 
-            GLOBAL_MANAGER
-                .proxy_manager
-                .write()
-                .await
-                .sync_tunnels(&self.tunnels)
-                .await;
+            GLOBAL_MANAGER.proxy_manager.sync_tunnels().await;
         }
         return Ok(());
     }
 
     /// 更新通道
-    pub async fn update_tunnel(&mut self, tunnel: tunnel::Model) -> anyhow::Result<()> {
+    pub async fn update_tunnel(&self, tunnel: tunnel::Model) -> anyhow::Result<()> {
         self.tunnel_detection(&tunnel).await?;
 
-        if let Some(index) = self.tunnels.iter().position(|it| it.id == tunnel.id) {
+        let position = {
+            self.tunnels
+                .read()
+                .await
+                .iter()
+                .position(|it| it.id == tunnel.id)
+        };
+
+        if let Some(index) = position {
             let db_tunnel = Tunnel::find_by_id(tunnel.id)
                 .one(GLOBAL_DB_POOL.get().unwrap())
                 .await?;
@@ -123,8 +129,8 @@ impl TunnelManager {
             db_tunnel.encryption_method = Set(tunnel.encryption_method.to_owned());
             db_tunnel.update(GLOBAL_DB_POOL.get().unwrap()).await?;
 
-            let old_sender = self.tunnels[index].sender;
-            let old_receiver = self.tunnels[index].receiver;
+            let old_sender = self.tunnels.read().await[index].sender;
+            let old_receiver = self.tunnels.read().await[index].receiver;
 
             if old_sender != tunnel.sender {
                 Self::broadcast_tunnel_info(old_sender, &tunnel, true).await;
@@ -137,13 +143,8 @@ impl TunnelManager {
                 Self::broadcast_tunnel_info(tunnel.receiver, &tunnel, false).await;
             }
 
-            self.tunnels[index] = tunnel;
-            GLOBAL_MANAGER
-                .proxy_manager
-                .write()
-                .await
-                .sync_tunnels(&self.tunnels)
-                .await;
+            self.tunnels.write().await[index] = tunnel;
+            GLOBAL_MANAGER.proxy_manager.sync_tunnels().await;
             return Ok(());
         }
         Err(anyhow!(format!("Unable to find tunnel_id: {}", tunnel.id)))
@@ -152,12 +153,7 @@ impl TunnelManager {
     /// 广播通道修改通知
     async fn broadcast_tunnel_info(player_id: PlayerId, tunnel: &tunnel::Model, is_delete: bool) {
         if player_id != 0 {
-            if let Some(player) = GLOBAL_MANAGER
-                .player_manager
-                .read()
-                .await
-                .get_player(player_id)
-            {
+            if let Some(player) = GLOBAL_MANAGER.player_manager.get_player(player_id).await {
                 let _ = player
                     .read()
                     .await
@@ -187,11 +183,14 @@ impl TunnelManager {
         self.player_id_detection(tunnel.receiver).await?;
 
         // 端口冲突检测
-        if self.port_conflict_detection(
-            tunnel.receiver,
-            get_tunnel_address_port(&tunnel.source),
-            Some(tunnel.id),
-        ) {
+        if self
+            .port_conflict_detection(
+                tunnel.receiver,
+                get_tunnel_address_port(&tunnel.source),
+                Some(tunnel.id),
+            )
+            .await
+        {
             return Err(anyhow!("port already in use"));
         }
         Ok(())
@@ -199,13 +198,7 @@ impl TunnelManager {
 
     /// 检测玩家id是否合法
     async fn player_id_detection(&self, player_id: PlayerId) -> anyhow::Result<()> {
-        if player_id != 0
-            && !GLOBAL_MANAGER
-                .player_manager
-                .read()
-                .await
-                .contain(player_id)
-        {
+        if player_id != 0 && !GLOBAL_MANAGER.player_manager.contain(player_id).await {
             Err(anyhow!("player id {} does not exist", player_id))
         } else {
             Ok(())
@@ -213,13 +206,15 @@ impl TunnelManager {
     }
 
     /// 检测端口是否冲突
-    fn port_conflict_detection(
+    async fn port_conflict_detection(
         &self,
         receiver: u32,
         port: Option<u16>,
         tunnel_id: Option<u32>,
     ) -> bool {
         self.tunnels
+            .read()
+            .await
             .iter()
             .position(|x| {
                 x.receiver == receiver
@@ -239,22 +234,18 @@ impl TunnelManager {
         };
         let start = page_number * page_size;
         let mut end = start + page_size;
-        if end > self.tunnels.len() {
-            end = self.tunnels.len();
+        let tunnel_num = self.tunnels.read().await.len();
+        if end > tunnel_num {
+            end = tunnel_num;
         }
 
-        if start <= end && end <= self.tunnels.len() {
-            self.tunnels[start..end].iter().map(|x| x.clone()).collect()
+        if start <= end && end <= tunnel_num {
+            self.tunnels.read().await[start..end]
+                .iter()
+                .map(|x| x.clone())
+                .collect()
         } else {
             vec![]
-        }
-    }
-
-    pub fn get_tunnel(&self, id: u32) -> Option<&tunnel::Model> {
-        if let Some(index) = self.tunnels.iter().position(|x| x.id == id) {
-            Some(&self.tunnels[index])
-        } else {
-            None
         }
     }
 }

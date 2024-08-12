@@ -1,5 +1,4 @@
 use crate::global::manager::GLOBAL_MANAGER;
-use crate::orm_entity::tunnel;
 use crate::player::PlayerId;
 use log::{debug, error, info};
 use np_base::proxy::inlet::{Inlet, InletDataEx, InletProxyType};
@@ -23,7 +22,9 @@ impl ProxyManager {
             inlets: Arc::new(RwLock::new(HashMap::new())),
         }
     }
-    pub async fn sync_tunnels(&self, tunnels: &Vec<tunnel::Model>) {
+    pub async fn sync_tunnels(&self) {
+        let tunnels = GLOBAL_MANAGER.tunnel_manager.tunnels.read().await;
+
         // 收集无效的出口
         let mut keys_to_remove: Vec<_> = self
             .outlets
@@ -180,13 +181,9 @@ impl ProxyManager {
             return;
         }
 
-        if let Some(player) = GLOBAL_MANAGER
-            .player_manager
-            .read()
-            .await
-            .get_player(to_player_id)
-        {
-            if player.read().await.is_online() {
+        if let Some(player) = GLOBAL_MANAGER.player_manager.get_player(to_player_id).await {
+            let is_online = { player.read().await.is_online() };
+            if is_online {
                 let message = message_bridge::proxy_message_2_pb(proxy_message, tunnel_id);
                 if !message.is_none() {
                     let _ = player.read().await.send_push(&message).await;
@@ -236,12 +233,7 @@ impl ProxyManager {
 }
 
 async fn push_message_to_player(player_id: PlayerId, message: &MessageType) {
-    if let Some(player) = GLOBAL_MANAGER
-        .player_manager
-        .read()
-        .await
-        .get_player(player_id)
-    {
+    if let Some(player) = GLOBAL_MANAGER.player_manager.get_player(player_id).await {
         let _ = player.read().await.send_push(message).await;
     }
 }
@@ -249,8 +241,6 @@ async fn push_message_to_player(player_id: PlayerId, message: &MessageType) {
 async fn send_input_to_outlet(tunnel_id: &u32, proxy_message: ProxyMessage) {
     if let Some(outlet) = GLOBAL_MANAGER
         .proxy_manager
-        .read()
-        .await
         .outlets
         .read()
         .await
@@ -263,8 +253,6 @@ async fn send_input_to_outlet(tunnel_id: &u32, proxy_message: ProxyMessage) {
 async fn send_input_to_inlet(tunnel_id: &u32, proxy_message: ProxyMessage) {
     if let Some(inlet) = GLOBAL_MANAGER
         .proxy_manager
-        .read()
-        .await
         .inlets
         .read()
         .await

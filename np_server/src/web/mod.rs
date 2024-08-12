@@ -173,12 +173,7 @@ async fn player_list(
     let mut players: Vec<proto::PlayerListItem> = Vec::new();
 
     for data in users {
-        let online = if let Some(p) = GLOBAL_MANAGER
-            .player_manager
-            .read()
-            .await
-            .get_player(data.id)
-        {
+        let online = if let Some(p) = GLOBAL_MANAGER.player_manager.get_player(data.id).await {
             p.read().await.is_online()
         } else {
             false
@@ -209,13 +204,7 @@ async fn remove_player(
 
     let req = serde_json::from_str::<proto::PlayerRemoveReq>(&body)?;
 
-    if let Err(err) = GLOBAL_MANAGER
-        .player_manager
-        .write()
-        .await
-        .delete_player(req.id)
-        .await
-    {
+    if let Err(err) = GLOBAL_MANAGER.player_manager.delete_player(req.id).await {
         Ok(HttpResponse::Ok().json(proto::GeneralResponse {
             code: -1,
             msg: err.to_string(),
@@ -237,8 +226,6 @@ async fn add_player(identity: Option<Identity>, body: String) -> actix_web::Resu
 
     return match GLOBAL_MANAGER
         .player_manager
-        .write()
-        .await
         .add_player(&req.username, &req.password)
         .await
     {
@@ -267,8 +254,6 @@ async fn update_player(
 
     match GLOBAL_MANAGER
         .player_manager
-        .read()
-        .await
         .update_player(PlayerDbData {
             username: req.username,
             password: req.password,
@@ -298,13 +283,11 @@ async fn tunnel_list(
     let req = serde_json::from_str::<proto::PlayerListRequest>(&body)?;
     let tunnel_list = GLOBAL_MANAGER
         .tunnel_manager
-        .read()
-        .await
         .query(req.page_number, req.page_size)
         .await;
 
     // 查询总条数
-    let total_count = GLOBAL_MANAGER.tunnel_manager.read().await.tunnels.len();
+    let total_count = GLOBAL_MANAGER.tunnel_manager.tunnels.read().await.len();
 
     let mut tunnels: Vec<proto::TunnelListItem> = Vec::new();
 
@@ -345,13 +328,7 @@ async fn remove_tunnel(
     }
 
     let req = serde_json::from_str::<proto::TunnelRemoveReq>(&body)?;
-    if let Err(err) = GLOBAL_MANAGER
-        .tunnel_manager
-        .write()
-        .await
-        .delete_tunnel(req.id)
-        .await
-    {
+    if let Err(err) = GLOBAL_MANAGER.tunnel_manager.delete_tunnel(req.id).await {
         Ok(HttpResponse::Ok().json(proto::GeneralResponse {
             code: -1,
             msg: err.to_string(),
@@ -372,8 +349,6 @@ async fn add_tunnel(identity: Option<Identity>, body: String) -> actix_web::Resu
     let req = serde_json::from_str::<proto::TunnelAddReq>(&body)?;
     if let Err(err) = GLOBAL_MANAGER
         .tunnel_manager
-        .write()
-        .await
         .add_tunnel(tunnel::Model {
             source: req.source,
             endpoint: req.endpoint,
@@ -415,8 +390,6 @@ async fn update_tunnel(
     let req = serde_json::from_str::<proto::TunnelUpdateReq>(&body)?;
     if let Err(err) = GLOBAL_MANAGER
         .tunnel_manager
-        .write()
-        .await
         .update_tunnel(tunnel::Model {
             source: req.source,
             endpoint: req.endpoint,

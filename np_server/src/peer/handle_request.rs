@@ -68,12 +68,7 @@ impl Peer {
         let user = user_result.unwrap();
 
         // 用户登录成功，将会话绑定到Player上
-        if let Some(player) = GLOBAL_MANAGER
-            .player_manager
-            .read()
-            .await
-            .get_player(user.id)
-        {
+        if let Some(player) = GLOBAL_MANAGER.player_manager.get_player(user.id).await {
             self.player = Some(player.clone());
             let mut player = player.write().await;
             if player.is_online() {
@@ -85,9 +80,9 @@ impl Peer {
 
             let tunnel_list = GLOBAL_MANAGER
                 .tunnel_manager
+                .tunnels
                 .read()
                 .await
-                .tunnels
                 .iter()
                 .filter(|x| x.receiver == user.id || x.sender == user.id)
                 .map(|x| x.into())
@@ -111,8 +106,6 @@ impl Peer {
     ) -> anyhow::Result<MessageType> {
         let (code, msg) = GLOBAL_MANAGER
             .player_manager
-            .write()
-            .await
             .add_player(&message.username, &message.password)
             .await?;
         if code == 0 {

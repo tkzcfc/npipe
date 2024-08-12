@@ -21,19 +21,19 @@ pub struct PlayerDbData {
 }
 
 pub struct PlayerManager {
-    players: Vec<Arc<RwLock<Player>>>,
-    player_map: HashMap<PlayerId, Arc<RwLock<Player>>>,
+    players: RwLock<Vec<Arc<RwLock<Player>>>>,
+    player_map: RwLock<HashMap<PlayerId, Arc<RwLock<Player>>>>,
 }
 
 impl PlayerManager {
     pub(crate) fn new() -> PlayerManager {
         PlayerManager {
-            players: Vec::new(),
-            player_map: HashMap::new(),
+            players: RwLock::new(Vec::new()),
+            player_map: RwLock::new(HashMap::new()),
         }
     }
 
-    pub async fn load_all_player(&mut self) -> anyhow::Result<()> {
+    pub async fn load_all_player(&self) -> anyhow::Result<()> {
         let users = User::find().all(GLOBAL_DB_POOL.get().unwrap()).await?;
 
         for user in users {
@@ -43,33 +43,35 @@ impl PlayerManager {
         Ok(())
     }
 
-    pub fn contain(&self, player_id: PlayerId) -> bool {
-        self.player_map.get(&player_id).is_some()
+    pub async fn contain(&self, player_id: PlayerId) -> bool {
+        self.player_map.read().await.get(&player_id).is_some()
     }
 
-    pub fn get_player(&self, player_id: PlayerId) -> Option<Arc<RwLock<Player>>> {
-        if let Some(player) = self.player_map.get(&player_id) {
+    pub async fn get_player(&self, player_id: PlayerId) -> Option<Arc<RwLock<Player>>> {
+        if let Some(player) = self.player_map.read().await.get(&player_id) {
             Some(player.clone())
         } else {
             None
         }
     }
 
-    pub async fn create_player(&mut self, player_id: PlayerId) -> Arc<RwLock<Player>> {
+    pub async fn create_player(&self, player_id: PlayerId) -> Arc<RwLock<Player>> {
         let player = Player::new(player_id);
-        self.players.push(player.clone());
+        self.players.write().await.push(player.clone());
         self.player_map
+            .write()
+            .await
             .insert(player.read().await.get_player_id(), player.clone());
         player
     }
 
     /// 删除玩家
-    pub async fn delete_player(&mut self, player_id: u32) -> anyhow::Result<()> {
+    pub async fn delete_player(&self, player_id: u32) -> anyhow::Result<()> {
         let player_tunnels: Vec<_> = GLOBAL_MANAGER
             .tunnel_manager
+            .tunnels
             .read()
             .await
-            .tunnels
             .iter()
             .filter_map(|x| {
                 if x.sender == player_id || x.receiver == player_id {
@@ -83,8 +85,6 @@ impl PlayerManager {
         for tunnel_id in player_tunnels {
             GLOBAL_MANAGER
                 .tunnel_manager
-                .write()
-                .await
                 .delete_tunnel(tunnel_id)
                 .await?;
         }
@@ -98,7 +98,7 @@ impl PlayerManager {
         );
 
         let mut index_to_find: Option<usize> = None;
-        for (index, value) in self.players.iter().enumerate() {
+        for (index, value) in self.players.read().await.iter().enumerate() {
             if value.read().await.get_player_id() == player_id {
                 index_to_find = Some(index);
                 break;
@@ -106,7 +106,7 @@ impl PlayerManager {
         }
 
         if let Some(index) = index_to_find {
-            let player = self.players.remove(index);
+            let player = self.players.write().await.remove(index);
             player.write().await.close_session();
         }
 
@@ -115,7 +115,7 @@ impl PlayerManager {
 
     /// 新加玩家
     pub async fn add_player(
-        &mut self,
+        &self,
         username: &String,
         password: &String,
     ) -> anyhow::Result<(i32, String)> {
@@ -145,7 +145,7 @@ impl PlayerManager {
 
             // 随机新的玩家id
             let id: u32 = rng.gen_range(10000000..99999999);
-            if self.contain(id) {
+            if self.contain(id).await {
                 continue;
             }
 
