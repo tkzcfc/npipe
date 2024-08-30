@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tokio::net::{TcpStream, UdpSocket};
+use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::select;
 use tokio::sync::mpsc::{Sender, UnboundedReceiver, UnboundedSender};
 use tokio::sync::{mpsc, RwLock};
@@ -139,15 +139,17 @@ impl Inlet {
 
         match inlet_proxy_type_cloned {
             InletProxyType::TCP | InletProxyType::SOCKS5 => {
-                let listener = tcp_server::bind(&listen_addr).await?;
+                let listener = TcpListener::bind(&listen_addr).await?;
 
                 tokio::spawn(async move {
-                    let server_task = tcp_server::run_server(
-                        listener,
-                        create_session_delegate_func,
-                        |stream: TcpStream| async move { Ok(stream) },
-                        Self::async_receive_input(input_rx, output_tx_cloned, session_info_map),
-                    );
+                    let server_task = tcp_server::Builder::new(create_session_delegate_func)
+                        .set_on_steam_init_callback(Arc::new(|stream: TcpStream| {
+                            Box::pin(async move { Ok(stream) })
+                        }))
+                        .build_with_listener(
+                            listener,
+                            Self::async_receive_input(input_rx, output_tx_cloned, session_info_map),
+                        );
 
                     select! {
                         _= server_task => {},

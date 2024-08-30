@@ -40,13 +40,13 @@ const SOCKS5_ADDR_TYPE_IPV6: u8 = 0x04;
 ///       有密码模式
 ///               Init -> Verification -> Connect -> Connecting -> RunWithTcp
 ///       无密码模式
-///               Init -> Connect -> RunWithTcp
+///               Init -> Connect -> Connecting -> RunWithTcp
 ///
 ///udp流程:
 ///       有密码模式
 ///               Init -> Verification -> Connect -> Connecting -> RunWithUdp
 ///       无密码模式
-///               Init -> Connect -> RunWithUdp
+///               Init -> Connect -> Connecting -> RunWithUdp
 ///
 #[derive(Debug)]
 enum Status {

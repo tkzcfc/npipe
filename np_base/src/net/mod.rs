@@ -7,6 +7,7 @@ pub mod session_delegate;
 pub mod tcp_client;
 pub mod tcp_server;
 pub mod tcp_session;
+pub mod tls;
 pub mod udp_server;
 pub mod udp_session;
 

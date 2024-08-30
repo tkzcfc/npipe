@@ -14,22 +14,14 @@ use np_base::net::session_delegate::SessionDelegate;
 use np_base::net::tcp_server;
 use once_cell::sync::Lazy;
 use std::net::SocketAddr;
-use tokio::net::TcpStream;
 use tokio::{select, signal};
 
 pub async fn run_tcp_server() -> anyhow::Result<()> {
-    info!("TcpServer listening: {}", GLOBAL_CONFIG.listen_addr);
-    let listener = tcp_server::bind(GLOBAL_CONFIG.listen_addr.as_str()).await?;
-    let create_session_delegate_func =
-        Box::new(|| -> Box<dyn SessionDelegate> { Box::new(Peer::new()) });
-    tcp_server::run_server(
-        listener,
-        create_session_delegate_func,
-        |stream: TcpStream| async move { Ok(stream) },
-        signal::ctrl_c(),
-    )
-    .await;
-    Ok(())
+    tcp_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
+        Box::new(Peer::new())
+    }))
+    .build(GLOBAL_CONFIG.listen_addr.as_str(), signal::ctrl_c())
+    .await
 }
 
 pub async fn run_web_server() -> anyhow::Result<()> {
