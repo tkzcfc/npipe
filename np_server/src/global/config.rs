@@ -10,6 +10,12 @@ pub struct Config {
     pub database_url: String,
     /// 服务器监听地址
     pub listen_addr: String,
+    /// 启用tls
+    pub enable_tls: bool,
+    /// tls证书
+    pub tls_cert: String,
+    /// tls秘钥
+    pub tls_key: String,
     /// web监听地址
     pub web_addr: String,
     /// 管理员用户

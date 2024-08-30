@@ -70,7 +70,7 @@ pub fn generate_key(method: &EncryptionMethod) -> Vec<u8> {
         }
         EncryptionMethod::Xor => {
             let mut rng = rand::thread_rng();
-            let key_len = rng.gen_range(1..32);
+            let key_len = rng.gen_range(8..64);
             (0..key_len)
                 .map(|_| {
                     let n: u8 = rng.gen_range(1..255);

@@ -17,10 +17,15 @@ use std::net::SocketAddr;
 use tokio::{select, signal};
 
 pub async fn run_tcp_server() -> anyhow::Result<()> {
-    tcp_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
+    let mut builder = tcp_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
         Box::new(Peer::new())
-    }))
-    .build(GLOBAL_CONFIG.listen_addr.as_str(), signal::ctrl_c())
+    }));
+
+    if GLOBAL_CONFIG.enable_tls {
+        builder = builder.set_tls_configuration(&GLOBAL_CONFIG.tls_cert, &GLOBAL_CONFIG.tls_key);
+    }
+
+    builder.build(GLOBAL_CONFIG.listen_addr.as_str(), signal::ctrl_c())
     .await
 }
 
