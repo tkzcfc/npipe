@@ -12,7 +12,7 @@ pub(crate) fn init_logger() -> anyhow::Result<()> {
 
     // 日志初始化
     let logger = Logger::try_with_str(format!(
-        "{}, sqlx=error, actix=none, mio=error, sea_orm=error, np_base={}",
+        "{}, sqlx=error, actix=error, mio=error, sea_orm=error, np_base={}",
         GLOBAL_OPTS.log_level, GLOBAL_OPTS.base_log_level,
     ))?
     .log_to_file(

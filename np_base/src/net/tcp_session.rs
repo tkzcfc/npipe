@@ -7,7 +7,6 @@ use std::net::SocketAddr;
 use tokio::io::{
     AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf,
 };
-use tokio::net::TcpStream;
 use tokio::select;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
@@ -24,14 +23,16 @@ use tokio::time::sleep;
 ///
 /// [`shutdown`] 监听退出消息
 ///
-/// [`stream`] TcpStream
-pub async fn run(
+/// [`stream`]
+pub async fn run<S>(
     session_id: u32,
     addr: SocketAddr,
     mut delegate: Box<dyn SessionDelegate>,
     mut shutdown: broadcast::Receiver<()>,
-    stream: TcpStream,
-) {
+    stream: S,
+) where
+    S: AsyncRead + AsyncWrite + Send + 'static,
+{
     let (reader, writer) = tokio::io::split(stream);
     let (delegate_sender, delegate_receiver) = unbounded_channel::<WriterMessage>();
 

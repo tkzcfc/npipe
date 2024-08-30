@@ -1,6 +1,6 @@
 use crate::net::session_delegate::CreateSessionDelegateCallback;
 use crate::net::tcp_session;
-use log::error;
+use log::{debug, error};
 use log::{info, trace};
 use std::future::Future;
 use std::pin::Pin;
@@ -9,6 +9,7 @@ use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream, ToSocketAddrs};
 use tokio::select;
 use tokio::sync::{broadcast, mpsc};
+use tokio::time::timeout;
 use tokio_rustls::TlsAcceptor;
 
 pub type StreamInitCallbackType = Arc<
@@ -28,7 +29,7 @@ struct Server {
 }
 
 impl Server {
-    async fn run(
+    async fn start_server(
         &self,
         listener: TcpListener,
         on_create_session_delegate_callback: CreateSessionDelegateCallback,
@@ -63,8 +64,9 @@ impl Server {
             }
 
             session_id_seed += 1;
-            let session_id = session_id_seed;
 
+            let session_id = session_id_seed;
+            let tls_acceptor = tls_acceptor.clone();
             let delegate = on_create_session_delegate_callback();
             let shutdown = self.notify_shutdown.subscribe();
             let shutdown_complete = self.shutdown_complete_tx.clone();
@@ -73,13 +75,39 @@ impl Server {
             tokio::spawn(async move {
                 trace!("TCP Server new connection: {}", addr);
 
-                tcp_session::run(session_id, addr, delegate, shutdown, stream).await;
+                if let Some(tls_acceptor) = tls_acceptor {
+                    match Self::try_tls(stream, tls_acceptor).await {
+                        Ok(stream) => {
+                            tcp_session::run(session_id, addr, delegate, shutdown, stream).await;
+                        }
+                        Err(err) => {
+                            debug!("TCP Server tls error: {err}");
+                        }
+                    }
+                } else {
+                    tcp_session::run(session_id, addr, delegate, shutdown, stream).await;
+                }
 
                 trace!("TCP Server disconnect: {}", addr);
                 // 反向通知此会话结束
                 drop(shutdown_complete);
             });
         }
+    }
+
+    const TIMEOUT_TLS: u64 = 15;
+
+    // ref https://github.com/netskillzgh/rollo/blob/master/rollo/src/server/world_socket_mgr.rs#L183
+    async fn try_tls(
+        socket: TcpStream,
+        tls_acceptor: TlsAcceptor,
+    ) -> anyhow::Result<tokio_rustls::TlsStream<TcpStream>> {
+        let stream = timeout(
+            Duration::from_secs(Self::TIMEOUT_TLS),
+            tls_acceptor.accept(socket),
+        )
+        .await??;
+        Ok(tokio_rustls::TlsStream::Server(stream))
     }
 }
 
@@ -128,7 +156,7 @@ impl Builder {
         };
 
         select! {
-            res = server.run(listener, self.create_session_delegate_callback, self.steam_init_callback, self.tls_configuration) => {
+            res = server.start_server(listener, self.create_session_delegate_callback, self.steam_init_callback, self.tls_configuration) => {
                 if let Err(err) = res {
                     error!("TCP Server error {}", err);
                 }
