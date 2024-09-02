@@ -10,6 +10,7 @@ use tokio::net::{TcpListener, TcpStream, ToSocketAddrs};
 use tokio::select;
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::timeout;
+use tokio_rustls::rustls::ServerConfig;
 use tokio_rustls::TlsAcceptor;
 
 pub type StreamInitCallbackType = Arc<
@@ -38,11 +39,15 @@ impl Server {
     ) -> anyhow::Result<()> {
         let tls_acceptor: Option<TlsAcceptor> = match tls_configuration {
             Some(tls_configuration) => {
-                let config = super::tls::load_config(
-                    (&tls_configuration.certificate).as_ref(),
-                    &tls_configuration.key,
-                )?;
-                Some(TlsAcceptor::from(Arc::new(config)))
+                let certs = super::tls::load_certs(&tls_configuration.certificate)?;
+                let keys = super::tls::load_private_key(&tls_configuration.key)?;
+
+                let server_config = ServerConfig::builder()
+                    .with_safe_defaults()
+                    .with_no_client_auth()
+                    .with_single_cert(certs, keys)?;
+
+                Some(TlsAcceptor::from(Arc::new(server_config)))
             }
             None => None,
         };
@@ -81,6 +86,7 @@ impl Server {
                             tcp_session::run(session_id, addr, delegate, shutdown, stream).await;
                         }
                         Err(err) => {
+                            println!("TCP Server tls error: {err}");
                             debug!("TCP Server tls error: {err}");
                         }
                     }
@@ -158,7 +164,7 @@ impl Builder {
         select! {
             res = server.start_server(listener, self.create_session_delegate_callback, self.steam_init_callback, self.tls_configuration) => {
                 if let Err(err) = res {
-                    error!("TCP Server error {}", err);
+                    error!("TCP Server error: {}", err);
                 }
             },
             _ = shutdown_condition => {

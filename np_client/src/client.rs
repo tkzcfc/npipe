@@ -4,6 +4,7 @@ use byteorder::BigEndian;
 use byteorder::ByteOrder;
 use bytes::BytesMut;
 use log::{debug, error, info};
+use np_base::net::tls;
 use np_base::proxy::inlet::{Inlet, InletDataEx, InletProxyType};
 use np_base::proxy::outlet::Outlet;
 use np_base::proxy::{OutputFuncType, ProxyMessage};
@@ -17,16 +18,22 @@ use socket2::{SockRef, TcpKeepalive};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::select;
 use tokio::sync::{Mutex, RwLock};
-use tokio::time::{sleep, Instant};
+use tokio::time::{sleep, timeout, Instant};
+use tokio_rustls::rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore, ServerName};
+use tokio_rustls::TlsConnector;
+use webpki_roots::TLS_SERVER_ROOTS;
 
-type WriterType = Arc<Mutex<WriteHalf<TcpStream>>>;
+const TIMEOUT_TLS: u64 = 30;
 
-struct Client {
-    writer: WriterType,
+struct Client<S>
+where
+    S: AsyncRead + AsyncWrite + Send + 'static,
+{
+    writer: Arc<Mutex<WriteHalf<S>>>,
     username: String,
     password: String,
     player_id: u32,
@@ -37,17 +44,72 @@ struct Client {
 
 pub async fn run(common_args: &CommonArgs) -> anyhow::Result<()> {
     info!("Start connecting to server {}", common_args.server);
+
     let stream = TcpStream::connect(&common_args.server).await?;
     let ka = TcpKeepalive::new().with_time(Duration::from_secs(30));
     let sf = SockRef::from(&stream);
     sf.set_tcp_keepalive(&ka)?;
+
     info!("Successful connection with server {}", common_args.server);
 
+    // 升级为TLS连接
+    if common_args.enable_tls {
+        let mut root_cert_store = RootCertStore::empty();
+
+        // 加载系统默认的根证书
+        let trust_anchors = TLS_SERVER_ROOTS.0.iter().map(|ta| {
+            OwnedTrustAnchor::from_subject_spki_name_constraints(
+                ta.subject,
+                ta.spki,
+                ta.name_constraints,
+            )
+        });
+        root_cert_store.add_server_trust_anchors(trust_anchors);
+
+        // 加载自签证书
+        if !common_args.ca_cert.is_empty() {
+            let ca_certs = tls::load_certs(&common_args.ca_cert)?;
+            anyhow::ensure!(
+                !ca_certs.is_empty(),
+                "invalid cert file: {}",
+                common_args.ca_cert
+            );
+            root_cert_store.add(&ca_certs[0])?;
+        }
+
+        // 创建TLS配置
+        let config = ClientConfig::builder()
+            .with_safe_defaults()
+            .with_root_certificates(root_cert_store)
+            .with_no_client_auth(); // 不需要客户端认证
+
+        let str_vec: Vec<&str> = common_args.server.split(":").collect();
+        if str_vec.is_empty() {
+            return Err(anyhow!("invalid addr: {}", common_args.server));
+        }
+        let connector = TlsConnector::from(Arc::new(config));
+
+        let stream = timeout(
+            Duration::from_secs(TIMEOUT_TLS),
+            connector.connect(ServerName::try_from(str_vec[0])?, stream),
+        )
+        .await??;
+
+        run_client(common_args, stream).await
+    } else {
+        run_client(common_args, stream).await
+    }
+}
+
+async fn run_client<S>(common_args: &CommonArgs, stream: S) -> anyhow::Result<()>
+where
+    S: AsyncRead + AsyncWrite + Send + 'static,
+{
     let (reader, writer) = tokio::io::split(stream);
 
     let writer = Arc::new(Mutex::new(writer));
 
-    let mut client = Client {
+    let mut client = Client::<S> {
         writer: writer.clone(),
         username: common_args.username.clone(),
         password: common_args.password.clone(),
@@ -70,10 +132,13 @@ pub async fn run(common_args: &CommonArgs) -> anyhow::Result<()> {
     result
 }
 
-async fn ping_forever(
-    writer: WriterType,
+async fn ping_forever<S>(
+    writer: Arc<Mutex<WriteHalf<S>>>,
     last_active_time: Arc<RwLock<Instant>>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<()>
+where
+    S: AsyncRead + AsyncWrite + Send + 'static,
+{
     const PING_INTERVAL: Duration = Duration::from_secs(5);
     loop {
         sleep(Duration::from_secs(1)).await;
@@ -102,10 +167,13 @@ async fn ping_forever(
     }
 }
 
-impl Client {
+impl<S> Client<S>
+where
+    S: AsyncRead + AsyncWrite + Send + 'static,
+{
     async fn run(
         &mut self,
-        mut reader: ReadHalf<TcpStream>,
+        mut reader: ReadHalf<S>,
         last_active_time: Arc<RwLock<Instant>>,
     ) -> anyhow::Result<()> {
         const WRITE_TIMEOUT: Duration = Duration::from_secs(1);
@@ -224,11 +292,12 @@ impl Client {
 
         // 删除无效的出口
         for key in keys_to_remove {
-            info!("start deleting the outlet({key})");
             if let Some(outlet) = self.outlets.write().await.remove(&key) {
+                let description = outlet.description().to_owned();
+                info!("start deleting the outlet({description})");
                 outlet.stop().await;
+                info!("delete outlet({description}) end");
             }
-            info!("delete outlet({key}) end");
         }
 
         // 收集无效的入口
@@ -251,11 +320,12 @@ impl Client {
 
         // 删除无效入口
         for key in keys_to_remove {
-            info!("start deleting the inlet({key})");
             if let Some(mut inlet) = self.inlets.write().await.remove(&key) {
+                let description = inlet.description().to_owned();
+                info!("start deleting the inlet({description})");
                 inlet.stop().await;
+                info!("delete inlet({description}) end");
             }
-            info!("delete inlet({key}) end");
         }
 
         // 添加代理出口
@@ -297,6 +367,7 @@ impl Client {
                         }
                     })
                 });
+                info!("start outlet({})", outlet_description(&tunnel));
                 self.outlets.write().await.insert(
                     tunnel_id,
                     Outlet::new(outlet_output, outlet_description(&tunnel)),
@@ -369,6 +440,7 @@ impl Client {
                     {
                         error!("inlet({}) start error: {}", source, err);
                     } else {
+                        info!("start inlet({})", inlet.description());
                         self.inlets.write().await.insert(tunnel.id, inlet);
                     }
                 } else {
@@ -384,7 +456,7 @@ impl Client {
     async fn send_proxy_message(
         outlets: Arc<RwLock<HashMap<u32, Arc<Outlet>>>>,
         inlets: Arc<RwLock<HashMap<u32, Inlet>>>,
-        writer: WriterType,
+        writer: Arc<Mutex<WriteHalf<S>>>,
         self_player_id: u32,
         player_id: u32,
         tunnel_id: u32,
@@ -456,11 +528,14 @@ impl Client {
 }
 
 #[inline]
-pub(crate) async fn package_and_send_message(
-    writer: WriterType,
+pub(crate) async fn package_and_send_message<S>(
+    writer: Arc<Mutex<WriteHalf<S>>>,
     serial: i32,
     message: &MessageType,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<()>
+where
+    S: AsyncRead + AsyncWrite + Send + 'static,
+{
     if let Some(message_id) = get_message_id(message) {
         let message_size = get_message_size(message);
         let mut buf = Vec::with_capacity(message_size + 14);

@@ -25,8 +25,9 @@ pub async fn run_tcp_server() -> anyhow::Result<()> {
         builder = builder.set_tls_configuration(&GLOBAL_CONFIG.tls_cert, &GLOBAL_CONFIG.tls_key);
     }
 
-    builder.build(GLOBAL_CONFIG.listen_addr.as_str(), signal::ctrl_c())
-    .await
+    builder
+        .build(GLOBAL_CONFIG.listen_addr.as_str(), signal::ctrl_c())
+        .await
 }
 
 pub async fn run_web_server() -> anyhow::Result<()> {

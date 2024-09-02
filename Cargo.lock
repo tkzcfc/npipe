@@ -1798,8 +1798,11 @@ dependencies = [
  "np_proto",
  "num",
  "once_cell",
+ "rustls-pemfile",
  "socket2",
  "tokio",
+ "tokio-rustls",
+ "webpki-roots 0.22.6",
  "windows-service",
 ]
 
@@ -3546,7 +3549,7 @@ dependencies = [
  "rustls 0.21.12",
  "rustls-webpki",
  "url",
- "webpki-roots",
+ "webpki-roots 0.25.4",
 ]
 
 [[package]]
@@ -3689,6 +3692,15 @@ checksum = "ed63aea5ce73d0ff405984102c42de94fc55a6b75765d621c65262469b3c9b53"
 dependencies = [
  "ring 0.17.8",
  "untrusted 0.9.0",
+]
+
+[[package]]
+name = "webpki-roots"
+version = "0.22.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6c71e40d7d2c34a5106301fb632274ca37242cd0c9d3e64dbece371a40a2d87"
+dependencies = [
+ "webpki",
 ]
 
 [[package]]

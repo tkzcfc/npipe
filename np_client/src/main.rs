@@ -30,6 +30,14 @@ pub(crate) struct CommonArgs {
     #[arg(short, long)]
     pub password: String,
 
+    /// enable tls
+    #[arg(long, default_value = "false")]
+    pub enable_tls: bool,
+
+    /// ca certificate
+    #[arg(long, default_value = "")]
+    pub ca_cert: String,
+
     /// Set log level  warn
     #[arg(long, default_value = "info")]
     pub log_level: String,
