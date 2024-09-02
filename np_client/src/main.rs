@@ -14,11 +14,11 @@ mod winservice;
 
 #[derive(Args)]
 pub(crate) struct CommonArgs {
-    /// Print backtracking information
+    /// print backtracking information
     #[arg(long, default_value_t = false, action = clap::ArgAction::Set)]
     pub backtrace: bool,
 
-    /// Server address
+    /// server address
     #[arg(short, long)]
     pub server: String,
 
@@ -34,15 +34,15 @@ pub(crate) struct CommonArgs {
     #[arg(long, default_value = "false")]
     pub enable_tls: bool,
 
-    /// ca certificate
+    /// ca file path (optional), if not provided, the client’s certificate will not be verified.
     #[arg(long, default_value = "")]
     pub ca_cert: String,
 
-    /// Set log level  warn
+    /// set log level
     #[arg(long, default_value = "info")]
     pub log_level: String,
 
-    /// Set log level
+    /// set log level
     #[arg(long, default_value = "error")]
     pub base_log_level: String,
 }

@@ -11,17 +11,21 @@ Usage: np_client.exe install [OPTIONS] --server <SERVER> --username <USERNAME> -
 
 Options:
       --backtrace <BACKTRACE>
-          Print backtracking information [default: false] [possible values: true, false]
+          print backtracking information [default: false] [possible values: true, false]
   -s, --server <SERVER>
-          Server address
+          server address
   -u, --username <USERNAME>
           username
   -p, --password <PASSWORD>
           password
+      --enable-tls
+          enable tls
+      --ca-cert <CA_CERT>
+          ca file path (optional), if not provided, the client’s certificate will not be verified [default: ]
       --log-level <LOG_LEVEL>
-          Set log level  warn [default: info]
+          set log level [default: info]
       --base-log-level <BASE_LOG_LEVEL>
-          Set log level [default: error]
+          set log level [default: error]
 
 ```
 
@@ -39,19 +43,21 @@ Usage: np_client.exe run [OPTIONS] --server <SERVER> --username <USERNAME> --pas
 
 Options:
       --backtrace <BACKTRACE>
-          Print backtracking information [default: false] [possible values: true, false]
+          print backtracking information [default: false] [possible values: true, false]
   -s, --server <SERVER>
-          Server address
+          server address
   -u, --username <USERNAME>
           username
   -p, --password <PASSWORD>
           password
+      --enable-tls
+          enable tls
+      --ca-cert <CA_CERT>
+          ca file path (optional), if not provided, the client’s certificate will not be verified [default: ]
       --log-level <LOG_LEVEL>
-          Set log level  warn [default: info]
+          set log level [default: info]
       --base-log-level <BASE_LOG_LEVEL>
-          Set log level [default: error]
-  -h, --help
-          Print help
+          set log level [default: error]
 ```
 
 
@@ -70,6 +76,9 @@ Options:
 | ------------ | ----------------------------------- | ------------------------------------------------------------ |
 | database_url | 数据库地址                          | sqlite格式 sqlite://data.db?mode=rwc<br />mysql格式 mysql://username:password@server:port/dbname, 如:mysql://admin:password@127.0.0.1:3306/npipe |
 | listen_addr  | 服务端监听地址                      | 0.0.0.0:8118                                                 |
+| enable_tls   | 启用tls连接                         | true/false                                                   |
+| tls_cert     | cert文件路径                        | ./cert.pem                                                   |
+| tls_key      | key文件路径                         | ./server.key.pem                                             |
 | web_base_dir | web后台管理路径 (为空则关闭web管理) | ./dist                                                       |
 | web_addr     | web管理监听地址                     | 0.0.0.0:8120                                                 |
 | web_username | web界面管理账号 (为空则关闭web管理) | admin                                                        |
@@ -99,7 +108,7 @@ Options:
 | tunnel_type       | 隧道类型 TCP  UDP  SOCKS5                                 |
 | username          | SOCKS5代理认证用户名                                      |
 | password          | SOCKS5代理认证密码                                        |
-| encryption_method | 隧道加密方式                                              |
+| encryption_method | 隧道加密方式(启用tls连接之后就不需要加密了)               |
 | custom_mapping    | 自定义域名                                                |
 
 ```

@@ -1,6 +1,9 @@
 {
 	"database_url": "sqlite://data.db?mode=rwc",
 	"listen_addr": "0.0.0.0:8118",
+	"enable_tls": false,
+	"tls_cert": "./cert.pem",
+	"tls_key": "./server.key.pem",
 	"web_base_dir": "./dist",
 	"web_addr": "0.0.0.0:8120",
 	"web_username": "admin",
