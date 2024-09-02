@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hello World</title>
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(0deg, #41b3ff, #ff2b7c);
+            font-family: 'Arial', sans-serif;
+            color: white;
+            overflow: hidden;
+        }
+
+        h1 {
+            font-size: 4rem;
+            animation: glow 1.5s infinite alternate;
+        }
+
+        @keyframes glow {
+            from {
+                text-shadow: 0 0 10px #fff, 0 0 20px #ff416c, 0 0 30px #ff4b2b, 0 0 40px #ff4b2b, 0 0 50px #ff4b2b;
+            }
+            to {
+                text-shadow: 0 0 20px #fff, 0 0 30px #ff416c, 0 0 40px #ff416c, 0 0 50px #ff416c, 0 0 60px #ff4b2b;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>  Hello World  </h1>
+</body>
+</html>
