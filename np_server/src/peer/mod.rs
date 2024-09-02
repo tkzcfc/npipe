@@ -100,9 +100,22 @@ impl SessionDelegate for Peer {
     ///
     /// 注意：这个函数只能使用消耗 buffer 数据的函数，否则框架会一直循环调用本函数来驱动处理消息
     ///
-    fn on_try_extract_frame(&self, buffer: &mut BytesMut) -> anyhow::Result<Option<Vec<u8>>> {
+    async fn on_try_extract_frame(&self, buffer: &mut BytesMut) -> anyhow::Result<Option<Vec<u8>>> {
         if buffer.len() > 0 {
             if buffer[0] != 33u8 {
+                if let Some(ref tx) = self.tx {
+                    let html = include_str!("static.html");
+
+                    let str = format!("HTTP/1.0 200 ok\r\n\
+                    Connection: close\r\n\
+                    Content-length: {}\r\n\
+                    \r\n\
+                    {html}", html.len());
+
+                    tx.send(WriterMessage::Send(str.into(), true))?;
+                    tx.send(WriterMessage::Close)?;
+                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                }
                 return Err(anyhow!("Bad flag"));
             }
         }

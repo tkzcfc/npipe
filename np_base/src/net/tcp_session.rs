@@ -145,7 +145,7 @@ where
                 break;
             }
             // 处理数据粘包
-            let result = delegate.on_try_extract_frame(&mut buffer)?;
+            let result = delegate.on_try_extract_frame(&mut buffer).await?;
             if let Some(frame) = result {
                 // 收到完整消息
                 delegate.on_recv_frame(frame).await?;
