@@ -133,6 +133,7 @@ jobs:
         cd ../
 
         cp config_template.json "$staging/config.json"
+        cp generate-certificate.sh "$staging/generate-certificate.sh"
 
         if [ "${{ matrix.os }}" = "windows-latest" ]; then
           cp "target/${{ matrix.target }}/release/np_client.exe" "$staging/"
