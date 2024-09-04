@@ -10,7 +10,6 @@ np_base = { path = "../np_base" }
 np_proto = { path = "../np_proto", default-features = false }
 tokio = { version = "1", features = ["full"] }
 tokio-rustls = { version = "0.23.0" }
-rustls-pemfile = { version = "0.2" }
 webpki-roots = "0.22"
 num = { version = "0.4.1", features = [] }
 clap = { version = "4.4.12", features = ["derive"] }

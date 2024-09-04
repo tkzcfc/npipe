@@ -4,7 +4,6 @@ use std::pin::Pin;
 use std::time::Duration;
 
 pub mod session_delegate;
-pub mod tcp_client;
 pub mod tcp_server;
 pub mod tcp_session;
 pub mod tls;

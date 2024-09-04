@@ -2,6 +2,7 @@ mod handle_push;
 mod handle_request;
 mod handle_response;
 
+use crate::global::config::GLOBAL_CONFIG;
 use crate::player::Player;
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -12,8 +13,12 @@ use np_base::net::session_delegate::SessionDelegate;
 use np_base::net::WriterMessage;
 use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size, MessageType};
 use np_proto::{generic, message_map};
+use socket2::{SockRef, TcpKeepalive};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
+use tokio::io::{AsyncReadExt, AsyncWriteExt, WriteHalf};
+use tokio::net::TcpStream;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
@@ -22,6 +27,7 @@ pub struct Peer {
     tx: Option<UnboundedSender<WriterMessage>>,
     player: Option<Arc<RwLock<Player>>>,
     session_id: u32,
+    traffic_forward_writer: Option<WriteHalf<TcpStream>>,
 }
 
 impl Peer {
@@ -30,6 +36,7 @@ impl Peer {
             tx: None,
             player: None,
             session_id: 0,
+            traffic_forward_writer: None,
         }
     }
 
@@ -69,6 +76,71 @@ impl Peer {
             Ok(MessageType::None)
         };
     }
+
+    // 模拟http 404请求结果
+    async fn send_http_404_response(&self) -> anyhow::Result<()> {
+        if let Some(ref tx) = self.tx {
+            let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
+            let formatted_time = now.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
+
+            let str = format!(
+                "HTTP/1.1 400 Bad Request\r\n\
+                Server: nginx\r\n\
+                Date: {formatted_time}\r\n\
+                Content-Type: text/html\r\n\
+                Content-Length: 150\r\n\
+                Connection: close\r\n\
+                \r\n\
+                <html>\r\n\
+                <head><title>400 Bad Request</title></head>\r\n\
+                <body>\r\n\
+                <center><h1>400 Bad Request</h1></center>\r\n\
+                <hr><center>nginx</center>\r\n\
+                </body>\r\n\
+                </html>\r\n\
+                "
+            );
+
+            tx.send(WriterMessage::Send(str.into(), true))?;
+            tx.send(WriterMessage::Close)?;
+        }
+        Ok(())
+    }
+
+    /// 创建流量转发通道
+    async fn create_traffic_forward_channel(&mut self) -> anyhow::Result<()> {
+        if let Some(ref tx) = self.tx {
+            let stream = TcpStream::connect(&GLOBAL_CONFIG.illegal_traffic_forward).await?;
+
+            // set tcp keepalive
+            let ka = TcpKeepalive::new().with_time(Duration::from_secs(30));
+            let sf = SockRef::from(&stream);
+            sf.set_tcp_keepalive(&ka)?;
+
+            let (mut reader, writer) = tokio::io::split(stream);
+
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                let mut buffer = BytesMut::with_capacity(4096);
+                loop {
+                    if let Ok(size) = reader.read_buf(&mut buffer).await {
+                        if size == 0 {
+                            break;
+                        }
+                        let frame = buffer.split().to_vec();
+                        let _ = tx.send(WriterMessage::Send(frame, true));
+                    } else {
+                        break;
+                    }
+                }
+                let _ = tx.send(WriterMessage::Close);
+            });
+            self.traffic_forward_writer = Some(writer);
+            Ok(())
+        } else {
+            Err(anyhow!("tx is none"))
+        }
+    }
 }
 
 #[async_trait]
@@ -93,6 +165,10 @@ impl SessionDelegate for Peer {
                 player.write().await.on_disconnect_session().await;
             }
         }
+        // 关闭流量转发通道
+        if let Some(mut writer) = self.traffic_forward_writer.take() {
+            let _ = writer.shutdown().await;
+        }
         Ok(())
     }
 
@@ -100,25 +176,28 @@ impl SessionDelegate for Peer {
     ///
     /// 注意：这个函数只能使用消耗 buffer 数据的函数，否则框架会一直循环调用本函数来驱动处理消息
     ///
-    async fn on_try_extract_frame(&self, buffer: &mut BytesMut) -> anyhow::Result<Option<Vec<u8>>> {
+    async fn on_try_extract_frame(
+        &mut self,
+        buffer: &mut BytesMut,
+    ) -> anyhow::Result<Option<Vec<u8>>> {
         if buffer.len() > 0 {
             if buffer[0] != 33u8 {
-                if let Some(ref tx) = self.tx {
-                    let html = include_str!("static.html");
-
-                    let str = format!("HTTP/1.0 200 ok\r\n\
-                    Connection: close\r\n\
-                    Content-length: {}\r\n\
-                    \r\n\
-                    {html}", html.len());
-
-                    tx.send(WriterMessage::Send(str.into(), true))?;
-                    tx.send(WriterMessage::Close)?;
-                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                if GLOBAL_CONFIG.illegal_traffic_forward.is_empty()
+                    || self.create_traffic_forward_channel().await.is_err()
+                {
+                    self.send_http_404_response().await?;
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                    return Err(anyhow!("Bad flag"));
                 }
-                return Err(anyhow!("Bad flag"));
             }
         }
+
+        if let Some(ref mut writer) = self.traffic_forward_writer {
+            let frame = buffer.split().to_vec();
+            writer.write_all(&frame).await?;
+            return Ok(None);
+        }
+
         // 数据小于5字节,继续读取数据
         if buffer.len() < 5 {
             return Ok(None);

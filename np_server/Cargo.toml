@@ -31,6 +31,7 @@ actix-identity = { version = "0.7" }
 actix-session = { version = "0.9", features = ["cookie-session"] }
 chrono = "0.4.31"
 md5 = "0.7"
+socket2 = "0.5"
 
 [dev-dependencies]
 

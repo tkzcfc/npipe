@@ -24,6 +24,13 @@ pub struct Config {
     pub web_password: String,
     /// web目录
     pub web_base_dir: String,
+    /// 非法流量转发地址
+    #[serde(default = "default_illegal_traffic_forward")]
+    pub illegal_traffic_forward: String,
+}
+
+fn default_illegal_traffic_forward() -> String {
+    "".to_string()
 }
 
 pub static GLOBAL_CONFIG: Lazy<Config> = Lazy::new(|| {
