@@ -1,6 +1,6 @@
 use crate::global::manager::GLOBAL_MANAGER;
 use crate::player::PlayerId;
-use log::{debug, error, info};
+use log::{debug, error};
 use np_base::proxy::inlet::{Inlet, InletDataEx, InletProxyType};
 use np_base::proxy::outlet::Outlet;
 use np_base::proxy::{OutputFuncType, ProxyMessage};
