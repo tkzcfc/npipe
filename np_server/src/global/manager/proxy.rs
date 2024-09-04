@@ -47,9 +47,9 @@ impl ProxyManager {
         for key in keys_to_remove {
             if let Some(outlet) = self.outlets.write().await.remove(&key) {
                 let description = outlet.description().to_owned();
-                info!("start deleting the outlet({description})");
+                debug!("start deleting the outlet({description})");
                 outlet.stop().await;
-                info!("delete outlet({description}) end");
+                debug!("delete outlet({description}) end");
             }
         }
 
@@ -75,9 +75,9 @@ impl ProxyManager {
         for key in keys_to_remove {
             if let Some(mut inlet) = self.inlets.write().await.remove(&key) {
                 let description = inlet.description().to_owned();
-                info!("start deleting the inlet({description})");
+                debug!("start deleting the inlet({description})");
                 inlet.stop().await;
-                info!("delete inlet({description}) end");
+                debug!("delete inlet({description}) end");
             }
         }
 
@@ -107,7 +107,7 @@ impl ProxyManager {
                         }
                     })
                 });
-                info!("start outlet({})", tunnel.outlet_description());
+                debug!("start outlet({})", tunnel.outlet_description());
                 self.outlets.write().await.insert(
                     tunnel_id,
                     Outlet::new(outlet_output, tunnel.outlet_description()),
@@ -157,7 +157,7 @@ impl ProxyManager {
                     {
                         error!("inlet({}) start error: {}", tunnel.source, err);
                     } else {
-                        info!("start inlet({})", inlet.description());
+                        debug!("start inlet({})", inlet.description());
                         self.inlets.write().await.insert(tunnel.id, inlet);
                     }
                 } else {

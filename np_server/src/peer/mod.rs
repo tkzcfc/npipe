@@ -104,6 +104,7 @@ impl Peer {
             tx.send(WriterMessage::Send(str.into(), true))?;
             tx.send(WriterMessage::Close)?;
         }
+        tokio::time::sleep(Duration::from_secs(5)).await;
         Ok(())
     }
 
@@ -185,8 +186,8 @@ impl SessionDelegate for Peer {
                 if GLOBAL_CONFIG.illegal_traffic_forward.is_empty()
                     || self.create_traffic_forward_channel().await.is_err()
                 {
+                    debug!("bad flag");
                     self.send_http_404_response().await?;
-                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                     return Err(anyhow!("Bad flag"));
                 }
             }
@@ -208,7 +209,9 @@ impl SessionDelegate for Peer {
         let len = BigEndian::read_u32(buf) as usize;
 
         // 超出最大限制
-        if len <= 0 || len >= 1024 * 1024 * 5 {
+        if len <= 0 || len >= 1024 * 1024 * 2 {
+            debug!("Message too long");
+            self.send_http_404_response().await?;
             return Err(anyhow!("Message too long"));
         }
 
@@ -226,6 +229,8 @@ impl SessionDelegate for Peer {
     // 收到一个完整的消息包
     async fn on_recv_frame(&mut self, frame: Vec<u8>) -> anyhow::Result<()> {
         if frame.len() < 8 {
+            debug!("message length is too small");
+            self.send_http_404_response().await?;
             return Err(anyhow!("message length is too small"));
         }
         // 消息序号
@@ -279,15 +284,18 @@ impl SessionDelegate for Peer {
                 }
             }
             Err(err) => {
-                // 消息解码失败
-                self.send_response(
-                    serial,
-                    &MessageType::GenericError(generic::Error {
-                        number: generic::ErrorCode::InternalError.into(),
-                        message: format!("{}", err),
-                    }),
-                )
-                .await?;
+                debug!("decode message error: {err}");
+                self.send_http_404_response().await?;
+
+                // // 消息解码失败
+                // self.send_response(
+                //     serial,
+                //     &MessageType::GenericError(generic::Error {
+                //         number: generic::ErrorCode::InternalError.into(),
+                //         message: format!("{}", err),
+                //     }),
+                // )
+                // .await?;
 
                 return Err(anyhow!(err));
             }
