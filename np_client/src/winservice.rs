@@ -185,7 +185,7 @@ pub fn install_service(common_args: CommonArgs) -> anyhow::Result<()> {
     let service_binary_path = std::env::current_exe().unwrap().with_file_name(SERVICE_EXE);
 
     // Set service binary default arguments
-    let service_binary_arguments = vec![
+    let mut service_binary_arguments = vec![
         OsString::from("run-service"),
         OsString::from(if common_args.backtrace {
             "--backtrace=true"
@@ -197,9 +197,12 @@ pub fn install_service(common_args: CommonArgs) -> anyhow::Result<()> {
         OsString::from(format!("--password={}", common_args.password)),
         OsString::from(format!("--log-level={}", common_args.log_level)),
         OsString::from(format!("--base-log-level={}", common_args.base_log_level)),
-        OsString::from(format!("--enable-tls={}", common_args.enable_tls)),
         OsString::from(format!("--ca-cert={}", common_args.ca_cert)),
     ];
+    
+    if common_args.enable_tls {
+        service_binary_arguments.push(OsString::from("--enable-tls"));
+    }
 
     // Run the current service as `System` type
     let service_info = ServiceInfo {
