@@ -110,6 +110,9 @@ impl Peer {
 
     /// 创建流量转发通道
     async fn create_traffic_forward_channel(&mut self) -> anyhow::Result<()> {
+        if GLOBAL_CONFIG.illegal_traffic_forward.is_empty() {
+            return Err(anyhow!("no config illegal_traffic_forward"));
+        }
         if let Some(ref tx) = self.tx {
             let stream = TcpStream::connect(&GLOBAL_CONFIG.illegal_traffic_forward).await?;
 
@@ -181,10 +184,9 @@ impl SessionDelegate for Peer {
         &mut self,
         buffer: &mut BytesMut,
     ) -> anyhow::Result<Option<Vec<u8>>> {
-        if buffer.len() > 0 {
+        if buffer.len() > 0 && self.traffic_forward_writer.is_none() {
             if buffer[0] != 33u8 {
-                if GLOBAL_CONFIG.illegal_traffic_forward.is_empty()
-                    || self.create_traffic_forward_channel().await.is_err()
+                if self.create_traffic_forward_channel().await.is_err()
                 {
                     debug!("bad flag");
                     self.send_http_404_response().await?;
