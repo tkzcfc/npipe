@@ -18,6 +18,7 @@ jobs:
     strategy:
       matrix:
         include:
+
           - os: windows-latest
             target: x86_64-win7-windows-msvc
             use-cross: false
@@ -42,14 +43,12 @@ jobs:
       
     - name: Install Rust
       if: matrix.target == 'x86_64-win7-windows-msvc'
-      uses: dtolnay/rust-toolchain@nightly
-      with:
-        # stable: 使用稳定版本的Rust。
-        # beta: 使用测试版本的Rust。
-        # nightly: 使用最新的夜间版本的Rust。
-        # 具体版本号: 如1.56.0，指定特定的Rust版本。
-        toolchain: 1.77.0
-        target: ${{ matrix.target }}
+      shell: bash
+      run: |
+        rustup toolchain install nightly
+        rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
+        cargo install xwin
+        xwin splat --output winsdk
 
     - name: Install Rust
       if: matrix.target != 'x86_64-win7-windows-msvc'
@@ -69,7 +68,13 @@ jobs:
       if: ${{ matrix.use-cross == false }}
       shell: bash
       run: |
-        echo "CARGO=cargo" >> $GITHUB_ENV
+        if [ "${{ matrix.target }}" = "x86_64-win7-windows-msvc" ]; then
+          echo "CARGO=cargo" >> $GITHUB_ENV
+          echo "CARGO_BUILD_ARG=--release" >> $GITHUB_ENV
+        else
+          echo "CARGO=cargo +nightly" >> $GITHUB_ENV
+          echo "CARGO_BUILD_ARG=--release -Zbuild-std=std,panic_abort" >> $GITHUB_ENV
+        fi
 
     - name: Setup cross compilation
       if: ${{ matrix.use-cross == true }}
@@ -87,9 +92,8 @@ jobs:
     - name: Build
       shell: bash
       run: |
-        $CARGO --version
-        $CARGO build --bin np_client --release --locked --target ${{ matrix.target }}
-        $CARGO build --bin np_server --release --locked --target ${{ matrix.target }}
+        $CARGO build --bin np_client $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
+        $CARGO build --bin np_server $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
 
     # - name: Build
     #   id: build
