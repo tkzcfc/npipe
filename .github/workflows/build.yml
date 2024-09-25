@@ -19,9 +19,46 @@ jobs:
       matrix:
         include:
 
-          - os: windows-latest
-            target: x86_64-win7-windows-msvc
+          # - os: ubuntu-latest
+          #   target: x86_64-unknown-linux-gnu
+          #   use-cross: false
+
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
             use-cross: false
+
+          # - os: windows-latest
+          #   target: x86_64-pc-windows-gnu
+          #   use-cross: false
+
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            use-cross: false
+
+          # unsupported
+          # - os: windows-latest
+          #   target: x86_64-win7-windows-msvc
+          #   use-cross: false
+
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            use-cross: false
+
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            use-cross: false
+
+          # - os: ubuntu-latest
+          #   target: arm-unknown-linux-gnueabihf
+          #   use-cross: true
+
+          # - os: ubuntu-latest
+          #   target: aarch64-unknown-linux-musl
+          #   use-cross: true
+
+          # - os: ubuntu-latest
+          #   target: armv7-unknown-linux-gnueabihf
+          #   use-cross: true
 
 
     steps:
@@ -54,8 +91,8 @@ jobs:
       if: matrix.target == 'x86_64-win7-windows-msvc'
       shell: bash
       run: |
-        rustup install 1.70.0
-        rustup default 1.70.0
+        rustup toolchain install nightly
+        rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
 
     - name: Install Rust
       if: matrix.target != 'x86_64-win7-windows-msvc'
