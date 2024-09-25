@@ -22,29 +22,29 @@ jobs:
           #   target: x86_64-unknown-linux-gnu
           #   use-cross: false
 
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-            use-cross: false
-
-          # - os: windows-latest
-          #   target: x86_64-pc-windows-gnu
+          # - os: ubuntu-latest
+          #   target: x86_64-unknown-linux-musl
           #   use-cross: false
 
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            use-cross: false
-            
+          # # - os: windows-latest
+          # #   target: x86_64-pc-windows-gnu
+          # #   use-cross: false
+
+          # - os: windows-latest
+          #   target: x86_64-pc-windows-msvc
+          #   use-cross: false
+
           - os: windows-latest
             target: x86_64-win7-windows-msvc
             use-cross: false
 
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            use-cross: false
+          # - os: macos-latest
+          #   target: x86_64-apple-darwin
+          #   use-cross: false
 
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            use-cross: false
+          # - os: macos-latest
+          #   target: aarch64-apple-darwin
+          #   use-cross: false
 
           # - os: ubuntu-latest
           #   target: arm-unknown-linux-gnueabihf
@@ -76,6 +76,18 @@ jobs:
       run: sudo apt update && sudo apt install musl-tools -y
       
     - name: Install Rust
+      if: matrix.target == 'x86_64-win7-windows-msvc'
+      uses: dtolnay/rust-toolchain@nightly
+      with:
+        # stable: 使用稳定版本的Rust。
+        # beta: 使用测试版本的Rust。
+        # nightly: 使用最新的夜间版本的Rust。
+        # 具体版本号: 如1.56.0，指定特定的Rust版本。
+        toolchain: 1.80.0-nightly
+        target: ${{ matrix.target }}
+
+    - name: Install Rust
+      if: matrix.target != 'x86_64-win7-windows-msvc'
       uses: dtolnay/rust-toolchain@stable
       with:
         # stable: 使用稳定版本的Rust。
