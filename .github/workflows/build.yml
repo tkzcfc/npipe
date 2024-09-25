@@ -43,14 +43,13 @@ jobs:
       
     - name: Install Rust
       if: matrix.target == 'x86_64-win7-windows-msvc'
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        # stable: 使用稳定版本的Rust。
-        # beta: 使用测试版本的Rust。
-        # nightly: 使用最新的夜间版本的Rust。
-        # 具体版本号: 如1.56.0，指定特定的Rust版本。
-        toolchain: 1.77
-        target: ${{ matrix.target }}
+      shell: bash
+      run: |
+        rustup install 1.70.0
+        rustup default 1.70.0
+        rustc --version
+        rustup toolchain install nightly
+        rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
 
 
     - name: Install Rust
@@ -76,7 +75,7 @@ jobs:
           echo "CARGO_BUILD_ARG=--release" >> $GITHUB_ENV
         else
           echo "CARGO=cargo +nightly" >> $GITHUB_ENV
-          echo "CARGO_BUILD_ARG=--release" >> $GITHUB_ENV
+          echo "CARGO_BUILD_ARG=--release -Zbuild-std=std,panic_abort" >> $GITHUB_ENV
         fi
 
     - name: Setup cross compilation
