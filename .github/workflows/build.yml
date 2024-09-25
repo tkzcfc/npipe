@@ -18,7 +18,6 @@ jobs:
     strategy:
       matrix:
         include:
-
           - os: windows-latest
             target: x86_64-win7-windows-msvc
             use-cross: false
@@ -49,7 +48,7 @@ jobs:
         # beta: 使用测试版本的Rust。
         # nightly: 使用最新的夜间版本的Rust。
         # 具体版本号: 如1.56.0，指定特定的Rust版本。
-        toolchain: nightly
+        toolchain: 1.77.0
         target: ${{ matrix.target }}
 
     - name: Install Rust
@@ -70,14 +69,7 @@ jobs:
       if: ${{ matrix.use-cross == false }}
       shell: bash
       run: |
-
-        if [ "${{ matrix.target }}" = "x86_64-win7-windows-msvc" ]; then
-          echo "CARGO=cargo" >> $GITHUB_ENV
-          echo "CARGO_BUILD_ARG=--release" >> $GITHUB_ENV
-        else
-          echo "CARGO=cargo +nightly" >> $GITHUB_ENV
-          echo "CARGO_BUILD_ARG=-Zbuild-std --release" >> $GITHUB_ENV
-        fi
+        echo "CARGO=cargo" >> $GITHUB_ENV
 
     - name: Setup cross compilation
       if: ${{ matrix.use-cross == true }}
@@ -95,8 +87,9 @@ jobs:
     - name: Build
       shell: bash
       run: |
-        $CARGO build --bin np_client $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
-        $CARGO build --bin np_server $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
+        $CARGO --version
+        $CARGO build --bin np_client --release --locked --target ${{ matrix.target }}
+        $CARGO build --bin np_server --release --locked --target ${{ matrix.target }}
 
     # - name: Build
     #   id: build
