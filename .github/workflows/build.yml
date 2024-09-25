@@ -50,6 +50,12 @@ jobs:
     #     cargo install xwin
     #     echo yes | xwin splat --output winsdk
 
+    - name: Install Rust
+      if: matrix.target == 'x86_64-win7-windows-msvc'
+      shell: bash
+      run: |
+        rustup install 1.70.0
+        rustup default 1.70.0
 
     - name: Install Rust
       if: matrix.target != 'x86_64-win7-windows-msvc'
