@@ -41,15 +41,14 @@ jobs:
       if: matrix.target == 'x86_64-unknown-linux-musl'
       run: sudo apt update && sudo apt install musl-tools -y
       
-    - name: Install Rust
-      if: matrix.target == 'x86_64-win7-windows-msvc'
-      shell: bash
-      run: |
-        rustup install 1.70.0
-        rustup default 1.70.0
-        rustc --version
-        rustup toolchain install nightly
-        rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
+    # - name: Install Rust
+    #   if: matrix.target == 'x86_64-win7-windows-msvc'
+    #   shell: bash
+    #   run: |
+    #     rustup toolchain install nightly
+    #     rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
+    #     cargo install xwin
+    #     echo yes | xwin splat --output winsdk
 
 
     - name: Install Rust
@@ -72,10 +71,10 @@ jobs:
       run: |
         if [ "${{ matrix.target }}" = "x86_64-win7-windows-msvc" ]; then
           echo "CARGO=cargo" >> $GITHUB_ENV
-          echo "CARGO_BUILD_ARG=--release -Zbuild-std=std,panic_abort" >> $GITHUB_ENV
+          echo "CARGO_BUILD_ARG=--release" >> $GITHUB_ENV
         else
           echo "CARGO=cargo +nightly" >> $GITHUB_ENV
-          echo "CARGO_BUILD_ARG=--release" >> $GITHUB_ENV
+          echo "CARGO_BUILD_ARG=--release -Zbuild-std=std,panic_abort" >> $GITHUB_ENV
         fi
 
     - name: Setup cross compilation
@@ -94,8 +93,6 @@ jobs:
     - name: Build
       shell: bash
       run: |
-        echo $CARGO
-        echo $CARGO_BUILD_ARG
         $CARGO build --bin np_client $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
         $CARGO build --bin np_server $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
 
