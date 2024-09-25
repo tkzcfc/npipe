@@ -33,6 +33,10 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             use-cross: false
+            
+          - os: windows-latest
+            target: x86_64-win7-windows-msvc
+            use-cross: false
 
           - os: macos-latest
             target: x86_64-apple-darwin
