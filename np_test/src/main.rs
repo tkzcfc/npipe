@@ -59,7 +59,7 @@ async fn main() {
         })
     });
 
-    let ctx = context_map.lock().await.get(&name);
+    let _ctx = context_map.lock().await.get(&name);
     let result = context_map
         .lock()
         .await

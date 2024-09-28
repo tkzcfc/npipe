@@ -34,6 +34,10 @@ pub(crate) struct CommonArgs {
     #[arg(long, default_value = "false")]
     pub enable_tls: bool,
 
+    /// If true, the validity of the SSL certificate is not verified.
+    #[arg(long, default_value = "false")]
+    pub insecure: bool,
+
     /// ca file path (optional), if not provided, the client’s certificate will not be verified.
     #[arg(long, default_value = "")]
     pub ca_cert: String,

@@ -186,8 +186,7 @@ impl SessionDelegate for Peer {
     ) -> anyhow::Result<Option<Vec<u8>>> {
         if buffer.len() > 0 && self.traffic_forward_writer.is_none() {
             if buffer[0] != 33u8 {
-                if self.create_traffic_forward_channel().await.is_err()
-                {
+                if self.create_traffic_forward_channel().await.is_err() {
                     debug!("bad flag");
                     self.send_http_404_response().await?;
                     return Err(anyhow!("Bad flag"));

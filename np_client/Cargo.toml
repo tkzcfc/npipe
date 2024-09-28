@@ -9,7 +9,7 @@ edition = "2021"
 np_base = { path = "../np_base" }
 np_proto = { path = "../np_proto", default-features = false }
 tokio = { version = "1", features = ["full"] }
-tokio-rustls = { version = "0.23.0" }
+tokio-rustls = { version = "0.23.0", features = ["dangerous_configuration"] }
 webpki-roots = "0.22"
 num = { version = "0.4.1", features = [] }
 clap = { version = "4.4.12", features = ["derive"] }

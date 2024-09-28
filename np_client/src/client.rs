@@ -23,8 +23,9 @@ use tokio::net::TcpStream;
 use tokio::select;
 use tokio::sync::{Mutex, RwLock};
 use tokio::time::{sleep, timeout, Instant};
+use tokio_rustls::rustls::client::ServerCertVerified;
 use tokio_rustls::rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore, ServerName};
-use tokio_rustls::TlsConnector;
+use tokio_rustls::{rustls, TlsConnector};
 use webpki_roots::TLS_SERVER_ROOTS;
 
 const TIMEOUT_TLS: u64 = 30;
@@ -40,6 +41,22 @@ where
     outlets: Arc<RwLock<HashMap<u32, Arc<Outlet>>>>,
     inlets: Arc<RwLock<HashMap<u32, Inlet>>>,
     tunnels: HashMap<u32, Tunnel>,
+}
+
+struct NoCertificateVerifier;
+
+impl rustls::client::ServerCertVerifier for NoCertificateVerifier {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &rustls::Certificate,
+        _intermediates: &[rustls::Certificate],
+        _server_name: &ServerName,
+        _scts: &mut dyn Iterator<Item = &[u8]>,
+        _ocsp_response: &[u8],
+        _now: SystemTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        Ok(ServerCertVerified::assertion())
+    }
 }
 
 pub async fn run(common_args: &CommonArgs) -> anyhow::Result<()> {
@@ -78,10 +95,16 @@ pub async fn run(common_args: &CommonArgs) -> anyhow::Result<()> {
         }
 
         // 创建TLS配置
-        let config = ClientConfig::builder()
+        let mut config = ClientConfig::builder()
             .with_safe_defaults()
             .with_root_certificates(root_cert_store)
             .with_no_client_auth(); // 不需要客户端认证
+
+        if common_args.insecure {
+            config
+                .dangerous()
+                .set_certificate_verifier(Arc::new(NoCertificateVerifier {}));
+        }
 
         let str_vec: Vec<&str> = common_args.server.split(":").collect();
         if str_vec.is_empty() {

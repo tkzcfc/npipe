@@ -199,9 +199,12 @@ pub fn install_service(common_args: CommonArgs) -> anyhow::Result<()> {
         OsString::from(format!("--base-log-level={}", common_args.base_log_level)),
         OsString::from(format!("--ca-cert={}", common_args.ca_cert)),
     ];
-    
+
     if common_args.enable_tls {
         service_binary_arguments.push(OsString::from("--enable-tls"));
+    }
+    if common_args.insecure {
+        service_binary_arguments.push(OsString::from("--insecure"));
     }
 
     // Run the current service as `System` type
