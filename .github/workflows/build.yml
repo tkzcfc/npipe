@@ -113,11 +113,11 @@ jobs:
       shell: bash
       run: |
         if [ "${{ matrix.target }}" = "x86_64-win7-windows-msvc" ]; then
-          echo "CARGO=cargo" >> $GITHUB_ENV
-          echo "CARGO_BUILD_ARG=--release" >> $GITHUB_ENV
-        else
           echo "CARGO=cargo +nightly" >> $GITHUB_ENV
           echo "CARGO_BUILD_ARG=--release -Zbuild-std=std,panic_abort" >> $GITHUB_ENV
+        else
+          echo "CARGO=cargo" >> $GITHUB_ENV
+          echo "CARGO_BUILD_ARG=--release" >> $GITHUB_ENV
         fi
 
     - name: Setup cross compilation
