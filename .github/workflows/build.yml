@@ -18,7 +18,6 @@ jobs:
     strategy:
       matrix:
         include:
-          # unsupported
           - os: windows-latest
             target: x86_64-win7-windows-msvc
             use-cross: false
@@ -44,28 +43,27 @@ jobs:
     #   if: matrix.target == 'x86_64-win7-windows-msvc'
     #   shell: bash
     #   run: |
+    #     clang-cl --version
+    #     lld-link --version
+    #     rustup install nightly
     #     rustup toolchain install nightly
     #     rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
-    #     curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.0/LLVM-19.1.0-win64.exe -o llvm-installer.exe
-    #     start /wait llvm-installer.exe /SILENT /DIR="C:\LLVM"
-    #     echo "C:\LLVM\bin" >> $GITHUB_PATH
-    #     clang-cl --version
     #     cargo install xwin
     #     echo yes | xwin splat --output winsdk
-    #     set RUSTFLAGS=-C linker=%CD%xwin-lld-link && set CC=%CD%xwin-clang-cl
+    #     set RUSTFLAGS=-C linker=%CD%\xwin-lld-link && set CC=%CD%\xwin-clang-cl
 
+  # nightly-2023-12-28 = nightly1.75.0
     - name: Install Rust
       if: matrix.target == 'x86_64-win7-windows-msvc'
       shell: bash
       run: |
-        clang-cl --version
-        lld-link --version
-        rustup install nightly-2023-03-25
-        rustup toolchain install nightly-2023-03-25
-        rustup component add rust-src --toolchain nightly-2023-03-25-x86_64-pc-windows-msvc
-        cargo install xwin
-        echo yes | xwin splat --output winsdk
-        set RUSTFLAGS=-C linker=%CD%\xwin-lld-link && set CC=%CD%\xwin-clang-cl
+        rustup install nightly
+        rustup toolchain install nightly
+        rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
+        curl -L https://crates.io/api/v1/crates/windows_x86_64_msvc/0.48.5/download -o windows_x86_64_msvc-0.48.5.tar.gz
+        7z x windows_x86_64_msvc-0.48.5.tar.gz
+        7z x windows_x86_64_msvc-0.48.5.crate
+        cp windows_x86_64_msvc-0.48.5/lib/windows.0.48.5.lib windows.0.48.5.lib
 
     - name: Install Rust
       if: matrix.target != 'x86_64-win7-windows-msvc'
@@ -86,7 +84,7 @@ jobs:
       shell: bash
       run: |
         if [ "${{ matrix.target }}" = "x86_64-win7-windows-msvc" ]; then
-          echo "CARGO=cargo +nightly-2023-03-25" >> $GITHUB_ENV
+          echo "CARGO=cargo +nightly" >> $GITHUB_ENV
           echo "CARGO_BUILD_ARG=--release -Zbuild-std=std,panic_abort" >> $GITHUB_ENV
         else
           echo "CARGO=cargo" >> $GITHUB_ENV
