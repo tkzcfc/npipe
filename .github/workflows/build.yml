@@ -54,14 +54,15 @@ jobs:
     #     echo yes | xwin splat --output winsdk
     #     set RUSTFLAGS=-C linker=%CD%xwin-lld-link && set CC=%CD%xwin-clang-cl
 
-        - name: Install Rust
+    - name: Install Rust
       if: matrix.target == 'x86_64-win7-windows-msvc'
       shell: bash
       run: |
-        rustup toolchain install nightly
-        rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
         clang-cl --version
         lld-link --version
+        rustup install nightly-2023-03-25
+        rustup toolchain install nightly-2023-03-25
+        rustup component add rust-src --toolchain nightly-2023-03-25-x86_64-pc-windows-msvc
         cargo install xwin
         echo yes | xwin splat --output winsdk
         set RUSTFLAGS=-C linker=%CD%\xwin-lld-link && set CC=%CD%\xwin-clang-cl
@@ -85,7 +86,7 @@ jobs:
       shell: bash
       run: |
         if [ "${{ matrix.target }}" = "x86_64-win7-windows-msvc" ]; then
-          echo "CARGO=cargo +nightly" >> $GITHUB_ENV
+          echo "CARGO=cargo +nightly-2023-03-25" >> $GITHUB_ENV
           echo "CARGO_BUILD_ARG=--release -Zbuild-std=std,panic_abort" >> $GITHUB_ENV
         else
           echo "CARGO=cargo" >> $GITHUB_ENV
