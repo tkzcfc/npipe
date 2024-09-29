@@ -1,4 +1,4 @@
-name: build_for_linux
+name: build
 
 on:
   push:
@@ -40,19 +40,31 @@ jobs:
       if: matrix.target == 'x86_64-unknown-linux-musl'
       run: sudo apt update && sudo apt install musl-tools -y
       
-    - name: Install Rust
+    # - name: Install Rust
+    #   if: matrix.target == 'x86_64-win7-windows-msvc'
+    #   shell: bash
+    #   run: |
+    #     rustup toolchain install nightly
+    #     rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
+    #     curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.0/LLVM-19.1.0-win64.exe -o llvm-installer.exe
+    #     start /wait llvm-installer.exe /SILENT /DIR="C:\LLVM"
+    #     echo "C:\LLVM\bin" >> $GITHUB_PATH
+    #     clang-cl --version
+    #     cargo install xwin
+    #     echo yes | xwin splat --output winsdk
+    #     set RUSTFLAGS=-C linker=%CD%xwin-lld-link && set CC=%CD%xwin-clang-cl
+
+        - name: Install Rust
       if: matrix.target == 'x86_64-win7-windows-msvc'
       shell: bash
       run: |
         rustup toolchain install nightly
         rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
-        curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.0/LLVM-19.1.0-win64.exe -o llvm-installer.exe
-        start /wait llvm-installer.exe /SILENT /DIR="C:\LLVM"
-        echo "C:\LLVM\bin" >> $GITHUB_PATH
         clang-cl --version
+        lld-link --version
         cargo install xwin
         echo yes | xwin splat --output winsdk
-        set RUSTFLAGS=-C linker=%CD%xwin-lld-link && set CC=%CD%xwin-clang-cl
+        set RUSTFLAGS=-C linker=%CD%\xwin-lld-link && set CC=%CD%\xwin-clang-cl
 
     - name: Install Rust
       if: matrix.target != 'x86_64-win7-windows-msvc'
