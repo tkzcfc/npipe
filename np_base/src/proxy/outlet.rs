@@ -188,7 +188,8 @@ impl Outlet {
 
         let encryption_method = get_method(&encryption_method);
         let encryption_key = BASE64_STANDARD.decode(encryption_key.as_bytes())?;
-        let common_info = SessionCommonInfo::new(is_compressed, encryption_method, encryption_key);
+        let common_info =
+            SessionCommonInfo::new(false, is_compressed, encryption_method, encryption_key);
 
         let tunnel_type = InletProxyType::from_u32(tunnel_type as u32)
             .ok_or(anyhow!("unsupported tunnel_type: {tunnel_type}"))?;

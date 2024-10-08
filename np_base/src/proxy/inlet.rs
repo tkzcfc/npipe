@@ -338,7 +338,11 @@ impl InletSession {
             session_info_map,
             session_id: 0,
             output,
-            common_data: SessionCommonInfo::from_method_name(is_compressed, encryption_method),
+            common_data: SessionCommonInfo::from_method_name(
+                true,
+                is_compressed,
+                encryption_method,
+            ),
             socks5context: None,
             data_ex,
         }

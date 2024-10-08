@@ -15,6 +15,8 @@ pub type InputSenderType = UnboundedSender<WriterMessage>;
 
 #[derive(Clone)]
 pub struct SessionCommonInfo {
+    // 是否是通道入口
+    is_inlet: bool,
     // 是否压缩数据
     pub is_compressed: bool,
     // 加密方法
@@ -27,11 +29,13 @@ pub struct SessionCommonInfo {
 
 impl SessionCommonInfo {
     pub fn new(
+        is_inlet: bool,
         is_compressed: bool,
         encryption_method: EncryptionMethod,
         encryption_key: Vec<u8>,
     ) -> Self {
         Self {
+            is_inlet,
             is_compressed,
             encryption_method,
             encryption_key,
@@ -39,10 +43,14 @@ impl SessionCommonInfo {
         }
     }
 
-    pub fn from_method_name(is_compressed: bool, encryption_method: String) -> Self {
+    pub fn from_method_name(
+        is_inlet: bool,
+        is_compressed: bool,
+        encryption_method: String,
+    ) -> Self {
         let encryption_method = crypto::get_method(encryption_method.as_str());
         let encryption_key = crypto::generate_key(&encryption_method);
-        Self::new(is_compressed, encryption_method, encryption_key)
+        Self::new(is_inlet, is_compressed, encryption_method, encryption_key)
     }
 
     pub async fn encode_data_and_limiting(&self, mut data: Vec<u8>) -> anyhow::Result<Vec<u8>> {
@@ -58,7 +66,13 @@ impl SessionCommonInfo {
             )?;
         }
 
-        while *self.read_buf_len.read().await > READ_BUF_MAX_LEN {
+        let read_buf_max: usize = if self.is_inlet {
+            READ_BUF_MAX_LEN
+        } else {
+            READ_BUF_MAX_LEN * 5
+        };
+
+        while *self.read_buf_len.read().await > read_buf_max {
             yield_now().await;
         }
 
