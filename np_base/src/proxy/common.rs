@@ -66,15 +66,15 @@ impl SessionCommonInfo {
             )?;
         }
 
-        let read_buf_max: usize = if self.is_inlet {
-            READ_BUF_MAX_LEN
-        } else {
-            READ_BUF_MAX_LEN * 5
-        };
-
-        while *self.read_buf_len.read().await > read_buf_max {
-            yield_now().await;
-        }
+        // let read_buf_max: usize = if self.is_inlet {
+        //     READ_BUF_MAX_LEN
+        // } else {
+        //     READ_BUF_MAX_LEN * 5
+        // };
+        //
+        // while *self.read_buf_len.read().await > read_buf_max {
+        //     yield_now().await;
+        // }
 
         let mut read_buf_len_rw = self.read_buf_len.write().await;
         *read_buf_len_rw = *read_buf_len_rw + data.len();
