@@ -162,11 +162,16 @@ jobs:
       run: |
         staging="np-${{ env.BIN_VERSION }}-${{ matrix.target }}"
         mkdir -p "$staging"
-        cd "$staging"
-        curl -LO "https://github.com/tkzcfc/npipe_web/releases/download/v1.0.0/dist.zip"
-        unzip dist.zip
-        rm ./dist.zip
-        cd ../
+
+        git clone https://github.com/pizixi/npipe-webui.git
+        mkdir -p "$staging/dist"
+        cp -R npipe-webui/dist/* "$staging/dist"
+
+        # cd "$staging"
+        # curl -LO "https://github.com/tkzcfc/npipe_web/releases/download/v1.0.0/dist.zip"
+        # unzip dist.zip
+        # rm ./dist.zip
+        # cd ../
 
         cp config_template.json "$staging/config.json"
         cp generate-certificate.sh "$staging/generate-certificate.sh"
