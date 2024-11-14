@@ -125,3 +125,6 @@ Options:
 
 
 
+------
+
+感谢 [pizixi](https://github.com/pizixi) 开发的[后台管理界面](https://github.com/pizixi/npipe-webui)
