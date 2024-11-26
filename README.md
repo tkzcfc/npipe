@@ -20,12 +20,16 @@ Options:
           password
       --enable-tls
           enable tls
+      --insecure
+          If true, the validity of the SSL certificate is not verified
       --ca-cert <CA_CERT>
           ca file path (optional), if not provided, the client’s certificate will not be verified [default: ]
       --log-level <LOG_LEVEL>
           set log level [default: info]
       --base-log-level <BASE_LOG_LEVEL>
           set log level [default: error]
+  -h, --help
+          Print help
 
 ```
 
@@ -52,12 +56,16 @@ Options:
           password
       --enable-tls
           enable tls
+      --insecure
+          If true, the validity of the SSL certificate is not verified
       --ca-cert <CA_CERT>
           ca file path (optional), if not provided, the client’s certificate will not be verified [default: ]
       --log-level <LOG_LEVEL>
           set log level [default: info]
       --base-log-level <BASE_LOG_LEVEL>
           set log level [default: error]
+  -h, --help
+          Print help
 ```
 
 
