@@ -4,6 +4,7 @@ use anyhow::anyhow;
 use bytes::BytesMut;
 use log::{error, info};
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicU32, Ordering};
 use tokio::io::{
     AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf,
 };
@@ -12,6 +13,16 @@ use tokio::sync::broadcast;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 use tokio::task::yield_now;
 use tokio::time::sleep;
+
+static SESSION_COUNTER: AtomicU32 = AtomicU32::new(0);
+pub fn create_session_id() -> u32 {
+    loop {
+        let id = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
+        if id > 0 {
+            return id;
+        }
+    }
+}
 
 /// run
 ///

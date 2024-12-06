@@ -678,6 +678,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "79296716171880943b8470b5f8d03aa55eb2e645a4874bdbb28adb49162e012c"
 
 [[package]]
+name = "byte_string"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11aade7a05aa8c3a351cedc44c3fc45806430543382fcc4743a9b757a2a0b4ed"
+
+[[package]]
 name = "bytecheck"
 version = "0.6.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1244,6 +1250,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a44623e20b9681a318efdd71c299b6b222ed6f231972bfe2f224ebad6311f0c1"
 
 [[package]]
+name = "futures-macro"
+version = "0.3.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "87750cf4b7a4c0625b1529e4c543c2182106e4dedc60a2a6455e00d212c489ac"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.72",
+]
+
+[[package]]
 name = "futures-sink"
 version = "0.3.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1264,6 +1281,7 @@ dependencies = [
  "futures-channel",
  "futures-core",
  "futures-io",
+ "futures-macro",
  "futures-sink",
  "futures-task",
  "memchr",
@@ -1581,6 +1599,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "kcp"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e387a924f42063d380be14857714a2f0c177e44dbeab8895244e5370d8a8e68"
+dependencies = [
+ "bytes",
+ "log",
+ "thiserror",
+]
+
+[[package]]
 name = "language-tags"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1782,6 +1811,7 @@ dependencies = [
  "socket2",
  "tokio",
  "tokio-rustls",
+ "tokio_kcp",
 ]
 
 [[package]]
@@ -1801,6 +1831,7 @@ dependencies = [
  "socket2",
  "tokio",
  "tokio-rustls",
+ "tokio_kcp",
  "webpki-roots 0.22.6",
  "windows-service",
 ]
@@ -1849,6 +1880,7 @@ dependencies = [
  "socket2",
  "sqlx",
  "tokio",
+ "tokio_kcp",
 ]
 
 [[package]]
@@ -3391,6 +3423,21 @@ dependencies = [
  "futures-core",
  "futures-sink",
  "pin-project-lite",
+ "tokio",
+]
+
+[[package]]
+name = "tokio_kcp"
+version = "0.10.0"
+source = "git+https://github.com/tkzcfc/tokio_kcp.git#3ef0f5f40be764a780b7010e9a5fc4634f5fa923"
+dependencies = [
+ "byte_string",
+ "bytes",
+ "futures-util",
+ "kcp",
+ "log",
+ "rand 0.8.5",
+ "spin 0.9.8",
  "tokio",
 ]
 

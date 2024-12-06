@@ -3,9 +3,10 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::time::Duration;
 
+pub mod kcp_server;
+pub mod net_session;
 pub mod session_delegate;
 pub mod tcp_server;
-pub mod tcp_session;
 pub mod tls;
 pub mod udp_server;
 pub mod udp_session;

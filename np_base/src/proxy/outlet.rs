@@ -1,5 +1,5 @@
 use crate::net::session_delegate::SessionDelegate;
-use crate::net::{tcp_session, udp_session, SendMessageFuncType, WriterMessage};
+use crate::net::{net_session, udp_session, SendMessageFuncType, WriterMessage};
 use crate::proxy::common::{InputSenderType, SessionCommonInfo};
 use crate::proxy::crypto::get_method;
 use crate::proxy::inlet::InletProxyType;
@@ -322,7 +322,7 @@ impl Outlet {
         let shutdown = self.receiver_shutdown.resubscribe();
 
         tokio::spawn(async move {
-            tcp_session::run(
+            net_session::run(
                 session_id,
                 addr,
                 Box::new(OutletSession::new(

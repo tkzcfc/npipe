@@ -3,20 +3,14 @@ use crate::net::{net_session, tls};
 use log::{debug, error};
 use log::{info, trace};
 use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::net::{TcpListener, TcpStream, ToSocketAddrs};
+use tokio::net::ToSocketAddrs;
 use tokio::select;
 use tokio::sync::{broadcast, mpsc};
+use tokio_kcp::{KcpConfig, KcpListener};
 use tokio_rustls::rustls::ServerConfig;
 use tokio_rustls::TlsAcceptor;
-
-pub type StreamInitCallbackType = Arc<
-    dyn Fn(TcpStream) -> Pin<Box<dyn Future<Output = anyhow::Result<TcpStream>> + Send>>
-        + Send
-        + Sync,
->;
 
 struct Server {
     notify_shutdown: broadcast::Sender<()>,
@@ -26,9 +20,8 @@ struct Server {
 impl Server {
     async fn start_server(
         &self,
-        listener: TcpListener,
+        mut listener: KcpListener,
         on_create_session_delegate_callback: CreateSessionDelegateCallback,
-        on_stream_init_callback: Option<StreamInitCallbackType>,
         tls_configuration: Option<tls::TlsConfiguration>,
     ) -> anyhow::Result<()> {
         let tls_acceptor: Option<TlsAcceptor> = match tls_configuration {
@@ -47,19 +40,7 @@ impl Server {
         };
 
         loop {
-            let (mut stream, addr) = listener.accept().await?;
-
-            if let Some(ref on_stream_init_callback) = on_stream_init_callback {
-                match on_stream_init_callback(stream).await {
-                    Ok(s) => {
-                        stream = s;
-                    }
-                    Err(error) => {
-                        error!("TCP Server on_stream_init error:{}", error.to_string());
-                        continue;
-                    }
-                }
-            }
+            let (stream, addr) = listener.accept().await?;
 
             let tls_acceptor = tls_acceptor.clone();
             let delegate = on_create_session_delegate_callback();
@@ -68,7 +49,7 @@ impl Server {
 
             // 新连接单独起一个异步任务处理
             tokio::spawn(async move {
-                trace!("TCP Server new connection: {}", addr);
+                trace!("KCP Server new connection: {}", addr);
 
                 if let Some(tls_acceptor) = tls_acceptor {
                     match tls::try_tls(stream, tls_acceptor).await {
@@ -83,7 +64,7 @@ impl Server {
                             .await;
                         }
                         Err(err) => {
-                            debug!("TCP Server tls error: {err}");
+                            debug!("KCP Server tls error: {err}");
                         }
                     }
                 } else {
@@ -97,7 +78,7 @@ impl Server {
                     .await;
                 }
 
-                trace!("TCP Server disconnect: {}", addr);
+                trace!("KCP Server disconnect: {}", addr);
                 // 反向通知此会话结束
                 drop(shutdown_complete);
             });
@@ -107,24 +88,21 @@ impl Server {
 
 pub struct Builder {
     create_session_delegate_callback: CreateSessionDelegateCallback,
+    kcp_config: KcpConfig,
     tls_configuration: Option<tls::TlsConfiguration>,
-    steam_init_callback: Option<StreamInitCallbackType>,
 }
 
 impl Builder {
     pub fn new(create_session_delegate_callback: CreateSessionDelegateCallback) -> Self {
         Self {
             create_session_delegate_callback,
+            kcp_config: KcpConfig::default(),
             tls_configuration: None,
-            steam_init_callback: None,
         }
     }
 
-    pub fn set_on_steam_init_callback(
-        mut self,
-        steam_init_callback: StreamInitCallbackType,
-    ) -> Self {
-        self.steam_init_callback = Some(steam_init_callback);
+    pub fn set_kcp_config(mut self, config: KcpConfig) -> Self {
+        self.kcp_config = config;
         self
     }
 
@@ -138,7 +116,7 @@ impl Builder {
 
     pub async fn build_with_listener(
         self,
-        listener: TcpListener,
+        listener: KcpListener,
         shutdown_condition: impl Future,
     ) -> anyhow::Result<()> {
         let (notify_shutdown, _) = broadcast::channel::<()>(1);
@@ -150,13 +128,13 @@ impl Builder {
         };
 
         select! {
-            res = server.start_server(listener, self.create_session_delegate_callback, self.steam_init_callback, self.tls_configuration) => {
+            res = server.start_server(listener, self.create_session_delegate_callback, self.tls_configuration) => {
                 if let Err(err) = res {
-                    error!("TCP Server error: {}", err);
+                    error!("KCP Server error: {}", err);
                 }
             },
             _ = shutdown_condition => {
-                info!("TCP Server shutting down");
+                info!("KCP Server shutting down");
             }
         }
 
@@ -178,10 +156,10 @@ impl Builder {
 
         // 设置超时时间，无法优雅退出则强制退出
         if let Err(_) = tokio::time::timeout(Duration::from_secs(600), wait_task).await {
-            error!("TCP Server exit timeout, forced exit");
+            error!("KCP Server exit timeout, forced exit");
         }
 
-        info!("TCP Server shutdown finish");
+        info!("KCP Server shutdown finish");
 
         Ok(())
     }
@@ -191,7 +169,7 @@ impl Builder {
         addr: A,
         shutdown_condition: impl Future,
     ) -> anyhow::Result<()> {
-        let listener = TcpListener::bind(&addr).await?;
+        let listener = KcpListener::bind(self.kcp_config, &addr).await?;
         self.build_with_listener(listener, shutdown_condition).await
     }
 }

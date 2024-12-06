@@ -19,10 +19,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
-use tokio::net::TcpStream;
+use tokio::net::{TcpStream, ToSocketAddrs};
 use tokio::select;
 use tokio::sync::{Mutex, RwLock};
 use tokio::time::{sleep, timeout, Instant};
+use tokio_kcp::{KcpConfig, KcpNoDelayConfig, KcpStream};
 use tokio_rustls::rustls::client::ServerCertVerified;
 use tokio_rustls::rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore, ServerName};
 use tokio_rustls::{rustls, TlsConnector};
@@ -59,15 +60,54 @@ impl rustls::client::ServerCertVerifier for NoCertificateVerifier {
     }
 }
 
-pub async fn run(common_args: &CommonArgs) -> anyhow::Result<()> {
-    info!("Start connecting to server {}", common_args.server);
+async fn connect_with_tcp(addr: &str) -> anyhow::Result<TcpStream> {
+    let stream = TcpStream::connect(&addr).await?;
+    info!("TCP successfully connected to serve {}", addr);
 
-    let stream = TcpStream::connect(&common_args.server).await?;
     let ka = TcpKeepalive::new().with_time(Duration::from_secs(30));
     let sf = SockRef::from(&stream);
     sf.set_tcp_keepalive(&ka)?;
+    Ok(stream)
+}
 
-    info!("Successful connection with server {}", common_args.server);
+async fn connect_with_kcp(addr: &str) -> anyhow::Result<KcpStream> {
+    let addrs = tokio::net::lookup_host(addr).await?;
+
+    let mut last_err = None;
+
+    for addr in addrs {
+        match KcpStream::connect(
+            &KcpConfig {
+                mtu: 1400,
+                nodelay: KcpNoDelayConfig::fastest(),
+                wnd_size: (1024, 1024),
+                session_expire: Some(Duration::from_secs(60)),
+                flush_write: false,
+                flush_acks_input: false,
+                stream: true,
+                allow_recv_empty_packet: false,
+            },
+            addr,
+        )
+        .await
+        {
+            Ok(stream) => {
+                info!("KCP successfully connected to serve {}", addr);
+                return Ok(stream);
+            }
+            Err(e) => last_err = Some(e),
+        }
+    }
+
+    if let Some(err) = last_err {
+        Err(anyhow!(err))
+    } else {
+        Err(anyhow!("could not resolve to any address"))
+    }
+}
+
+pub async fn run(common_args: &CommonArgs, use_tcp: bool) -> anyhow::Result<()> {
+    info!("Start connecting to server {}", common_args.server);
 
     // 升级为TLS连接
     if common_args.enable_tls {
@@ -112,15 +152,33 @@ pub async fn run(common_args: &CommonArgs) -> anyhow::Result<()> {
         }
         let connector = TlsConnector::from(Arc::new(config));
 
-        let stream = timeout(
-            Duration::from_secs(TIMEOUT_TLS),
-            connector.connect(ServerName::try_from(str_vec[0])?, stream),
-        )
-        .await??;
+        if use_tcp {
+            let stream = timeout(
+                Duration::from_secs(TIMEOUT_TLS),
+                connector.connect(
+                    ServerName::try_from(str_vec[0])?,
+                    connect_with_tcp(&common_args.server).await?,
+                ),
+            )
+            .await??;
 
-        run_client(common_args, stream).await
+            run_client(common_args, stream).await
+        } else {
+            let kcp_stream = connect_with_kcp(&common_args.server).await?;
+            let stream = timeout(
+                Duration::from_secs(TIMEOUT_TLS),
+                connector.connect(ServerName::try_from(str_vec[0])?, kcp_stream),
+            )
+            .await??;
+
+            run_client(common_args, stream).await
+        }
     } else {
-        run_client(common_args, stream).await
+        if use_tcp {
+            run_client(common_args, connect_with_tcp(&common_args.server).await?).await
+        } else {
+            run_client(common_args, connect_with_kcp(&common_args.server).await?).await
+        }
     }
 }
 
@@ -163,11 +221,16 @@ where
     S: AsyncRead + AsyncWrite + Send + 'static,
 {
     const PING_INTERVAL: Duration = Duration::from_secs(5);
+    const PING_TIMEOUT: Duration = Duration::from_secs(15);
     loop {
         sleep(Duration::from_secs(1)).await;
 
         if last_active_time.read().await.elapsed() < PING_INTERVAL {
             continue;
+        }
+
+        if last_active_time.read().await.elapsed() > PING_TIMEOUT {
+            return Err(anyhow!("ping timeout"));
         }
 
         // 获取当前时间
@@ -203,17 +266,16 @@ where
         let mut buffer = BytesMut::with_capacity(65536);
         loop {
             let len = reader.read_buf(&mut buffer).await?;
-
-            if last_active_time.read().await.elapsed() >= WRITE_TIMEOUT {
-                let mut instant_write = last_active_time.write().await;
-                *instant_write = Instant::now();
-            }
-
             // len为0表示对端已经关闭连接。
             if len == 0 {
                 info!("Disconnect from the server");
                 break;
             } else {
+                if last_active_time.read().await.elapsed() >= WRITE_TIMEOUT {
+                    let mut instant_write = last_active_time.write().await;
+                    *instant_write = Instant::now();
+                }
+
                 // 循环解包
                 loop {
                     if buffer.is_empty() {

@@ -12,6 +12,28 @@ mod client;
 #[cfg(windows)]
 mod winservice;
 
+#[derive(clap::ValueEnum, Clone, Default, Debug)]
+enum NetType {
+    /// use TCP connection
+    #[default]
+    Tcp,
+    /// use KCP connection
+    Kcp,
+    /// alternate between using TCP and KCP connections
+    Auto,
+}
+
+impl NetType {
+    #[cfg(windows)]
+    fn to_string(&self) -> String {
+        match self {
+            NetType::Tcp => String::from("tcp"),
+            NetType::Kcp => String::from("kcp"),
+            NetType::Auto => String::from("auto"),
+        }
+    }
+}
+
 #[derive(Args)]
 pub(crate) struct CommonArgs {
     /// print backtracking information
@@ -34,7 +56,7 @@ pub(crate) struct CommonArgs {
     #[arg(long, default_value = "false")]
     pub enable_tls: bool,
 
-    /// If true, the validity of the SSL certificate is not verified.
+    /// if true, the validity of the SSL certificate is not verified.
     #[arg(long, default_value = "false")]
     pub insecure: bool,
 
@@ -49,6 +71,10 @@ pub(crate) struct CommonArgs {
     /// set log level
     #[arg(long, default_value = "error")]
     pub base_log_level: String,
+
+    /// net type
+    #[clap(long, default_value_t, value_enum)]
+    pub net_type: NetType,
 }
 
 #[derive(Parser)]
@@ -133,13 +159,28 @@ pub(crate) fn init_logger(common_args: &CommonArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+async fn run_and_handle_errors(common_args: &CommonArgs, is_tcp: bool) {
+    if let Err(err) = client::run(&common_args, is_tcp).await {
+        error!("{err}");
+        sleep(Duration::from_secs(5)).await;
+    } else {
+        sleep(Duration::from_secs(1)).await;
+    }
+}
+
 pub(crate) async fn run_with_args(common_args: CommonArgs) -> anyhow::Result<()> {
     loop {
-        if let Err(err) = client::run(&common_args).await {
-            error!("{err}");
-            sleep(Duration::from_secs(5)).await;
-        } else {
-            sleep(Duration::from_millis(100)).await;
+        match common_args.net_type {
+            NetType::Tcp => {
+                run_and_handle_errors(&common_args, true).await;
+            }
+            NetType::Kcp => {
+                run_and_handle_errors(&common_args, false).await;
+            }
+            NetType::Auto => {
+                run_and_handle_errors(&common_args, false).await;
+                run_and_handle_errors(&common_args, true).await;
+            }
         }
     }
 }

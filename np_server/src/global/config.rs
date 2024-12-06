@@ -8,8 +8,12 @@ use std::io::BufReader;
 pub struct Config {
     /// 数据库地址
     pub database_url: String,
-    /// 服务器监听地址
+    /// tcp服务监听地址
+    #[serde(default = "default_config_string_function")]
     pub listen_addr: String,
+    /// kcp服务监听地址
+    #[serde(default = "default_config_string_function")]
+    pub kcp_listen_addr: String,
     /// 启用tls
     pub enable_tls: bool,
     /// tls证书
@@ -25,11 +29,11 @@ pub struct Config {
     /// web目录
     pub web_base_dir: String,
     /// 非法流量转发地址
-    #[serde(default = "default_illegal_traffic_forward")]
+    #[serde(default = "default_config_string_function")]
     pub illegal_traffic_forward: String,
 }
 
-fn default_illegal_traffic_forward() -> String {
+fn default_config_string_function() -> String {
     "".to_string()
 }
 

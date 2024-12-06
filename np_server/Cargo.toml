@@ -32,6 +32,7 @@ actix-session = { version = "0.9", features = ["cookie-session"] }
 chrono = "0.4.31"
 md5 = "0.7"
 socket2 = "0.5"
+tokio_kcp = { git = "https://github.com/tkzcfc/tokio_kcp.git" }
 
 [dev-dependencies]
 
