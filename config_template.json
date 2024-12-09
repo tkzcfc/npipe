@@ -1,6 +1,8 @@
 {
 	"database_url": "sqlite://data.db?mode=rwc",
 	"listen_addr": "0.0.0.0:8118",
+	"kcp_listen_addr": "0.0.0.0:8118",
+	"illegal_traffic_forward": "",
 	"enable_tls": false,
 	"tls_cert": "./cert.pem",
 	"tls_key": "./server.key.pem",
