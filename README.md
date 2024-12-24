@@ -117,7 +117,7 @@ Options:
 | web_addr                | web管理监听地址                     | 0.0.0.0:8120                                                 |
 | web_username            | web界面管理账号 (为空则关闭web管理) | admin                                                        |
 | web_password            | web界面管理密码 (为空则关闭web管理) | admin@1234                                                   |
-| illegal_traffic_forward | 非法流量请求转发地址                | 127.0.0.1:80  为空则不转发请求                               |
+| illegal_traffic_forward | 非法流量请求转发地址                | 可以将不是npipe的流量转发给其他程序，如nginx，配置格式示例：127.0.0.1:80  ，如果为空则不转发请求 |
 
 
 
