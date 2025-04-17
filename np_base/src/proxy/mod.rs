@@ -6,6 +6,7 @@ pub(crate) mod common;
 pub mod crypto;
 pub mod inlet;
 pub mod outlet;
+mod proxy_context;
 pub(crate) mod socks5;
 
 pub enum ProxyMessage {

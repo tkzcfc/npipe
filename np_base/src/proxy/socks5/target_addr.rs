@@ -6,6 +6,7 @@ use log::debug;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::vec::IntoIter;
 use std::{fmt, io};
+use std::str::FromStr;
 
 /// A description of a connection target.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -20,16 +21,16 @@ pub enum TargetAddr {
 }
 
 impl TargetAddr {
-    pub fn is_ip(&self) -> bool {
-        match self {
-            TargetAddr::Ip(_) => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_domain(&self) -> bool {
-        !self.is_ip()
-    }
+    // pub fn is_ip(&self) -> bool {
+    //     match self {
+    //         TargetAddr::Ip(_) => true,
+    //         _ => false,
+    //     }
+    // }
+    //
+    // pub fn is_domain(&self) -> bool {
+    //     !self.is_ip()
+    // }
 
     pub fn to_be_bytes(&self) -> anyhow::Result<Vec<u8>> {
         let mut buf = vec![];
@@ -215,7 +216,15 @@ pub fn read_address(data: &[u8], atyp: u8) -> anyhow::Result<Option<(TargetAddr,
     let addr = match addr {
         Addr::V4([a, b, c, d]) => (Ipv4Addr::new(a, b, c, d), port).to_target_addr()?,
         Addr::V6(x) => (Ipv6Addr::from(x), port).to_target_addr()?,
-        Addr::Domain(domain) => TargetAddr::Domain(domain, port),
+        Addr::Domain(domain) => {
+            // 检测是否为一个IPV6地址
+            if let Ok(ip) = std::net::IpAddr::from_str(&domain) {
+                TargetAddr::Ip(SocketAddr::new(ip, port))
+            }
+            else {
+                TargetAddr::Domain(domain, port)
+            }
+        },
         _ => panic!("Unknown"),
     };
 

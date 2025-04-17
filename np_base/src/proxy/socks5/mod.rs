@@ -2,10 +2,12 @@ pub mod target_addr;
 
 use crate::net::{SendMessageFuncType, WriterMessage};
 use crate::proxy::common::SessionCommonInfo;
-use crate::proxy::inlet::{InletDataEx, InletProxyType};
+use crate::proxy::inlet::InletProxyType;
+use crate::proxy::proxy_context::{ProxyContext, ProxyContextData};
 use crate::proxy::socks5::target_addr::TargetAddr;
 use crate::proxy::ProxyMessage;
 use anyhow::anyhow;
+use async_trait::async_trait;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use log::{error, warn};
@@ -14,11 +16,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::select;
-use tokio::sync::mpsc::Sender;
-use tokio::sync::RwLock;
-use tokio::sync::{mpsc, oneshot};
-use tokio::task::JoinHandle;
-use tokio::time::timeout;
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::{Sender, UnboundedSender};
+use tokio_util::sync::CancellationToken;
 
 const SOCKS5_VERSION: u8 = 0x05;
 
@@ -63,94 +63,64 @@ enum Status {
 pub struct Socks5Context {
     status: Status,
     buffer: Vec<u8>,
-    write_msg_tx: mpsc::UnboundedSender<WriterMessage>,
-    output: Sender<ProxyMessage>,
-    data_ex: Arc<InletDataEx>,
+    write_to_peer_tx: Option<mpsc::UnboundedSender<WriterMessage>>,
+    // output: Sender<ProxyMessage>,
+    // data_ex: Arc<InletDataEx>,
     target_addr: Option<TargetAddr>,
-    session_id: u32,
-    addr: SocketAddr,
-    common_data: SessionCommonInfo,
+    // session_id: u32,
+    // addr: SocketAddr,
+    // common_data: SessionCommonInfo,
 
-    read_input_task_handle: Option<(JoinHandle<()>, oneshot::Sender<()>)>,
-    udp_task_handle: Option<(JoinHandle<()>, oneshot::Sender<()>)>,
+    // read_input_task_handle: Option<(JoinHandle<()>, oneshot::Sender<()>)>,
+    // udp_task_handle: Option<(JoinHandle<()>, oneshot::Sender<()>)>,
+    udp_task_cancel_token: Option<CancellationToken>,
+
+    ctx_data: Option<Arc<ProxyContextData>>,
+
+    peer_addr: Option<SocketAddr>,
 }
 
-impl Socks5Context {
-    pub async fn new(
-        write_msg_tx: mpsc::UnboundedSender<WriterMessage>,
-        output: Sender<ProxyMessage>,
-        session_id: u32,
-        addr: SocketAddr,
-        data_ex: Arc<InletDataEx>,
-        common_data: SessionCommonInfo,
-    ) -> (Arc<RwLock<Self>>, mpsc::UnboundedSender<ProxyMessage>) {
-        let (proxy_msg_tx, mut proxy_msg_rx) = mpsc::unbounded_channel::<ProxyMessage>();
+#[async_trait]
+impl ProxyContext for Socks5Context {
+    async fn on_start(
+        &mut self,
+        ctx_data: Arc<ProxyContextData>,
+        peer_addr: SocketAddr,
+        write_to_peer_tx: UnboundedSender<WriterMessage>,
+    ) -> anyhow::Result<()> {
+        self.write_to_peer_tx = Some(write_to_peer_tx.clone());
+        self.ctx_data = Some(ctx_data.clone());
+        self.peer_addr = Some(peer_addr);
 
-        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
-
-        let context = Arc::new(RwLock::new(Self {
-            status: Status::Init,
-            buffer: vec![],
-            write_msg_tx,
-            output,
-            data_ex,
-            target_addr: None,
-            session_id,
-            addr,
-            common_data,
-            read_input_task_handle: None,
-            udp_task_handle: None,
-        }));
-
-        let context_cloned = context.clone();
-        let handle = tokio::spawn(async move {
-            let task = async {
-                loop {
-                    if let Some(message) = proxy_msg_rx.recv().await {
-                        if let Err(err) = context_cloned
-                            .write()
-                            .await
-                            .on_recv_proxy_message(message)
-                            .await
-                        {
-                            error!("on_recv_proxy_message: {err}")
-                        }
-                    }
-                }
-            };
-
-            select! {
-                _= task =>{},
-                _= shutdown_rx =>{}
-            }
-        });
-
-        context.write().await.read_input_task_handle = Some((handle, shutdown_tx));
-
-        (context, proxy_msg_tx)
+        Ok(())
     }
 
-    pub async fn recv_frame(&mut self, mut frame: Vec<u8>) -> anyhow::Result<()> {
+    async fn on_recv_peer_data(
+        &mut self,
+        ctx_data: Arc<ProxyContextData>,
+        mut data: Vec<u8>,
+    ) -> anyhow::Result<()> {
         match &self.status {
             Status::Init => {
-                self.buffer.extend_from_slice(&frame);
+                self.buffer.extend_from_slice(&data);
                 self.on_socks5_init()?;
             }
             Status::Verification => {
-                self.buffer.extend_from_slice(&frame);
+                self.buffer.extend_from_slice(&data);
                 self.on_socks5_verification()?;
             }
             Status::Connect => {
-                self.buffer.extend_from_slice(&frame);
+                self.buffer.extend_from_slice(&data);
                 self.on_socks5_connect().await?;
             }
             Status::Connecting(_) => {
                 warn!("Status::Connecting should not receive other data");
             }
             Status::RunWithTcp => {
-                frame = self.common_data.encode_data_and_limiting(frame).await?;
-                self.output
-                    .send(ProxyMessage::I2oSendData(self.session_id, frame))
+                data = ctx_data.common_data.encode_data_and_limiting(data).await?;
+                ctx_data
+                    .output
+                    .send(ProxyMessage::I2oSendData(ctx_data.get_session_id(), data))
                     .await?;
             }
             Status::RunWithUdp(_) => {
@@ -159,6 +129,55 @@ impl Socks5Context {
         }
 
         Ok(())
+    }
+
+    fn is_recv_proxy_message(&self) -> bool {
+        true
+    }
+
+    async fn on_recv_proxy_message(&mut self, proxy_message: ProxyMessage) -> anyhow::Result<()> {
+        match proxy_message {
+            ProxyMessage::O2iConnect(_session_id, success, error_msg) => {
+                if !success {
+                    error!("socks5 connect error: {error_msg}");
+                }
+                self.on_recv_o2i_connect(success).await?;
+            }
+
+            ProxyMessage::O2iRecvData(session_id, data) => {
+                self.on_recv_o2i_recv_data(session_id, data).await?;
+            }
+            ProxyMessage::O2iRecvDataFrom(session_id, data, peer_addr) => {
+                self.on_recv_o2i_recv_data_from(session_id, data, peer_addr)
+                    .await?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+    async fn on_stop(&mut self, ctx_data: Arc<ProxyContextData>) -> anyhow::Result<()> {
+        if let Some(token) = self.udp_task_cancel_token.take() {
+            token.cancel();
+        }
+        ctx_data
+            .output
+            .send(ProxyMessage::I2oDisconnect(ctx_data.get_session_id()))
+            .await?;
+        Ok(())
+    }
+}
+
+impl Socks5Context {
+    pub fn new() -> Self {
+        Self {
+            status: Status::Init,
+            buffer: vec![],
+            write_to_peer_tx: None,
+            target_addr: None,
+            udp_task_cancel_token: None,
+            ctx_data: None,
+            peer_addr: None,
+        }
     }
 
     fn on_socks5_init(&mut self) -> anyhow::Result<()> {
@@ -183,7 +202,9 @@ impl Socks5Context {
 
             let methods = &self.buffer[2..num_of_package];
 
-            let method = if self.data_ex.username.is_empty() && self.data_ex.password.is_empty() {
+            let method = if self.ctx_data.as_ref().unwrap().data_ex.username.is_empty()
+                && self.ctx_data.as_ref().unwrap().data_ex.password.is_empty()
+            {
                 // 不需要密码
                 if methods.contains(&SOCKS5_AUTH_METHOD_NONE) {
                     SOCKS5_AUTH_METHOD_NONE
@@ -201,7 +222,9 @@ impl Socks5Context {
 
             if method != SOCKS5_AUTH_METHOD_NOT_ACCEPTABLE {
                 let response: Vec<u8> = vec![SOCKS5_VERSION, method];
-                self.write_msg_tx
+                self.write_to_peer_tx
+                    .as_ref()
+                    .unwrap()
                     .send(WriterMessage::Send(response, true))?;
 
                 self.buffer.drain(0..num_of_package);
@@ -216,9 +239,13 @@ impl Socks5Context {
 
         // 无法认证
         let response: Vec<u8> = vec![SOCKS5_VERSION, SOCKS5_AUTH_METHOD_NOT_ACCEPTABLE];
-        self.write_msg_tx
+        self.write_to_peer_tx
+            .as_ref()
+            .unwrap()
             .send(WriterMessage::Send(response, true))?;
-        self.write_msg_tx
+        self.write_to_peer_tx
+            .as_ref()
+            .unwrap()
             .send(WriterMessage::CloseDelayed(Duration::from_millis(10)))?;
         Ok(())
     }
@@ -248,18 +275,26 @@ impl Socks5Context {
         // | 1  |  1  |
         // +----+-----+
         // 0x00 表示成功，0x01 表示失败
-        if unm == self.data_ex.username.as_bytes() && pwd == self.data_ex.password.as_bytes() {
+        if unm == self.ctx_data.as_ref().unwrap().data_ex.username.as_bytes()
+            && pwd == self.ctx_data.as_ref().unwrap().data_ex.password.as_bytes()
+        {
             let response: Vec<u8> = vec![ver, 0x00];
-            self.write_msg_tx
+            self.write_to_peer_tx
+                .as_ref()
+                .unwrap()
                 .send(WriterMessage::Send(response, true))?;
 
             self.buffer.drain(0..num_of_package);
             self.status = Status::Connect;
         } else {
             let response: Vec<u8> = vec![ver, 0x01];
-            self.write_msg_tx
+            self.write_to_peer_tx
+                .as_ref()
+                .unwrap()
                 .send(WriterMessage::Send(response, true))?;
-            self.write_msg_tx
+            self.write_to_peer_tx
+                .as_ref()
+                .unwrap()
                 .send(WriterMessage::CloseDelayed(Duration::from_secs(1)))?;
         }
 
@@ -296,7 +331,7 @@ impl Socks5Context {
                         let is_tcp = match cmd {
                             SOCKS5_CMD_TCP_CONNECT => true,
                             SOCKS5_CMD_UDP_ASSOCIATE => {
-                                let mut addr = self.addr.clone();
+                                let mut addr = self.peer_addr.as_ref().unwrap().clone();
                                 addr.set_port(target_addr.port());
                                 target_addr = TargetAddr::Ip(addr);
                                 false
@@ -306,16 +341,26 @@ impl Socks5Context {
                             }
                         };
 
-                        self.output
+                        self.ctx_data
+                            .as_ref()
+                            .unwrap()
+                            .output
                             .send(ProxyMessage::I2oConnect(
-                                self.session_id,
+                                self.ctx_data.as_ref().unwrap().get_session_id(),
                                 InletProxyType::SOCKS5.to_u8(),
                                 is_tcp,
-                                self.common_data.is_compressed,
+                                self.ctx_data.as_ref().unwrap().common_data.is_compressed,
                                 target_addr.to_string(),
-                                self.common_data.encryption_method.to_string(),
-                                BASE64_STANDARD.encode(&self.common_data.encryption_key),
-                                self.addr.to_string(),
+                                self.ctx_data
+                                    .as_ref()
+                                    .unwrap()
+                                    .common_data
+                                    .encryption_method
+                                    .to_string(),
+                                BASE64_STANDARD.encode(
+                                    &self.ctx_data.as_ref().unwrap().common_data.encryption_key,
+                                ),
+                                self.peer_addr.as_ref().unwrap().to_string(),
                             ))
                             .await?;
 
@@ -350,36 +395,14 @@ impl Socks5Context {
             0x00,
             0x00,
         ];
-        self.write_msg_tx
+        self.write_to_peer_tx
+            .as_ref()
+            .unwrap()
             .send(WriterMessage::Send(response, true))?;
-        self.write_msg_tx
+        self.write_to_peer_tx
+            .as_ref()
+            .unwrap()
             .send(WriterMessage::CloseDelayed(Duration::from_secs(1)))?;
-        Ok(())
-    }
-
-    pub async fn on_destroy(&mut self) {
-        cancel_task(self.read_input_task_handle.take()).await;
-        cancel_task(self.udp_task_handle.take()).await;
-    }
-
-    async fn on_recv_proxy_message(&mut self, proxy_message: ProxyMessage) -> anyhow::Result<()> {
-        match proxy_message {
-            ProxyMessage::O2iConnect(_session_id, success, error_msg) => {
-                if !success {
-                    error!("socks5 connect error: {error_msg}");
-                }
-                self.on_recv_o2i_connect(success).await?;
-            }
-
-            ProxyMessage::O2iRecvData(session_id, data) => {
-                self.on_recv_o2i_recv_data(session_id, data).await?;
-            }
-            ProxyMessage::O2iRecvDataFrom(session_id, data, peer_addr) => {
-                self.on_recv_o2i_recv_data_from(session_id, data, peer_addr)
-                    .await?;
-            }
-            _ => {}
-        }
         Ok(())
     }
 
@@ -391,10 +414,15 @@ impl Socks5Context {
         match self.status {
             Status::RunWithTcp => {
                 let data_len = data.len();
-                data = self.common_data.decode_data(data)?;
+                data = self
+                    .ctx_data
+                    .as_ref()
+                    .unwrap()
+                    .common_data
+                    .decode_data(data)?;
 
                 // 写入完毕回调
-                let output = self.output.clone();
+                let output = self.ctx_data.as_ref().unwrap().output.clone();
                 let callback: SendMessageFuncType = Box::new(move || {
                     let output = output.clone();
                     Box::pin(async move {
@@ -404,7 +432,9 @@ impl Socks5Context {
                     })
                 });
 
-                self.write_msg_tx
+                self.write_to_peer_tx
+                    .as_ref()
+                    .unwrap()
                     .send(WriterMessage::SendAndThen(data, callback))?;
             }
             _ => {
@@ -425,7 +455,12 @@ impl Socks5Context {
         match &self.status {
             Status::RunWithUdp(udp_socket) => {
                 let data_len = data.len();
-                data = self.common_data.decode_data(data)?;
+                data = self
+                    .ctx_data
+                    .as_ref()
+                    .unwrap()
+                    .common_data
+                    .decode_data(data)?;
 
                 let peer_addr = TargetAddr::Ip(peer_addr.parse()?);
                 let addr_bytes = peer_addr.to_be_bytes()?;
@@ -445,6 +480,9 @@ impl Socks5Context {
                 udp_socket.send(&response).await?;
 
                 let _ = self
+                    .ctx_data
+                    .as_ref()
+                    .unwrap()
                     .output
                     .send(ProxyMessage::I2oRecvDataResult(session_id, data_len))
                     .await;
@@ -509,7 +547,11 @@ impl Socks5Context {
                         0x00,
                     ]
                 };
-                let _ = self.write_msg_tx.send(WriterMessage::Send(response, true));
+                let _ = self
+                    .write_to_peer_tx
+                    .as_ref()
+                    .unwrap()
+                    .send(WriterMessage::Send(response, true));
             }
             _ => {}
         }
@@ -532,44 +574,54 @@ impl Socks5Context {
         let mut buf = vec![SOCKS5_VERSION, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
         buf.extend_from_slice(&socket.local_addr()?.port().to_be_bytes());
 
-        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+        let token = CancellationToken::new();
+        let cloned_token = token.clone();
+
         let socket = Arc::new(socket);
         let socket_cloned = socket.clone();
-        let output = self.output.clone();
-        let write_msg_tx = self.write_msg_tx.clone();
-        let session_id = self.session_id;
-        let common_data = self.common_data.clone();
+        let output = self.ctx_data.as_ref().unwrap().output.clone();
+        let write_to_peer_tx = self.write_to_peer_tx.as_ref().unwrap().clone();
+        let session_id = self.ctx_data.as_ref().unwrap().get_session_id();
+        let common_data = self.ctx_data.as_ref().unwrap().common_data.clone();
 
-        let handle = tokio::spawn(async move {
-            let task = async {
-                let mut buf = [0; 65535]; // 最大允许的UDP数据包大小
-                loop {
-                    let result = socket.recv_from(&mut buf).await;
-                    if result.is_err() {
-                        continue;
-                    }
-
-                    let (amt, _addr) = result.unwrap();
-                    if let Err(err) =
-                        recv_udp_data(session_id, amt, &buf, &output, &common_data).await
-                    {
-                        warn!("Socks5 UDP error: {err}");
+        let mut buf = [0; 65535]; // 最大允许的UDP数据包大小
+        tokio::spawn(async move {
+            loop {
+                // 检查是否取消
+                select! {
+                    _ = cloned_token.cancelled() => {
+                        // println!("Task cancelled, cleaning up...");
                         break;
                     }
+                    result = socket.recv_from(&mut buf) => {
+                        match result {
+                            Ok((amt, _addr)) => {
+                                if let Err(err) = recv_udp_data(
+                                    session_id,
+                                    amt,
+                                    &buf,
+                                    &output,
+                                    &common_data
+                                ).await {
+                                    warn!("Socks5 UDP error: {err}");
+                                    break;
+                                }
+                            }
+                            Err(_e) => {
+                                // warn!("UDP receive error: {_e}");
+                                continue;
+                            }
+                        }
+                    }
                 }
-                let _ = write_msg_tx.send(WriterMessage::Close);
-            };
-
-            select! {
-                _= task =>{},
-                _= shutdown_rx =>{}
             }
+            let _ = write_to_peer_tx.send(WriterMessage::Close);
         });
 
-        self.udp_task_handle = Some((handle, shutdown_tx));
+        self.udp_task_cancel_token = Some(token);
         self.status = Status::RunWithUdp(socket_cloned);
 
-        Ok(buf)
+        Ok(Vec::from(buf))
     }
 }
 
@@ -611,18 +663,4 @@ async fn recv_udp_data(
     }
 
     Ok(())
-}
-
-#[inline]
-async fn cancel_task(task_handle: Option<(JoinHandle<()>, oneshot::Sender<()>)>) {
-    if let Some((task_handle, shutdown_tx)) = task_handle {
-        if let Err(_) = timeout(Duration::from_secs(2), async {
-            let _ = shutdown_tx.send(());
-            let _ = task_handle.await;
-        })
-        .await
-        {
-            error!("The task is not completed within 2 seconds");
-        }
-    }
 }

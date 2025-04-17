@@ -2,11 +2,11 @@ use crate::net::session_delegate::SessionDelegate;
 use crate::net::{tcp_server, udp_server};
 use crate::net::{SendMessageFuncType, WriterMessage};
 use crate::proxy::common::{InputSenderType, SessionCommonInfo};
+use crate::proxy::proxy_context::{ProxyContext, ProxyContextData, UniversalProxy};
 use crate::proxy::socks5::Socks5Context;
 use crate::proxy::{common, OutputFuncType, ProxyMessage};
 use anyhow::anyhow;
 use async_trait::async_trait;
-use base64::prelude::*;
 use log::{error, trace};
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -17,12 +17,14 @@ use tokio::select;
 use tokio::sync::mpsc::{Sender, UnboundedReceiver, UnboundedSender};
 use tokio::sync::{mpsc, RwLock};
 use tokio::task::yield_now;
+use tokio_util::sync::CancellationToken;
 
 #[derive(Clone)]
 pub enum InletProxyType {
     TCP,
     UDP,
     SOCKS5,
+    HTTP,
 }
 
 impl InletProxyType {
@@ -31,6 +33,7 @@ impl InletProxyType {
             0 => Some(InletProxyType::TCP),
             1 => Some(InletProxyType::UDP),
             2 => Some(InletProxyType::SOCKS5),
+            3 => Some(InletProxyType::HTTP),
             _ => None,
         }
     }
@@ -40,6 +43,7 @@ impl InletProxyType {
             InletProxyType::TCP => 0,
             InletProxyType::UDP => 1,
             InletProxyType::SOCKS5 => 2,
+            InletProxyType::HTTP => 3,
         }
     }
 
@@ -53,6 +57,13 @@ impl InletProxyType {
     pub fn is_tcp(&self) -> bool {
         match self {
             InletProxyType::TCP => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_http(&self) -> bool {
+        match self {
+            InletProxyType::HTTP => true,
             _ => false,
         }
     }
@@ -138,7 +149,7 @@ impl Inlet {
         is_running.store(true, Ordering::Relaxed);
 
         match inlet_proxy_type_cloned {
-            InletProxyType::TCP | InletProxyType::SOCKS5 => {
+            InletProxyType::TCP | InletProxyType::SOCKS5 | InletProxyType::HTTP => {
                 let listener = TcpListener::bind(&listen_addr).await?;
 
                 tokio::spawn(async move {
@@ -312,14 +323,10 @@ impl Inlet {
 }
 
 struct InletSession {
-    inlet_proxy_type: InletProxyType,
-    output_addr: String,
     session_info_map: SessionInfoMap,
-    session_id: u32,
-    output: Sender<ProxyMessage>,
-    common_data: SessionCommonInfo,
-    socks5context: Option<Arc<RwLock<Socks5Context>>>,
-    data_ex: Arc<InletDataEx>,
+    proxy_ctx: Arc<RwLock<dyn ProxyContext + Send + Sync>>,
+    proxy_ctx_data: Arc<ProxyContextData>,
+    proxy_message_recv_task_cancel_token: Option<CancellationToken>,
 }
 
 impl InletSession {
@@ -332,19 +339,27 @@ impl InletSession {
         output: Sender<ProxyMessage>,
         data_ex: Arc<InletDataEx>,
     ) -> Self {
+        let proxy_ctx: Arc<RwLock<dyn ProxyContext + Send + Sync>>;
+        match inlet_proxy_type {
+            InletProxyType::SOCKS5 => {
+                proxy_ctx = Arc::new(RwLock::new(Socks5Context::new()));
+            }
+            _ => {
+                proxy_ctx = Arc::new(RwLock::new(UniversalProxy::new()));
+            }
+        }
+
         Self {
-            inlet_proxy_type,
-            output_addr,
             session_info_map,
-            session_id: 0,
-            output,
-            common_data: SessionCommonInfo::from_method_name(
-                true,
-                is_compressed,
-                encryption_method,
-            ),
-            socks5context: None,
-            data_ex,
+            proxy_ctx,
+            proxy_ctx_data: Arc::new(ProxyContextData::new(
+                inlet_proxy_type,
+                output_addr,
+                output,
+                SessionCommonInfo::from_method_name(true, is_compressed, encryption_method),
+                data_ex,
+            )),
+            proxy_message_recv_task_cancel_token: None,
         }
     }
 }
@@ -359,78 +374,89 @@ impl SessionDelegate for InletSession {
     ) -> anyhow::Result<()> {
         trace!("inlet on session({session_id}) start {addr}");
 
-        self.session_id = session_id;
+        self.proxy_ctx_data.set_session_id(session_id);
 
-        if self.inlet_proxy_type.is_socks5() {
-            let (socks5context, proxy_message_tx) = Socks5Context::new(
-                write_msg_tx.clone(),
-                self.output.clone(),
-                self.session_id,
-                addr.clone(),
-                self.data_ex.clone(),
-                self.common_data.clone(),
-            )
-            .await;
+        let proxy_message_tx = if self.proxy_ctx.read().await.is_recv_proxy_message() {
+            let (proxy_msg_tx, mut proxy_msg_rx) = mpsc::unbounded_channel::<ProxyMessage>();
 
-            self.socks5context = Some(socks5context);
+            let token = CancellationToken::new();
+            let cloned_token = token.clone();
 
-            self.session_info_map.write().await.insert(
-                session_id,
-                SessionInfo {
-                    proxy_message_tx: Some(proxy_message_tx),
-                    write_msg_tx,
-                    common_info: self.common_data.clone(),
-                },
-            );
+            let context_cloned = self.proxy_ctx.clone();
+
+            tokio::spawn(async move {
+                loop {
+                    // 检查是否取消
+                    select! {
+                        _ = cloned_token.cancelled() => {
+                            // println!("Task cancelled, cleaning up...");
+                            break;
+                        }
+                        message = proxy_msg_rx.recv() => {
+                            if let Some(message) = message {
+                                // 处理消息...
+                                if let Err(err) = context_cloned
+                                .write()
+                                .await
+                                .on_recv_proxy_message(message)
+                                .await
+                                {
+                                    error!("on_recv_proxy_message: {err}")
+                                }
+                            } else {
+                                break; // 通道关闭
+                            }
+                        }
+                    }
+                }
+            });
+
+            self.proxy_message_recv_task_cancel_token = Some(token);
+            Some(proxy_msg_tx)
         } else {
-            self.session_info_map.write().await.insert(
-                session_id,
-                SessionInfo {
-                    proxy_message_tx: None,
-                    write_msg_tx,
-                    common_info: self.common_data.clone(),
-                },
-            );
+            None
+        };
 
-            self.output
-                .send(ProxyMessage::I2oConnect(
-                    session_id,
-                    self.inlet_proxy_type.to_u8(),
-                    self.inlet_proxy_type.is_tcp(),
-                    self.common_data.is_compressed,
-                    self.output_addr.clone(),
-                    self.common_data.encryption_method.to_string(),
-                    BASE64_STANDARD.encode(&self.common_data.encryption_key),
-                    addr.to_string(),
-                ))
-                .await?;
-        }
+        self.session_info_map.write().await.insert(
+            session_id,
+            SessionInfo {
+                proxy_message_tx,
+                write_msg_tx: write_msg_tx.clone(),
+                common_info: self.proxy_ctx_data.common_data.clone(),
+            },
+        );
+
+        self.proxy_ctx
+            .write()
+            .await
+            .on_start(self.proxy_ctx_data.clone(), addr.clone(), write_msg_tx)
+            .await?;
 
         Ok(())
     }
 
     async fn on_session_close(&mut self) -> anyhow::Result<()> {
-        trace!("inlet on session({}) close", self.session_id);
-        self.session_info_map.write().await.remove(&self.session_id);
-        self.output
-            .send(ProxyMessage::I2oDisconnect(self.session_id))
-            .await?;
-        if let Some(context) = self.socks5context.take() {
-            context.write().await.on_destroy().await;
+        let session_id = self.proxy_ctx_data.get_session_id();
+        trace!("inlet on session({}) close", session_id);
+
+        if let Some(token) = self.proxy_message_recv_task_cancel_token.take() {
+            token.cancel();
         }
+
+        self.session_info_map.write().await.remove(&session_id);
+        self.proxy_ctx
+            .write()
+            .await
+            .on_stop(self.proxy_ctx_data.clone())
+            .await?;
         Ok(())
     }
 
-    async fn on_recv_frame(&mut self, mut frame: Vec<u8>) -> anyhow::Result<()> {
-        if let Some(ref context) = self.socks5context {
-            context.write().await.recv_frame(frame).await?;
-            return Ok(());
-        }
-
-        frame = self.common_data.encode_data_and_limiting(frame).await?;
-        self.output
-            .send(ProxyMessage::I2oSendData(self.session_id, frame))
-            .await?;
-        Ok(())
+    async fn on_recv_frame(&mut self, frame: Vec<u8>) -> anyhow::Result<()> {
+        self.proxy_ctx
+            .write()
+            .await
+            .on_recv_peer_data(self.proxy_ctx_data.clone(), frame)
+            .await
     }
 }

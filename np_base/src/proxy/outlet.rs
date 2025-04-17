@@ -194,7 +194,9 @@ impl Outlet {
         let tunnel_type = InletProxyType::from_u32(tunnel_type as u32)
             .ok_or(anyhow!("unsupported tunnel_type: {tunnel_type}"))?;
         match tunnel_type {
-            InletProxyType::TCP => self.tcp_connect(addr, session_id, common_info).await?,
+            InletProxyType::TCP | InletProxyType::HTTP => {
+                self.tcp_connect(addr, session_id, common_info).await?
+            }
             InletProxyType::UDP => {
                 self.udp_connect(addr, session_id, common_info, tunnel_type)
                     .await?
