@@ -142,9 +142,9 @@ Options:
 | sender            | 隧道出口用户id(发送请求那一方)，为0则表示是出口在服务端   |
 | receiver          | 隧道入口用户id（接收监听那一方）,为0则表示入口在服务端    |
 | description       | 描述字段                                                  |
-| tunnel_type       | 隧道类型 TCP  UDP  SOCKS5                                 |
-| username          | SOCKS5代理认证用户名                                      |
-| password          | SOCKS5代理认证密码                                        |
+| tunnel_type       | 隧道类型 TCP  UDP  SOCKS5 HTTP                            |
+| username          | SOCKS5/HTTP代理认证用户名                                 |
+| password          | SOCKS5/HTTP代理认证密码                                   |
 | encryption_method | 隧道加密方式(启用tls连接之后就不需要加密了)               |
 | custom_mapping    | 自定义域名(功能未实现)                                    |
 
@@ -161,6 +161,12 @@ Options:
 ```
 
 
+
+
+
+------
+
+[测试数据](./benchmark.md)
 
 ------
 

@@ -188,6 +188,7 @@ impl TunnelManager {
                 tunnel.receiver,
                 get_tunnel_address_port(&tunnel.source),
                 Some(tunnel.id),
+                tunnel.tunnel_type != 1
             )
             .await
         {
@@ -211,6 +212,7 @@ impl TunnelManager {
         receiver: u32,
         port: Option<u16>,
         tunnel_id: Option<u32>,
+        is_tcp: bool,
     ) -> bool {
         self.tunnels
             .read()
@@ -220,6 +222,11 @@ impl TunnelManager {
                 x.receiver == receiver
                     && tunnel_id != Some(x.id)
                     && get_tunnel_address_port(&x.source) == port
+                    && x.tunnel_type == if is_tcp {
+                        0
+                    } else {
+                        1
+                    }
             })
             .is_some()
     }
