@@ -32,14 +32,14 @@ pub fn create_session_id() -> u32 {
 ///
 /// [`delegate`] 会话代理
 ///
-/// [`shutdown`] 监听退出消息
+/// [`shutdown_receiver`] 监听退出消息
 ///
 /// [`stream`]
 pub async fn run<S>(
     session_id: u32,
     addr: SocketAddr,
     mut delegate: Box<dyn SessionDelegate>,
-    mut shutdown: broadcast::Receiver<()>,
+    mut shutdown_receiver: broadcast::Receiver<()>,
     stream: S,
 ) where
     S: AsyncRead + AsyncWrite + Send + 'static,
@@ -62,7 +62,7 @@ pub async fn run<S>(
             }
         }
         _ = poll_write(addr, delegate_receiver, writer) => {}
-        _ = shutdown.recv() => {}
+        _ = shutdown_receiver.recv() => {}
     }
 
     if let Err(err) = delegate.on_session_close().await {
@@ -145,6 +145,11 @@ where
     let mut buffer = BytesMut::with_capacity(4096);
 
     loop {
+        while !delegate.is_ready_for_read().await {
+            // 暂停读取数据
+            yield_now().await;
+        }
+
         if reader.read_buf(&mut buffer).await? == 0 {
             // 客户端主动断开
             return Err(anyhow!("[{addr}] socket closed."));
@@ -168,11 +173,6 @@ where
             if buffer.capacity() > 1024 * 1024 * 10 {
                 error!("[{addr}] The buffer size is abnormal ({}), whether the buffer data has not been consumed",buffer.capacity());
             }
-        }
-
-        while !delegate.is_ready_for_read().await {
-            // 暂停读取数据
-            yield_now().await;
         }
     }
 }

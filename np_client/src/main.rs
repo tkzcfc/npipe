@@ -208,7 +208,7 @@ async fn main() -> anyhow::Result<()> {
     match ops.command {
         Some(Commands::Run { common_args }) => {
             init_logger(&common_args)?;
-            return run_with_args(common_args).await;
+            run_with_args(common_args).await
         }
         _ => {
             panic!("unknown command")

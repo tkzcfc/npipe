@@ -167,10 +167,6 @@ impl ProxyContext for HttpContext {
         Ok(())
     }
 
-    fn is_recv_proxy_message(&self) -> bool {
-        true
-    }
-
     async fn on_recv_proxy_message(&mut self, proxy_message: ProxyMessage) -> anyhow::Result<()> {
         match proxy_message {
             ProxyMessage::O2iConnect(_session_id, success, error_msg) => {
@@ -243,6 +239,12 @@ impl ProxyContext for HttpContext {
                     .as_ref()
                     .unwrap()
                     .send(WriterMessage::SendAndThen(data, callback))?;
+            }
+            ProxyMessage::O2iDisconnect(_) => {
+                self.write_to_peer_tx
+                    .as_ref()
+                    .unwrap()
+                    .send(WriterMessage::Close)?;
             }
             _ => {}
         }

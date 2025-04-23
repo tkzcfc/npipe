@@ -117,37 +117,41 @@ impl Outlet {
                 trace!(
                     "I2oConnect: session_id:{session_id}, addr:{addr}, tunnel_type:{tunnel_type}"
                 );
-                if let Err(err) = self
-                    .on_i2o_connect(
+
+                let session_info_map = self.session_info_map.clone();
+                let shutdown_receiver = self.receiver_shutdown.resubscribe();
+                let output = self.output.clone();
+                tokio::spawn(async move {
+                    if let Err(err) = Self::on_i2o_connect(
+                        session_info_map,
                         session_id,
-                        tunnel_type,
+                        InletProxyType::from_u32(tunnel_type as u32),
                         is_tcp,
                         is_compressed,
                         addr.clone(),
                         encryption_method,
                         encryption_key,
+                        shutdown_receiver,
+                        output.clone(),
                     )
                     .await
-                {
-                    error!(
-                        "Failed to connect to {}, error: {}, remote client addr {}",
-                        addr,
-                        err.to_string(),
-                        client_addr
-                    );
-
-                    self.output
-                        .send(ProxyMessage::O2iConnect(session_id, false, err.to_string()))
-                        .await?;
-                } else {
-                    info!(
-                        "Successfully connected to {}, remote client addr {}",
-                        addr, client_addr
-                    );
-                    self.output
-                        .send(ProxyMessage::O2iConnect(session_id, true, "".into()))
-                        .await?;
-                }
+                    {
+                        error!(
+                            "Failed to connect to {}, error: {}, remote client addr {}",
+                            addr,
+                            err.to_string(),
+                            client_addr
+                        );
+                        let _ = output
+                            .send(ProxyMessage::O2iConnect(session_id, false, err.to_string()))
+                            .await;
+                    } else {
+                        info!(
+                            "Successfully connected to {}, remote client addr {}",
+                            addr, client_addr
+                        );
+                    }
+                });
             }
             ProxyMessage::I2oSendData(session_id, data) => {
                 // trace!("I2oSendData: session_id:{session_id}");
@@ -168,62 +172,6 @@ impl Outlet {
             _ => {
                 return Err(anyhow!("Unknown message"));
             }
-        }
-        Ok(())
-    }
-
-    async fn on_i2o_connect(
-        &self,
-        session_id: u32,
-        tunnel_type: u8,
-        is_tcp: bool,
-        is_compressed: bool,
-        addr: String,
-        encryption_method: String,
-        encryption_key: String,
-    ) -> anyhow::Result<()> {
-        if self.session_info_map.read().await.contains_key(&session_id) {
-            return Err(anyhow!("repeated connection"));
-        }
-
-        let encryption_method = get_method(&encryption_method);
-        let encryption_key = BASE64_STANDARD.decode(encryption_key.as_bytes())?;
-        let common_info =
-            SessionCommonInfo::new(false, is_compressed, encryption_method, encryption_key);
-
-        let tunnel_type = InletProxyType::from_u32(tunnel_type as u32)
-            .ok_or(anyhow!("unsupported tunnel_type: {tunnel_type}"))?;
-        match tunnel_type {
-            InletProxyType::TCP | InletProxyType::HTTP => {
-                self.tcp_connect(addr, session_id, common_info).await?
-            }
-            InletProxyType::UDP => {
-                self.udp_connect(addr, session_id, common_info, tunnel_type)
-                    .await?
-            }
-            InletProxyType::SOCKS5 => {
-                if is_tcp {
-                    self.tcp_connect(addr, session_id, common_info).await?
-                } else {
-                    self.udp_connect("".to_string(), session_id, common_info, tunnel_type)
-                        .await?
-                }
-            }
-        }
-
-        let condition = async {
-            while !self.session_info_map.read().await.contains_key(&session_id) {
-                yield_now().await;
-            }
-        };
-        // 等待 OutletSession on_session_start 函数调用
-        if tokio::time::timeout(Duration::from_secs(2), condition)
-            .await
-            .is_err()
-        {
-            return Err(anyhow!(
-                "Waiting for the function on_session_start to call a response timeout"
-            ));
         }
         Ok(())
     }
@@ -298,95 +246,109 @@ impl Outlet {
             } else {
                 *read_buf_len = *read_buf_len - data_len;
             }
-            // trace!("on_i2o_recv_data_result: session_id:{session_id}, data_len:{data_len}, read_buf_len:{}", *read_buf_len);
+            // println!("[outlet] on_i2o_recv_data_result: session_id:{session_id}, data_len:{data_len}, read_buf_len:{}", *read_buf_len);
             drop(read_buf_len);
         }
         Ok(())
     }
 
-    async fn tcp_connect(
-        &self,
-        addr: String,
+    async fn on_i2o_connect(
+        session_info_map: SessionInfoMap,
         session_id: u32,
-        common_info: SessionCommonInfo,
-    ) -> anyhow::Result<()> {
-        debug!("tcp_connect: {}", addr);
-        let stream = TcpStream::connect(&addr).await?;
-
-        // set tcp keepalive
-        let ka = TcpKeepalive::new().with_time(Duration::from_secs(30));
-        let sf = SockRef::from(&stream);
-        sf.set_tcp_keepalive(&ka)?;
-
-        let addr = stream.peer_addr()?;
-        let output = self.output.clone();
-        let session_info_map = self.session_info_map.clone();
-        let shutdown = self.receiver_shutdown.resubscribe();
-
-        tokio::spawn(async move {
-            net_session::run(
-                session_id,
-                addr,
-                Box::new(OutletSession::new(
-                    session_info_map,
-                    common_info,
-                    output,
-                    InletProxyType::TCP,
-                )),
-                shutdown,
-                stream,
-            )
-            .await;
-            trace!("tcp client stop, peer addr: {}", addr);
-        });
-
-        Ok(())
-    }
-
-    async fn udp_connect(
-        &self,
-        addr: String,
-        session_id: u32,
-        common_info: SessionCommonInfo,
         tunnel_type: InletProxyType,
+        is_tcp: bool,
+        is_compressed: bool,
+        mut addr: String,
+        encryption_method: String,
+        encryption_key: String,
+        shutdown_receiver: broadcast::Receiver<()>,
+        output: mpsc::Sender<ProxyMessage>,
     ) -> anyhow::Result<()> {
-        debug!("udp_connect: {}", addr);
-        let any_addr = "0.0.0.0:0".parse::<SocketAddr>()?;
-        let socket = Arc::new(UdpSocket::bind(any_addr).await?);
+        if session_info_map.read().await.contains_key(&session_id) {
+            return Err(anyhow!("repeated connection: session_id:{session_id}"));
+        }
 
-        let addr = if addr.is_empty() {
-            any_addr
-        } else {
-            socket.connect(addr).await?;
-            socket.peer_addr()?
+        // 获取加密方式和密码
+        let encryption_method = get_method(&encryption_method);
+        let encryption_key = BASE64_STANDARD.decode(encryption_key.as_bytes())?;
+        let common_info =
+            SessionCommonInfo::new(false, is_compressed, encryption_method, encryption_key);
+
+        // 是否使用TCP连接
+        let connect_with_tcp = match tunnel_type {
+            InletProxyType::UDP => false,
+            InletProxyType::SOCKS5 => {
+                if !is_tcp {
+                    addr = String::from("");
+                }
+                is_tcp
+            }
+            _ => true,
         };
 
-        let output = self.output.clone();
-        let session_info_map = self.session_info_map.clone();
-        let shutdown = self.receiver_shutdown.resubscribe();
+        if connect_with_tcp {
+            debug!("tcp_connect: {}", addr);
+            let stream = TcpStream::connect(&addr).await?;
 
-        tokio::spawn(async move {
-            udp_session::run(
-                session_id,
-                addr,
-                Box::new(OutletSession::new(
-                    session_info_map,
-                    common_info,
-                    output,
-                    tunnel_type,
-                )),
-                None,
-                shutdown,
-                socket.clone(),
-            )
-            .await;
-            trace!("udp client stop, peer addr: {}", addr);
-        });
+            // set tcp keepalive
+            let ka = TcpKeepalive::new().with_time(Duration::from_secs(30));
+            let sf = SockRef::from(&stream);
+            sf.set_tcp_keepalive(&ka)?;
+
+            let addr = stream.peer_addr()?;
+
+            tokio::spawn(async move {
+                net_session::run(
+                    session_id,
+                    addr,
+                    Box::new(OutletSession::new(
+                        session_info_map,
+                        common_info,
+                        output,
+                        tunnel_type,
+                    )),
+                    shutdown_receiver,
+                    stream,
+                )
+                .await;
+                trace!("tcp client stop, peer addr: {}", addr);
+            });
+        } else {
+            debug!("udp_connect: {}", addr);
+            let any_addr = "0.0.0.0:0".parse::<SocketAddr>()?;
+            let socket = Arc::new(UdpSocket::bind(any_addr).await?);
+
+            let addr = if addr.is_empty() {
+                any_addr
+            } else {
+                socket.connect(addr).await?;
+                socket.peer_addr()?
+            };
+
+            tokio::spawn(async move {
+                udp_session::run(
+                    session_id,
+                    addr,
+                    Box::new(OutletSession::new(
+                        session_info_map,
+                        common_info,
+                        output,
+                        tunnel_type,
+                    )),
+                    None,
+                    shutdown_receiver,
+                    socket.clone(),
+                )
+                .await;
+                trace!("udp client stop, peer addr: {}", addr);
+            });
+        }
 
         Ok(())
     }
 }
 
+//////////////////////////////////////////////////////////////////////////////////// OutletSession ////////////////////////////////////////////////////////////////////////////////////
 struct OutletSession {
     session_info_map: SessionInfoMap,
     session_id: u32,

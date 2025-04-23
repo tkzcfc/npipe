@@ -142,7 +142,13 @@ impl ProxyManager {
                     })
                 });
 
-                if let Some(inlet_proxy_type) = InletProxyType::from_u32(tunnel.tunnel_type) {
+                let inlet_proxy_type = InletProxyType::from_u32(tunnel.tunnel_type);
+                if matches!(inlet_proxy_type, InletProxyType::UNKNOWN) {
+                    error!(
+                        "inlet({}) unknown tunnel type: {}",
+                        tunnel.source, tunnel.tunnel_type
+                    );
+                } else {
                     let mut inlet = Inlet::new(inlet_output, tunnel.inlet_description());
                     if let Err(err) = inlet
                         .start(
@@ -160,11 +166,6 @@ impl ProxyManager {
                         debug!("start inlet({})", inlet.description());
                         self.inlets.write().await.insert(tunnel.id, inlet);
                     }
-                } else {
-                    error!(
-                        "inlet({}) unknown tunnel type: {}",
-                        tunnel.source, tunnel.tunnel_type
-                    );
                 }
             }
         }

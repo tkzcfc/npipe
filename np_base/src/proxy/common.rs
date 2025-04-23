@@ -79,6 +79,12 @@ impl SessionCommonInfo {
 
         let mut read_buf_len_rw = self.read_buf_len.write().await;
         *read_buf_len_rw = *read_buf_len_rw + data.len();
+        // println!(
+        //     "[{}] read_buf_len_rw: {}, add len: {}",
+        //     if self.is_inlet { "inlet" } else { "outlet" },
+        //     *read_buf_len_rw,
+        //     data.len()
+        // );
         drop(read_buf_len_rw);
 
         Ok(data)

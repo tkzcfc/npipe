@@ -123,10 +123,6 @@ impl ProxyContext for Socks5Context {
         Ok(())
     }
 
-    fn is_recv_proxy_message(&self) -> bool {
-        true
-    }
-
     async fn on_recv_proxy_message(&mut self, proxy_message: ProxyMessage) -> anyhow::Result<()> {
         match proxy_message {
             ProxyMessage::O2iConnect(_session_id, success, error_msg) => {
@@ -143,6 +139,12 @@ impl ProxyContext for Socks5Context {
                 self.on_recv_o2i_recv_data_from(session_id, data, peer_addr)
                     .await?;
             }
+            ProxyMessage::O2iDisconnect(_) => {
+                self.write_to_peer_tx
+                    .as_ref()
+                    .unwrap()
+                    .send(WriterMessage::Close)?;
+            }
             _ => {}
         }
         Ok(())
@@ -156,6 +158,10 @@ impl ProxyContext for Socks5Context {
             .send(ProxyMessage::I2oDisconnect(ctx_data.get_session_id()))
             .await?;
         Ok(())
+    }
+
+    fn is_ready_for_read(&self) -> bool {
+        true
     }
 }
 

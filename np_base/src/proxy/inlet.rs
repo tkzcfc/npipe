@@ -1,7 +1,7 @@
 use crate::net::session_delegate::SessionDelegate;
+use crate::net::WriterMessage;
 use crate::net::{tcp_server, udp_server};
-use crate::net::{SendMessageFuncType, WriterMessage};
-use crate::proxy::common::{InputSenderType, SessionCommonInfo};
+use crate::proxy::common::SessionCommonInfo;
 use crate::proxy::http::HttpContext;
 use crate::proxy::proxy_context::{ProxyContext, ProxyContextData, UniversalProxy};
 use crate::proxy::socks5::Socks5Context;
@@ -26,16 +26,17 @@ pub enum InletProxyType {
     UDP,
     SOCKS5,
     HTTP,
+    UNKNOWN,
 }
 
 impl InletProxyType {
-    pub fn from_u32(value: u32) -> Option<InletProxyType> {
+    pub fn from_u32(value: u32) -> InletProxyType {
         match value {
-            0 => Some(InletProxyType::TCP),
-            1 => Some(InletProxyType::UDP),
-            2 => Some(InletProxyType::SOCKS5),
-            3 => Some(InletProxyType::HTTP),
-            _ => None,
+            0 => InletProxyType::TCP,
+            1 => InletProxyType::UDP,
+            2 => InletProxyType::SOCKS5,
+            3 => InletProxyType::HTTP,
+            _ => InletProxyType::UNKNOWN,
         }
     }
 
@@ -45,34 +46,21 @@ impl InletProxyType {
             InletProxyType::UDP => 1,
             InletProxyType::SOCKS5 => 2,
             InletProxyType::HTTP => 3,
+            InletProxyType::UNKNOWN => 255,
         }
     }
 
     pub fn is_socks5(&self) -> bool {
-        match self {
-            InletProxyType::SOCKS5 => true,
-            _ => false,
-        }
+        matches!(self, InletProxyType::SOCKS5)
     }
 
     pub fn is_tcp(&self) -> bool {
-        match self {
-            InletProxyType::TCP => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_http(&self) -> bool {
-        match self {
-            InletProxyType::HTTP => true,
-            _ => false,
-        }
+        matches!(self, InletProxyType::TCP)
     }
 }
 
 struct SessionInfo {
-    proxy_message_tx: Option<mpsc::UnboundedSender<ProxyMessage>>,
-    write_msg_tx: InputSenderType,
+    proxy_message_tx: UnboundedSender<ProxyMessage>,
     common_info: SessionCommonInfo,
 }
 
@@ -128,7 +116,6 @@ impl Inlet {
         self.input = Some(input_tx);
 
         let session_info_map = self.session_info_map.clone();
-        let output_tx_cloned = output_tx.clone();
         let inlet_proxy_type_cloned = inlet_proxy_type.clone();
         let data_ex = Arc::new(data_ex);
 
@@ -163,7 +150,7 @@ impl Inlet {
                         }))
                         .build_with_listener(
                             listener,
-                            Self::async_receive_input(input_rx, output_tx_cloned, session_info_map),
+                            Self::async_receive_input(input_rx, session_info_map),
                         );
 
                     select! {
@@ -181,7 +168,7 @@ impl Inlet {
                     let server_task = udp_server::run_server(
                         socket,
                         create_session_delegate_func,
-                        Self::async_receive_input(input_rx, output_tx_cloned, session_info_map),
+                        Self::async_receive_input(input_rx, session_info_map),
                     );
 
                     select! {
@@ -191,6 +178,9 @@ impl Inlet {
 
                     is_running.store(false, Ordering::Relaxed);
                 });
+            }
+            InletProxyType::UNKNOWN => {
+                return Err(anyhow!("Unknown inlet proxy type"));
             }
         };
 
@@ -221,11 +211,10 @@ impl Inlet {
 
     async fn async_receive_input(
         mut input: UnboundedReceiver<ProxyMessage>,
-        output: Sender<ProxyMessage>,
         session_info_map: SessionInfoMap,
     ) {
         while let Some(message) = input.recv().await {
-            if let Err(err) = Self::input_internal(message, &output, &session_info_map).await {
+            if let Err(err) = Self::input_internal(message, &session_info_map).await {
                 error!("inlet async_receive_input error: {}", err.to_string());
             }
         }
@@ -233,85 +222,49 @@ impl Inlet {
 
     async fn input_internal(
         message: ProxyMessage,
-        output: &Sender<ProxyMessage>,
         session_info_map: &SessionInfoMap,
     ) -> anyhow::Result<()> {
-        match message {
+        match &message {
             ProxyMessage::O2iConnect(session_id, success, error_msg) => {
+                println!(
+                    "O2iConnect: session_id:{session_id}, success:{success}, error_msg:{error_msg}"
+                );
                 trace!(
                     "O2iConnect: session_id:{session_id}, success:{success}, error_msg:{error_msg}"
                 );
 
                 if let Some(session) = session_info_map.read().await.get(&session_id) {
-                    if let Some(ref proxy_message_tx) = session.proxy_message_tx {
-                        proxy_message_tx
-                            .send(ProxyMessage::O2iConnect(session_id, success, error_msg))?;
-                    } else {
-                        if !success {
-                            error!("connect error: {error_msg}");
-                            session.write_msg_tx.send(WriterMessage::Close)?;
-                        }
-                    }
+                    session.proxy_message_tx.send(message)?;
                 }
             }
             ProxyMessage::O2iDisconnect(session_id) => {
                 trace!("O2iDisconnect: session_id:{session_id}");
                 if let Some(session) = session_info_map.read().await.get(&session_id) {
-                    session.write_msg_tx.send(WriterMessage::Close)?;
+                    session.proxy_message_tx.send(message)?;
                 }
             }
             ProxyMessage::O2iSendDataResult(session_id, data_len) => {
                 // trace!("O2iSendDataResult: session_id:{session_id}, data_len:{data_len}");
                 if let Some(session) = session_info_map.read().await.get(&session_id) {
                     let mut read_buf_len = session.common_info.read_buf_len.write().await;
-                    if *read_buf_len <= data_len {
+                    if *read_buf_len <= *data_len {
                         *read_buf_len = 0;
                     } else {
                         *read_buf_len = *read_buf_len - data_len;
                     }
-                    // trace!("O2iSendDataResult: session_id:{session_id}, data_len:{data_len}, read_buf_len:{}", *read_buf_len);
+                    // println!("[inlet] O2iSendDataResult: session_id:{session_id}, data_len:{data_len}, read_buf_len:{}", *read_buf_len);
                     drop(read_buf_len);
                 }
             }
-            ProxyMessage::O2iRecvDataFrom(session_id, data, remote_addr) => {
+            ProxyMessage::O2iRecvDataFrom(session_id, _data, _remote_addr) => {
                 if let Some(session) = session_info_map.read().await.get(&session_id) {
-                    if let Some(ref proxy_message_tx) = session.proxy_message_tx {
-                        proxy_message_tx.send(ProxyMessage::O2iRecvDataFrom(
-                            session_id,
-                            data,
-                            remote_addr,
-                        ))?;
-                    } else {
-                        panic!("Faulty logic");
-                    }
+                    session.proxy_message_tx.send(message)?;
                 }
             }
-            ProxyMessage::O2iRecvData(session_id, mut data) => {
+            ProxyMessage::O2iRecvData(session_id, _data) => {
                 // trace!("O2iRecvData: session_id:{session_id}");
                 if let Some(session) = session_info_map.read().await.get(&session_id) {
-                    if let Some(ref proxy_message_tx) = session.proxy_message_tx {
-                        proxy_message_tx.send(ProxyMessage::O2iRecvData(session_id, data))?;
-                    } else {
-                        let data_len = data.len();
-                        data = session.common_info.decode_data(data)?;
-
-                        // 写入完毕回调
-                        let output = output.clone();
-                        let callback: SendMessageFuncType = Box::new(move || {
-                            let output = output.clone();
-                            Box::pin(async move {
-                                let _ = output
-                                    .send(ProxyMessage::I2oRecvDataResult(session_id, data_len))
-                                    .await;
-                            })
-                        });
-
-                        session
-                            .write_msg_tx
-                            .send(WriterMessage::SendAndThen(data, callback))?;
-                    }
-                } else {
-                    trace!("O2iRecvData: unknown session:{session_id}");
+                    session.proxy_message_tx.send(message)?;
                 }
             }
             _ => {
@@ -373,52 +326,46 @@ impl SessionDelegate for InletSession {
 
         self.proxy_ctx_data.set_session_id(session_id);
 
-        let proxy_message_tx = if self.proxy_ctx.read().await.is_recv_proxy_message() {
-            let (proxy_msg_tx, mut proxy_msg_rx) = mpsc::unbounded_channel::<ProxyMessage>();
+        let (proxy_msg_tx, mut proxy_msg_rx) = mpsc::unbounded_channel::<ProxyMessage>();
 
-            let token = CancellationToken::new();
-            let cloned_token = token.clone();
+        let token = CancellationToken::new();
+        let cloned_token = token.clone();
 
-            let context_cloned = self.proxy_ctx.clone();
+        let context_cloned = self.proxy_ctx.clone();
 
-            tokio::spawn(async move {
-                loop {
-                    // 检查是否取消
-                    select! {
-                        _ = cloned_token.cancelled() => {
-                            // println!("Task cancelled, cleaning up...");
-                            break;
-                        }
-                        message = proxy_msg_rx.recv() => {
-                            if let Some(message) = message {
-                                // 处理消息...
-                                if let Err(err) = context_cloned
-                                .write()
-                                .await
-                                .on_recv_proxy_message(message)
-                                .await
-                                {
-                                    error!("on_recv_proxy_message: {err}")
-                                }
-                            } else {
-                                break; // 通道关闭
+        tokio::spawn(async move {
+            loop {
+                // 检查是否取消
+                select! {
+                    _ = cloned_token.cancelled() => {
+                        // println!("Task cancelled, cleaning up...");
+                        break;
+                    }
+                    message = proxy_msg_rx.recv() => {
+                        if let Some(message) = message {
+                            // 处理消息...
+                            if let Err(err) = context_cloned
+                            .write()
+                            .await
+                            .on_recv_proxy_message(message)
+                            .await
+                            {
+                                error!("on_recv_proxy_message: {err}")
                             }
+                        } else {
+                            break; // 通道关闭
                         }
                     }
                 }
-            });
+            }
+        });
 
-            self.proxy_message_recv_task_cancel_token = Some(token);
-            Some(proxy_msg_tx)
-        } else {
-            None
-        };
+        self.proxy_message_recv_task_cancel_token = Some(token);
 
         self.session_info_map.write().await.insert(
             session_id,
             SessionInfo {
-                proxy_message_tx,
-                write_msg_tx: write_msg_tx.clone(),
+                proxy_message_tx: proxy_msg_tx,
                 common_info: self.proxy_ctx_data.common_data.clone(),
             },
         );

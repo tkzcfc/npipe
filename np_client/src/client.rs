@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
-use tokio::net::{TcpStream, ToSocketAddrs};
+use tokio::net::TcpStream;
 use tokio::select;
 use tokio::sync::{Mutex, RwLock};
 use tokio::time::{sleep, timeout, Instant};
@@ -509,8 +509,13 @@ where
                     })
                 });
 
-                if let Some(inlet_proxy_type) = InletProxyType::from_u32(tunnel.tunnel_type as u32)
-                {
+                let inlet_proxy_type = InletProxyType::from_u32(tunnel.tunnel_type as u32);
+                if matches!(inlet_proxy_type, InletProxyType::UNKNOWN) {
+                    error!(
+                        "inlet({}) unknown tunnel type: {}",
+                        source, tunnel.tunnel_type
+                    );
+                } else {
                     let mut inlet = Inlet::new(inlet_output, inlet_description(&tunnel));
                     if let Err(err) = inlet
                         .start(
@@ -528,11 +533,6 @@ where
                         debug!("start inlet({})", inlet.description());
                         self.inlets.write().await.insert(tunnel.id, inlet);
                     }
-                } else {
-                    error!(
-                        "inlet({}) unknown tunnel type: {}",
-                        source, tunnel.tunnel_type
-                    );
                 }
             }
         }

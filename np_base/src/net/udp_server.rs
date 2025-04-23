@@ -8,7 +8,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::select;
-use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::{broadcast, mpsc, Mutex};
 
 pub async fn run_server(
@@ -22,7 +21,7 @@ pub async fn run_server(
     // 循环读取中...
     let recv_task = async {
         let mut session_id_seed = 0;
-        let hashmap: Arc<Mutex<HashMap<SocketAddr, UnboundedSender<Vec<u8>>>>> =
+        let hashmap: Arc<Mutex<HashMap<SocketAddr, mpsc::Sender<Vec<u8>>>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let mut buf = [0; 65535]; // 最大允许的UDP数据包大小
         let socket = Arc::new(socket);
@@ -51,8 +50,8 @@ pub async fn run_server(
                 // UdpSocket cloned
                 let socket_cloned = socket.clone();
 
-                // 创建无界通道
-                let (udp_recv_sender, udp_recv_receiver) = mpsc::unbounded_channel::<Vec<u8>>();
+                // 创建有界通道，限制积压消息数量
+                let (udp_recv_sender, udp_recv_receiver) = mpsc::channel::<Vec<u8>>(100);
                 hashmap
                     .lock()
                     .await
@@ -79,8 +78,13 @@ pub async fn run_server(
             }
 
             if let Some(sender) = hashmap.lock().await.get(&addr) {
-                if let Err(err) = sender.send(received_data) {
-                    error!("Unable to process received data, data address: {addr}, error: {err}");
+                // 如果通道已满，丢弃当前的消息
+                if sender.capacity() > 0 {
+                    if let Err(err) = sender.send(received_data).await {
+                        error!(
+                            "Unable to process received data, data address: {addr}, error: {err}"
+                        );
+                    }
                 }
             }
         }

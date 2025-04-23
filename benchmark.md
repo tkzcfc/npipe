@@ -43,64 +43,64 @@ npipe添加转发UDP隧道 5203 到  127.0.0.1:5201 并且隧道入口在服务�
 iperf3 TCP直连
 iperf3 -c 192.168.28.132 -p 5201
 Connecting to host 192.168.28.132, port 5201
-[  5] local 192.168.28.204 port 7227 connected to 192.168.28.132 port 5201
+[  5] local 192.168.28.204 port 10185 connected to 192.168.28.132 port 5201
 [ ID] Interval           Transfer     Bitrate
-[  5]   0.00-1.00   sec  89.2 MBytes   746 Mbits/sec
-[  5]   1.00-2.01   sec  94.5 MBytes   784 Mbits/sec
-[  5]   2.01-3.01   sec  92.6 MBytes   781 Mbits/sec
-[  5]   3.01-4.01   sec  86.9 MBytes   726 Mbits/sec
-[  5]   4.01-5.00   sec  86.8 MBytes   734 Mbits/sec
-[  5]   5.00-6.00   sec  85.9 MBytes   722 Mbits/sec
-[  5]   6.00-7.01   sec  92.4 MBytes   771 Mbits/sec
-[  5]   7.01-8.00   sec  95.1 MBytes   801 Mbits/sec
-[  5]   8.00-9.01   sec  94.4 MBytes   785 Mbits/sec
-[  5]   9.01-10.01  sec  96.5 MBytes   811 Mbits/sec
+[  5]   0.00-1.00   sec  95.4 MBytes   799 Mbits/sec
+[  5]   1.00-2.01   sec  98.4 MBytes   820 Mbits/sec
+[  5]   2.01-3.01   sec  98.6 MBytes   823 Mbits/sec
+[  5]   3.01-4.01   sec  97.8 MBytes   822 Mbits/sec
+[  5]   4.01-5.00   sec  97.9 MBytes   830 Mbits/sec
+[  5]   5.00-6.01   sec   100 MBytes   837 Mbits/sec
+[  5]   6.01-7.01   sec  98.1 MBytes   821 Mbits/sec
+[  5]   7.01-8.01   sec  98.8 MBytes   825 Mbits/sec
+[  5]   8.01-9.00   sec  96.1 MBytes   814 Mbits/sec
+[  5]   9.00-10.01  sec  96.0 MBytes   803 Mbits/sec
 - - - - - - - - - - - - - - - - - - - - - - - - -
 [ ID] Interval           Transfer     Bitrate
-[  5]   0.00-10.01  sec   914 MBytes   766 Mbits/sec                  sender
-[  5]   0.00-10.02  sec   914 MBytes   765 Mbits/sec                  receiver
+[  5]   0.00-10.01  sec   977 MBytes   819 Mbits/sec                  sender
+[  5]   0.00-10.01  sec   977 MBytes   819 Mbits/sec                  receiver
 
 
 nps TCP转发
 iperf3 -c 192.168.28.132 -p 5202
 Connecting to host 192.168.28.132, port 5202
-[  5] local 192.168.28.204 port 8469 connected to 192.168.28.132 port 5202
+[  5] local 192.168.28.204 port 10463 connected to 192.168.28.132 port 5202
 [ ID] Interval           Transfer     Bitrate
-[  5]   0.00-1.01   sec  49.8 MBytes   413 Mbits/sec
-[  5]   1.01-2.01   sec  19.4 MBytes   163 Mbits/sec
-[  5]   2.01-3.01   sec  15.4 MBytes   129 Mbits/sec
-[  5]   3.01-4.00   sec  17.4 MBytes   146 Mbits/sec
-[  5]   4.00-5.01   sec  14.4 MBytes   119 Mbits/sec
-[  5]   5.01-6.01   sec  17.0 MBytes   143 Mbits/sec
-[  5]   6.01-7.01   sec  16.8 MBytes   141 Mbits/sec
-[  5]   7.01-8.01   sec  15.1 MBytes   126 Mbits/sec
-[  5]   8.01-9.01   sec  15.0 MBytes   126 Mbits/sec
-[  5]   9.01-10.00  sec  15.9 MBytes   134 Mbits/sec
+[  5]   0.00-1.00   sec  49.0 MBytes   409 Mbits/sec
+[  5]   1.00-2.00   sec  15.8 MBytes   132 Mbits/sec
+[  5]   2.00-3.01   sec  15.9 MBytes   132 Mbits/sec
+[  5]   3.01-4.01   sec  16.1 MBytes   135 Mbits/sec
+[  5]   4.01-5.01   sec  16.1 MBytes   136 Mbits/sec
+[  5]   5.01-6.01   sec  15.9 MBytes   133 Mbits/sec
+[  5]   6.01-7.01   sec  15.9 MBytes   133 Mbits/sec
+[  5]   7.01-8.00   sec  16.6 MBytes   140 Mbits/sec
+[  5]   8.00-9.00   sec  15.5 MBytes   130 Mbits/sec
+[  5]   9.00-10.00  sec  16.1 MBytes   135 Mbits/sec
 - - - - - - - - - - - - - - - - - - - - - - - - -
 [ ID] Interval           Transfer     Bitrate
-[  5]   0.00-10.00  sec   196 MBytes   164 Mbits/sec                  sender
-[  5]   0.00-10.01  sec   192 MBytes   161 Mbits/sec                  receiver
+[  5]   0.00-10.00  sec   193 MBytes   162 Mbits/sec                  sender
+[  5]   0.00-10.01  sec   190 MBytes   160 Mbits/sec                  receiver
 
 
 npipe TCP转发
 iperf3 -c 192.168.28.132 -p 5203
 Connecting to host 192.168.28.132, port 5203
-[  5] local 192.168.28.204 port 7264 connected to 192.168.28.132 port 5203
+[  5] local 192.168.28.204 port 10485 connected to 192.168.28.132 port 5203
 [ ID] Interval           Transfer     Bitrate
-[  5]   0.00-1.01   sec  91.0 MBytes   757 Mbits/sec
-[  5]   1.01-2.01   sec  90.5 MBytes   755 Mbits/sec
-[  5]   2.01-3.00   sec  88.1 MBytes   749 Mbits/sec
-[  5]   3.00-4.01   sec  90.0 MBytes   752 Mbits/sec
-[  5]   4.01-5.01   sec  89.6 MBytes   752 Mbits/sec
-[  5]   5.01-6.01   sec  92.9 MBytes   776 Mbits/sec
-[  5]   6.01-7.00   sec  91.6 MBytes   774 Mbits/sec
-[  5]   7.00-8.01   sec  89.5 MBytes   745 Mbits/sec
-[  5]   8.01-9.00   sec  89.8 MBytes   757 Mbits/sec
-[  5]   9.00-10.01  sec  88.4 MBytes   739 Mbits/sec
+[  5]   0.00-1.01   sec  48.0 MBytes   399 Mbits/sec
+[  5]   1.01-2.01   sec  46.0 MBytes   384 Mbits/sec
+[  5]   2.01-3.01   sec  87.4 MBytes   733 Mbits/sec
+[  5]   3.01-4.00   sec  88.6 MBytes   752 Mbits/sec
+[  5]   4.00-5.01   sec  87.1 MBytes   728 Mbits/sec
+[  5]   5.01-6.01   sec  90.8 MBytes   758 Mbits/sec
+[  5]   6.01-7.01   sec  90.9 MBytes   765 Mbits/sec
+[  5]   7.01-8.01   sec  88.5 MBytes   743 Mbits/sec
+[  5]   8.01-9.00   sec  88.2 MBytes   742 Mbits/sec
+[  5]   9.00-10.01  sec  90.9 MBytes   761 Mbits/sec
 - - - - - - - - - - - - - - - - - - - - - - - - -
 [ ID] Interval           Transfer     Bitrate
-[  5]   0.00-10.01  sec   901 MBytes   756 Mbits/sec                  sender
-[  5]   0.00-10.01  sec   901 MBytes   755 Mbits/sec                  receiver
+[  5]   0.00-10.01  sec   806 MBytes   676 Mbits/sec                  sender
+[  5]   0.00-10.01  sec   806 MBytes   675 Mbits/sec                  receiver
 ```
 
 ## UDP转发
@@ -109,23 +109,23 @@ Connecting to host 192.168.28.132, port 5203
 
 iperf3 UDP直连
 iperf3 -c 192.168.28.132 -p 5201 -u -b 10G -t 10 -i 1
-[  5] local 192.168.28.204 port 52483 connected to 192.168.28.132 port 5201
+Connecting to host 192.168.28.132, port 5201
+[  5] local 192.168.28.204 port 49579 connected to 192.168.28.132 port 5201
 [ ID] Interval           Transfer     Bitrate         Total Datagrams
-[  5]   0.00-1.00   sec   105 MBytes   880 Mbits/sec  75770
-[  5]   1.00-2.01   sec   106 MBytes   880 Mbits/sec  76129
-[  5]   2.01-3.01   sec   105 MBytes   880 Mbits/sec  75474
-[  5]   3.01-4.01   sec   105 MBytes   880 Mbits/sec  75605
-[  5]   4.01-5.00   sec   104 MBytes   880 Mbits/sec  75131
-[  5]   5.00-6.01   sec   106 MBytes   880 Mbits/sec  76039
-[  5]   6.01-7.01   sec   105 MBytes   880 Mbits/sec  75393
-[  5]   7.01-8.01   sec   105 MBytes   879 Mbits/sec  75563
-[  5]   8.01-9.00   sec   104 MBytes   880 Mbits/sec  75129
-[  5]   9.00-10.01  sec   105 MBytes   880 Mbits/sec  75541
+[  5]   0.00-1.01   sec   106 MBytes   879 Mbits/sec  76269
+[  5]   1.01-2.00   sec   104 MBytes   878 Mbits/sec  74954
+[  5]   2.00-3.01   sec   105 MBytes   878 Mbits/sec  75922
+[  5]   3.01-4.00   sec   104 MBytes   878 Mbits/sec  74640
+[  5]   4.00-5.00   sec   105 MBytes   879 Mbits/sec  75441
+[  5]   5.00-6.00   sec   105 MBytes   878 Mbits/sec  75402
+[  5]   6.00-7.00   sec   105 MBytes   879 Mbits/sec  75613
+[  5]   7.00-8.00   sec   105 MBytes   878 Mbits/sec  75422
+[  5]   8.00-9.00   sec   104 MBytes   878 Mbits/sec  75138
+[  5]   9.00-10.00  sec   105 MBytes   878 Mbits/sec  75523
 - - - - - - - - - - - - - - - - - - - - - - - - -
 [ ID] Interval           Transfer     Bitrate         Jitter    Lost/Total Datagrams
-[  5]   0.00-10.01  sec  1.02 GBytes   880 Mbits/sec  0.000 ms  0/755774 (0%)  sender
-[  5]   0.00-10.01  sec   663 MBytes   556 Mbits/sec  0.024 ms  277781/755420 (37%)  receiver
-
+[  5]   0.00-10.00  sec  1.02 GBytes   878 Mbits/sec  0.000 ms  0/754324 (0%)  sender
+[  5]   0.00-10.00  sec   692 MBytes   580 Mbits/sec  0.011 ms  256178/754322 (34%)  receiver
 
 nps UDP转发
 iperf3 -c 192.168.28.132 -p 5202 -u -b 10G -t 10 -i 1
@@ -151,21 +151,21 @@ Connecting to host 192.168.28.132, port 5202
 npipe UDP转发
 iperf3 -c 192.168.28.132 -p 5203 -u -b 10G -t 10 -i 1
 Connecting to host 192.168.28.132, port 5203
-[  5] local 192.168.28.204 port 61267 connected to 192.168.28.132 port 5203
+[  5] local 192.168.28.204 port 52439 connected to 192.168.28.132 port 5203
 [ ID] Interval           Transfer     Bitrate         Total Datagrams
-[  5]   0.00-1.01   sec   106 MBytes   880 Mbits/sec  76081
-[  5]   1.01-2.01   sec   106 MBytes   879 Mbits/sec  75998
-[  5]   2.01-3.01   sec   104 MBytes   880 Mbits/sec  75119
-[  5]   3.01-4.01   sec   105 MBytes   880 Mbits/sec  75665
-[  5]   4.01-5.00   sec   104 MBytes   880 Mbits/sec  75066
-[  5]   5.00-6.01   sec   106 MBytes   879 Mbits/sec  76122
-[  5]   6.01-7.00   sec   104 MBytes   880 Mbits/sec  74697
-[  5]   7.00-8.01   sec   106 MBytes   879 Mbits/sec  76422
-[  5]   8.01-9.01   sec   105 MBytes   879 Mbits/sec  75333
-[  5]   9.01-10.01  sec   105 MBytes   879 Mbits/sec  75559
+[  5]   0.00-1.00   sec   105 MBytes   879 Mbits/sec  75812
+[  5]   1.00-2.00   sec   104 MBytes   879 Mbits/sec  75145
+[  5]   2.00-3.01   sec   106 MBytes   878 Mbits/sec  76264
+[  5]   3.01-4.01   sec   104 MBytes   878 Mbits/sec  75257
+[  5]   4.01-5.01   sec   105 MBytes   878 Mbits/sec  75390
+[  5]   5.01-6.01   sec   104 MBytes   879 Mbits/sec  75237
+[  5]   6.01-7.01   sec   105 MBytes   878 Mbits/sec  75749
+[  5]   7.01-8.01   sec   105 MBytes   878 Mbits/sec  75431
+[  5]   8.01-9.01   sec   105 MBytes   878 Mbits/sec  75261
+[  5]   9.01-10.01  sec   105 MBytes   878 Mbits/sec  75575
 - - - - - - - - - - - - - - - - - - - - - - - - -
 [ ID] Interval           Transfer     Bitrate         Jitter    Lost/Total Datagrams
-[  5]   0.00-10.01  sec  1.03 GBytes   880 Mbits/sec  0.000 ms  0/756062 (0%)  sender
-[  5]   0.00-10.03  sec   463 MBytes   388 Mbits/sec  0.008 ms  133324/466947 (29%)  receiver
+[  5]   0.00-10.01  sec  1.02 GBytes   878 Mbits/sec  0.000 ms  0/755121 (0%)  sender
+[  5]   0.00-10.01  sec   420 MBytes   352 Mbits/sec  0.034 ms  452499/754984 (60%)  receiver
 ```
 

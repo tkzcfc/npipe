@@ -6,17 +6,21 @@ use std::sync::Arc;
 use tokio::net::UdpSocket;
 use tokio::select;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio::task::yield_now;
 use tokio::time::sleep;
 use tokio::time::{Duration, Instant};
 
-async fn poll_read_from_unbounded_receiver(
+async fn poll_read_from_bounded_receiver(
     addr: SocketAddr,
     delegate: &mut Box<dyn SessionDelegate>,
-    mut udp_recv_receiver: UnboundedReceiver<Vec<u8>>,
+    mut udp_recv_receiver: mpsc::Receiver<Vec<u8>>,
     last_active_time: Arc<RwLock<Instant>>,
 ) {
+    while !delegate.is_ready_for_read().await {
+        // 暂停读取数据
+        yield_now().await;
+    }
     let write_timeout = Duration::from_secs(1);
     while let Some(data) = udp_recv_receiver.recv().await {
         if last_active_time.read().await.elapsed() >= write_timeout {
@@ -40,6 +44,11 @@ async fn poll_read(
     let write_timeout = Duration::from_secs(1);
     let mut buf = [0; 65535]; // 最大允许的UDP数据包大小
     loop {
+        while !delegate.is_ready_for_read().await {
+            // 暂停读取数据
+            yield_now().await;
+        }
+
         let result = socket.recv_from(&mut buf).await;
         if result.is_err() {
             continue;
@@ -56,11 +65,6 @@ async fn poll_read(
         if let Err(err) = delegate.on_recv_frame_from(received_data, peer_addr).await {
             error!("[{addr}] on_recv_frame error: {err}");
             break;
-        }
-
-        while !delegate.is_ready_for_read().await {
-            // 暂停读取数据
-            yield_now().await;
         }
     }
 }
@@ -146,15 +150,15 @@ async fn poll_timeout(last_active_time: Arc<RwLock<Instant>>) {
 ///
 /// [`udp_recv_receiver`] 无界通道接收端，接收udp收到的数据
 ///
-/// [`shutdown`] 监听退出消息
+/// [`shutdown_receiver`] 监听退出消息
 ///
 /// [`socket`] UdpSocket对象，用于写入udp数据
 pub async fn run(
     session_id: u32,
     addr: SocketAddr,
     mut delegate: Box<dyn SessionDelegate>,
-    udp_recv_receiver: Option<UnboundedReceiver<Vec<u8>>>,
-    mut shutdown: broadcast::Receiver<()>,
+    udp_recv_receiver: Option<mpsc::Receiver<Vec<u8>>>,
+    mut shutdown_receiver: broadcast::Receiver<()>,
     socket: Arc<UdpSocket>,
 ) {
     let (delegate_sender, delegate_receiver) = unbounded_channel::<WriterMessage>();
@@ -171,17 +175,17 @@ pub async fn run(
 
     if let Some(udp_recv_receiver) = udp_recv_receiver {
         select! {
-            _= poll_read_from_unbounded_receiver(addr, &mut delegate, udp_recv_receiver, last_active_time.clone()) => {},
+            _= poll_read_from_bounded_receiver(addr, &mut delegate, udp_recv_receiver, last_active_time.clone()) => {},
             _= poll_write(addr, delegate_receiver, socket, last_active_time.clone()) => {},
             _= poll_timeout(last_active_time) => {},
-            _ = shutdown.recv() => {}
+            _ = shutdown_receiver.recv() => {}
         }
     } else {
         select! {
             _= poll_read(addr, &mut delegate, socket.clone(), last_active_time.clone()) => {},
             _= poll_write(addr, delegate_receiver, socket, last_active_time.clone()) => {},
             _= poll_timeout(last_active_time) => {},
-            _ = shutdown.recv() => {}
+            _ = shutdown_receiver.recv() => {}
         }
     }
 
