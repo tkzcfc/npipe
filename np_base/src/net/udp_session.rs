@@ -57,6 +57,11 @@ async fn poll_read(
             error!("[{addr}] on_recv_frame error: {err}");
             break;
         }
+
+        while !delegate.is_ready_for_read().await {
+            // 暂停读取数据
+            yield_now().await;
+        }
     }
 }
 

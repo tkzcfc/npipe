@@ -4,9 +4,9 @@ use crate::proxy::socks5::{
 use anyhow::anyhow;
 use log::debug;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::str::FromStr;
 use std::vec::IntoIter;
 use std::{fmt, io};
-use std::str::FromStr;
 
 /// A description of a connection target.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -220,11 +220,10 @@ pub fn read_address(data: &[u8], atyp: u8) -> anyhow::Result<Option<(TargetAddr,
             // 检测是否为一个IPV6地址
             if let Ok(ip) = std::net::IpAddr::from_str(&domain) {
                 TargetAddr::Ip(SocketAddr::new(ip, port))
-            }
-            else {
+            } else {
                 TargetAddr::Domain(domain, port)
             }
-        },
+        }
         _ => panic!("Unknown"),
     };
 

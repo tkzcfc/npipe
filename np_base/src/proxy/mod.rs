@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 pub(crate) mod common;
 pub mod crypto;
+mod http;
 pub mod inlet;
 pub mod outlet;
 mod proxy_context;

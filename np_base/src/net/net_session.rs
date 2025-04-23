@@ -169,5 +169,10 @@ where
                 error!("[{addr}] The buffer size is abnormal ({}), whether the buffer data has not been consumed",buffer.capacity());
             }
         }
+
+        while !delegate.is_ready_for_read().await {
+            // 暂停读取数据
+            yield_now().await;
+        }
     }
 }

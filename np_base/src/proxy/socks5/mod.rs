@@ -16,7 +16,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::select;
-use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Sender, UnboundedSender};
 use tokio_util::sync::CancellationToken;
 
@@ -63,16 +62,9 @@ enum Status {
 pub struct Socks5Context {
     status: Status,
     buffer: Vec<u8>,
-    write_to_peer_tx: Option<mpsc::UnboundedSender<WriterMessage>>,
-    // output: Sender<ProxyMessage>,
-    // data_ex: Arc<InletDataEx>,
+    write_to_peer_tx: Option<UnboundedSender<WriterMessage>>,
     target_addr: Option<TargetAddr>,
-    // session_id: u32,
-    // addr: SocketAddr,
-    // common_data: SessionCommonInfo,
 
-    // read_input_task_handle: Option<(JoinHandle<()>, oneshot::Sender<()>)>,
-    // udp_task_handle: Option<(JoinHandle<()>, oneshot::Sender<()>)>,
     udp_task_cancel_token: Option<CancellationToken>,
 
     ctx_data: Option<Arc<ProxyContextData>>,

@@ -2,6 +2,7 @@ use crate::net::session_delegate::SessionDelegate;
 use crate::net::{tcp_server, udp_server};
 use crate::net::{SendMessageFuncType, WriterMessage};
 use crate::proxy::common::{InputSenderType, SessionCommonInfo};
+use crate::proxy::http::HttpContext;
 use crate::proxy::proxy_context::{ProxyContext, ProxyContextData, UniversalProxy};
 use crate::proxy::socks5::Socks5Context;
 use crate::proxy::{common, OutputFuncType, ProxyMessage};
@@ -339,15 +340,11 @@ impl InletSession {
         output: Sender<ProxyMessage>,
         data_ex: Arc<InletDataEx>,
     ) -> Self {
-        let proxy_ctx: Arc<RwLock<dyn ProxyContext + Send + Sync>>;
-        match inlet_proxy_type {
-            InletProxyType::SOCKS5 => {
-                proxy_ctx = Arc::new(RwLock::new(Socks5Context::new()));
-            }
-            _ => {
-                proxy_ctx = Arc::new(RwLock::new(UniversalProxy::new()));
-            }
-        }
+        let proxy_ctx: Arc<RwLock<dyn ProxyContext + Send + Sync>> = match inlet_proxy_type {
+            InletProxyType::SOCKS5 => Arc::new(RwLock::new(Socks5Context::new())),
+            InletProxyType::HTTP => Arc::new(RwLock::new(HttpContext::new())),
+            _ => Arc::new(RwLock::new(UniversalProxy::new())),
+        };
 
         Self {
             session_info_map,
@@ -458,5 +455,9 @@ impl SessionDelegate for InletSession {
             .await
             .on_recv_peer_data(self.proxy_ctx_data.clone(), frame)
             .await
+    }
+
+    async fn is_ready_for_read(&self) -> bool {
+        self.proxy_ctx.read().await.is_ready_for_read()
     }
 }

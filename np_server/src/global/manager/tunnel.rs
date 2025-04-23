@@ -26,7 +26,7 @@ impl TunnelManager {
     }
 
     pub async fn load_all_tunnel(&self) -> anyhow::Result<()> {
-        (*self.tunnels.write().await) = Tunnel::find().all(GLOBAL_DB_POOL.get().unwrap()).await?;
+        *self.tunnels.write().await = Tunnel::find().all(GLOBAL_DB_POOL.get().unwrap()).await?;
         Ok(())
     }
 
@@ -174,8 +174,11 @@ impl TunnelManager {
             return Err(anyhow!("source address format error"));
         }
 
-        if !is_valid_tunnel_endpoint_address(&tunnel.endpoint) {
-            return Err(anyhow!("endpoint address format error"));
+        // SOCKS5 HTTP类型不检测
+        if tunnel.tunnel_type != 2 && tunnel.tunnel_type != 3 {
+            if !is_valid_tunnel_endpoint_address(&tunnel.endpoint) {
+                return Err(anyhow!("endpoint address format error"));
+            }
         }
 
         // 玩家id检测
@@ -188,7 +191,7 @@ impl TunnelManager {
                 tunnel.receiver,
                 get_tunnel_address_port(&tunnel.source),
                 Some(tunnel.id),
-                tunnel.tunnel_type != 1
+                tunnel.tunnel_type != 1,
             )
             .await
         {
@@ -222,11 +225,7 @@ impl TunnelManager {
                 x.receiver == receiver
                     && tunnel_id != Some(x.id)
                     && get_tunnel_address_port(&x.source) == port
-                    && x.tunnel_type == if is_tcp {
-                        0
-                    } else {
-                        1
-                    }
+                    && x.tunnel_type == if is_tcp { 0 } else { 1 }
             })
             .is_some()
     }

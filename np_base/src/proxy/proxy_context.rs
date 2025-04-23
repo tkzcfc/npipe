@@ -103,6 +103,10 @@ where
             .await?;
         Ok(())
     }
+
+    fn is_ready_for_read(&self) -> bool {
+        true
+    }
 }
 
 pub(crate) struct UniversalProxy {}

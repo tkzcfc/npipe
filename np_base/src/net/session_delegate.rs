@@ -51,6 +51,10 @@ where
     ) -> anyhow::Result<()> {
         panic!("Not implemented");
     }
+
+    async fn is_ready_for_read(&self) -> bool {
+        true
+    }
 }
 
 pub type CreateSessionDelegateCallback = Box<dyn Fn() -> Box<dyn SessionDelegate> + Send + Sync>;
