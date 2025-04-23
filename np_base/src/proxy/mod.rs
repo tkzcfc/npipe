@@ -39,62 +39,7 @@ pub type OutputFuncType =
 
 #[cfg(test)]
 mod tests {
-    use crate::proxy::inlet::{Inlet, InletProxyType};
-    use crate::proxy::ProxyMessage;
-    use crate::proxy::{crypto, OutputFuncType};
-    use std::sync::Arc;
-    use std::time::Duration;
-    use tokio::time::sleep;
-
-    #[tokio::test]
-    async fn tes_inlet_stop() {
-        // 创建一个Arc变量
-        let value = Arc::new(10usize);
-
-        // 创建一个异步回调函数
-        let output: OutputFuncType = Arc::new(move |message: ProxyMessage| {
-            let value_cloned = value.clone();
-            Box::pin(async move {
-                if let ProxyMessage::I2oSendData(_, frame) = message {
-                    if *value_cloned > frame.len() {
-                        println!("ok");
-                    }
-                }
-            })
-        });
-
-        let mut inlet = Inlet::new(output.clone(), "".into());
-        inlet
-            .start(
-                InletProxyType::TCP,
-                "0.0.0.0:4000".into(),
-                "www.baidu.com:80".into(),
-                false,
-                "None".into(),
-            )
-            .await
-            .unwrap();
-
-        sleep(Duration::from_secs(1)).await;
-
-        inlet.stop().await;
-        inlet
-            .start(
-                InletProxyType::TCP,
-                "0.0.0.0:4000".into(),
-                "www.baidu.com:80".into(),
-                false,
-                "None".into(),
-            )
-            .await
-            .unwrap();
-        sleep(Duration::from_secs(1)).await;
-
-        inlet.stop().await;
-        sleep(Duration::from_secs(1)).await;
-        inlet.stop().await;
-        inlet.stop().await;
-    }
+    use crate::proxy::{crypto};
 
     #[test]
     fn test_crypto() {

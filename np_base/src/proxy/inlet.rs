@@ -226,9 +226,6 @@ impl Inlet {
     ) -> anyhow::Result<()> {
         match &message {
             ProxyMessage::O2iConnect(session_id, success, error_msg) => {
-                println!(
-                    "O2iConnect: session_id:{session_id}, success:{success}, error_msg:{error_msg}"
-                );
                 trace!(
                     "O2iConnect: session_id:{session_id}, success:{success}, error_msg:{error_msg}"
                 );
