@@ -39,7 +39,7 @@ pub type OutputFuncType =
 
 #[cfg(test)]
 mod tests {
-    use crate::proxy::{crypto};
+    use crate::proxy::crypto;
 
     #[test]
     fn test_crypto() {

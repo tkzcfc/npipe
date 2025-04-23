@@ -569,8 +569,8 @@ impl Socks5Context {
             }
         }
 
-        let mut buf = vec![SOCKS5_VERSION, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
-        buf.extend_from_slice(&socket.local_addr()?.port().to_be_bytes());
+        let mut response_buf = vec![SOCKS5_VERSION, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
+        response_buf.extend_from_slice(&socket.local_addr()?.port().to_be_bytes());
 
         let token = CancellationToken::new();
         let cloned_token = token.clone();
@@ -582,8 +582,8 @@ impl Socks5Context {
         let session_id = self.ctx_data.as_ref().unwrap().get_session_id();
         let common_data = self.ctx_data.as_ref().unwrap().common_data.clone();
 
-        let mut buf = [0; 65535]; // 最大允许的UDP数据包大小
         tokio::spawn(async move {
+            let mut read_buf = [0; 65535]; // 最大允许的UDP数据包大小
             loop {
                 // 检查是否取消
                 select! {
@@ -591,13 +591,13 @@ impl Socks5Context {
                         // println!("Task cancelled, cleaning up...");
                         break;
                     }
-                    result = socket.recv_from(&mut buf) => {
+                    result = socket.recv_from(&mut read_buf) => {
                         match result {
                             Ok((amt, _addr)) => {
                                 if let Err(err) = recv_udp_data(
                                     session_id,
                                     amt,
-                                    &buf,
+                                    &read_buf,
                                     &output,
                                     &common_data
                                 ).await {
@@ -619,7 +619,7 @@ impl Socks5Context {
         self.udp_task_cancel_token = Some(token);
         self.status = Status::RunWithUdp(socket_cloned);
 
-        Ok(Vec::from(buf))
+        Ok(response_buf)
     }
 }
 
@@ -645,7 +645,9 @@ async fn recv_udp_data(
     match target_addr::read_address(&received_data[4..], address_type) {
         Ok(Some((addr, addr_data_len))) => {
             let start = 4 + addr_data_len;
-            let data = common_data.decode_data(buf[start..amt].to_vec())?;
+            let data = common_data
+                .encode_data_and_limiting(buf[start..amt].to_vec())
+                .await?;
 
             output
                 .send(ProxyMessage::I2oSendToData(
