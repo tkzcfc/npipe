@@ -163,7 +163,7 @@ jobs:
         staging="np-${{ env.BIN_VERSION }}-${{ matrix.target }}"
         mkdir -p "$staging"
 
-        git clone https://github.com/pizixi/npipe-webui.git
+        git clone https://github.com/tkzcfc/npipe-webui.git
         mkdir -p "$staging/dist"
         cp -R npipe-webui/dist/* "$staging/dist"
 
