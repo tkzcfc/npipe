@@ -109,7 +109,7 @@ jobs:
         # beta: 使用测试版本的Rust。
         # nightly: 使用最新的夜间版本的Rust。
         # 具体版本号: 如1.56.0，指定特定的Rust版本。
-        toolchain: 1.80.0
+        toolchain: 1.84.1
         target: ${{ matrix.target }}
 
     # - name: Add target
