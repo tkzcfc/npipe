@@ -7,6 +7,7 @@ use crate::utils::str::{
     get_tunnel_address_port, is_valid_tunnel_endpoint_address, is_valid_tunnel_source_address,
 };
 use anyhow::anyhow;
+use np_base::proxy::inlet::InletProxyType;
 use np_proto::message_map::MessageType;
 use np_proto::{class_def, server_client};
 use sea_orm::ActiveValue::Set;
@@ -175,10 +176,14 @@ impl TunnelManager {
         }
 
         // SOCKS5 HTTP类型不检测
-        if tunnel.tunnel_type != 2 && tunnel.tunnel_type != 3 {
-            if !is_valid_tunnel_endpoint_address(&tunnel.endpoint) {
-                return Err(anyhow!("endpoint address format error"));
+        let proxy_type = InletProxyType::from_u32(tunnel.tunnel_type);
+        match proxy_type {
+            InletProxyType::TCP | InletProxyType::UDP => {
+                if !is_valid_tunnel_endpoint_address(&tunnel.endpoint) {
+                    return Err(anyhow!("endpoint address format error"));
+                }
             }
+            _ => {}
         }
 
         // 玩家id检测
@@ -191,7 +196,7 @@ impl TunnelManager {
                 tunnel.receiver,
                 get_tunnel_address_port(&tunnel.source),
                 Some(tunnel.id),
-                tunnel.tunnel_type != 1,
+                matches!(proxy_type, InletProxyType::UDP),
             )
             .await
         {
@@ -215,7 +220,7 @@ impl TunnelManager {
         receiver: u32,
         port: Option<u16>,
         tunnel_id: Option<u32>,
-        is_tcp: bool,
+        is_udp: bool,
     ) -> bool {
         self.tunnels
             .read()
@@ -225,7 +230,8 @@ impl TunnelManager {
                 x.receiver == receiver
                     && tunnel_id != Some(x.id)
                     && get_tunnel_address_port(&x.source) == port
-                    && x.tunnel_type == if is_tcp { 0 } else { 1 }
+                    && matches!(InletProxyType::from_u32(x.tunnel_type), InletProxyType::UDP)
+                        == is_udp
             })
             .is_some()
     }
