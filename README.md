@@ -1,46 +1,21 @@
 # npipe
 
+npipe is  is cross platform (Windows, Linux, OSX) and comes as standalone executables.
 
+It provides simple and efficient ways to forward data from multiple sockets (TCP or UDP) through a single secure TLS tunnel to a remote computer.
 
-## 客户端
+Features:
+* Local and remote TCP port forwarding
+* Local and remote UDP port forwarding
+* Local and remote SOCKS server
+* Local and remote HTTP Proxy server
+* TLS connection with the strongest cipher-suites
 
-### Windows上将客户端注册为服务（必须在有管理员权限的控制台中执行）
+## How to use
 
-```
-Usage: np_client.exe install [OPTIONS] --server <SERVER> --username <USERNAME> --password <PASSWORD>
+### Command line
 
-Options:
-      --backtrace <BACKTRACE>
-          print backtracking information [default: false] [possible values: true, false]
-  -s, --server <SERVER>
-          server address
-  -u, --username <USERNAME>
-          username
-  -p, --password <PASSWORD>
-          password
-      --enable-tls
-          enable tls
-      --insecure
-          if true, the validity of the SSL certificate is not verified
-      --ca-cert <CA_CERT>
-          ca file path (optional), if not provided, the client’s certificate will not be verified [default: ]
-      --log-level <LOG_LEVEL>
-          set log level [default: info]
-      --base-log-level <BASE_LOG_LEVEL>
-          set log level [default: error]
-      --net-type <NET_TYPE>
-          net type [default: tcp] [possible values: tcp, kcp, auto]
-  -h, --help
-          Print help (see more with '--help')
-```
-
-### Windows上卸载服务
-
-````
-Usage: np_client.exe uninstall
-````
-
-### Windows上和其他平台以常规模式运行
+#### Client
 
 ```
 Usage: np_client.exe run [OPTIONS] --server <SERVER> --username <USERNAME> --password <PASSWORD>
@@ -70,66 +45,106 @@ Options:
           Print help (see more with '--help')
 ```
 
-
-
-
-
-------
-
-
-
-## 服务端
-
-### 服务端配置文件
-
-| 名称                    | 含义                                | 示例                                                         |
-| ----------------------- | ----------------------------------- | ------------------------------------------------------------ |
-| database_url            | 数据库地址                          | sqlite格式 sqlite://data.db?mode=rwc<br />mysql格式 mysql://username:password@server:port/dbname, 如:mysql://admin:password@127.0.0.1:3306/npipe |
-| listen_addr             | 服务端tcp监听地址                   | 0.0.0.0:8118                                                 |
-| kcp_listen_addr         | 服务端kcp监听地址                   | 0.0.0.0:8118                                                 |
-| enable_tls              | 启用tls连接                         | true/false                                                   |
-| tls_cert                | cert文件路径                        | ./cert.pem                                                   |
-| tls_key                 | key文件路径                         | ./server.key.pem                                             |
-| web_base_dir            | web后台管理路径 (为空则关闭web管理) | ./dist                                                       |
-| web_addr                | web管理监听地址                     | 0.0.0.0:8120                                                 |
-| web_username            | web界面管理账号 (为空则关闭web管理) | admin                                                        |
-| web_password            | web界面管理密码 (为空则关闭web管理) | admin@1234                                                   |
-| illegal_traffic_forward | 非法流量请求转发地址                | 可以将不是npipe的流量转发给其他程序，如nginx，配置格式示例：127.0.0.1:80  ，如果为空则不转发请求 |
-
-
-
-### 使用方法
+Register the client as a service on Windows (must be executed in a console with administrator privileges)
 
 ```
-1. 启动服务器 ./np_server
+Usage: np_client.exe install [OPTIONS] --server <SERVER> --username <USERNAME> --password <PASSWORD>
 
-2. 访问web管理后台 127.0.0.1:8120，添加用户和隧道
+Options:
+      --backtrace <BACKTRACE>
+          print backtracking information [default: false] [possible values: true, false]
+  -s, --server <SERVER>
+          server address
+  -u, --username <USERNAME>
+          username
+  -p, --password <PASSWORD>
+          password
+      --enable-tls
+          enable tls
+      --insecure
+          if true, the validity of the SSL certificate is not verified
+      --ca-cert <CA_CERT>
+          ca file path (optional), if not provided, the client’s certificate will not be verified [default: ]
+      --log-level <LOG_LEVEL>
+          set log level [default: info]
+      --base-log-level <BASE_LOG_LEVEL>
+          set log level [default: error]
+      --net-type <NET_TYPE>
+          net type [default: tcp] [possible values: tcp, kcp, auto]
+  -h, --help
+          Print help (see more with '--help')
 ```
 
-------
-
-## 隧道配置
+#### Server
 
 ```
-如：
-   监听地址配置 0.0.0.0:3000
-   目标地址配置 www.baidu.com:80
-   隧道出口ID配置 1234（1234是用户xxx的id）
-   隧道入口ID配置 0
-   
-启动 np_client登录用户xxx
-在np_client所在的电脑上访问 127.0.0.1:3000 即代表从服务端访问 www.baidu.com:80
+Usage: np_server.exe [OPTIONS]
 
+Options:
+  -b, --backtrace <BACKTRACE>
+          Print backtracking information [default: false] [possible values: true, false]
+  -c, --config-file <CONFIG_FILE>
+          Config file [default: config.json]
+      --log-level <LOG_LEVEL>
+          Set log level  warn [default: info]
+      --base-log-level <BASE_LOG_LEVEL>
+          Set log level [default: error]
+  -h, --help
+          Print help
+  -V, --version
+          Print version
 ```
 
 
 
+### Configuration file
 
+```json
+{
+	"database_url": "sqlite://data.db?mode=rwc",
+	"listen_addr": "0.0.0.0:8118",
+	"kcp_listen_addr": "0.0.0.0:8118",
+	"illegal_traffic_forward": "",
+	"enable_tls": false,
+	"tls_cert": "./cert.pem",
+	"tls_key": "./server.key.pem",
+	"web_base_dir": "./dist",
+	"web_addr": "0.0.0.0:8120",
+	"web_username": "admin",
+	"web_password": "admin@1234"
+}
+```
+
+#### Arguments
+
+### 
+
+| Configuration key       | Description                                                  | Example                                                      |
+| ----------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| database_url            | database address                                             | sqlite://data.db?mode=rwc<br> mysql://username:password@server:port/dbname, |
+| listen_addr             | Server TCP listening address                                 | 0.0.0.0:8118                                                 |
+| kcp_listen_addr         | Server KCP listening address                                 | 0.0.0.0:8118                                                 |
+| enable_tls              | Enable TLS connection                                        | true/false                                                   |
+| tls_cert                | Cert file path                                               | ./cert.pem                                                   |
+| tls_key                 | Key file path                                                | ./server.key.pem                                             |
+| web_base_dir            | Web backend management path (if empty, close web management) | ./dist                                                       |
+| web_addr                | Web management listening address                             | 0.0.0.0:8120                                                 |
+| web_username            | Web interface management account (if left blank, close web management) | admin                                                        |
+| web_password            | Web interface management password (if left blank, turn off web management) | admin@1234                                                   |
+| illegal_traffic_forward | Illegal traffic request forwarding address                   | You can forward traffic that is not npipe to other programs, such as nginx. Configuration format example: 127.0.0.1:80. If it is empty, do not forward the request |
+
+
+
+## How to generate certificates for TLS connections
+
+```bash
+./generate-certificate.sh
+```
 
 ------
 
-[测试数据](./benchmark.md)
+[benchmark](./benchmark.md)
 
 ------
 
-感谢 [pizixi](https://github.com/pizixi) 开发的[后台管理界面](https://github.com/pizixi/npipe-webui)
+Thanks to [pizixi](https://github.com/pizixi) for developing the [ admin interface](https://github.com/pizixi/npipe-webui)
