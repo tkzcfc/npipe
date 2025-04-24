@@ -83,6 +83,14 @@ Options:
           Print help (see more with '--help')
 ```
 
+Then start the service and typing: 
+
+```
+sc.exe start "np_client"
+```
+
+
+
 #### Server
 
 ```
