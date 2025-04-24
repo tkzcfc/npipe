@@ -1,4 +1,4 @@
-## 测试环境
+## Testing environment
 
 ```
 192.168.28.132:
@@ -16,31 +16,30 @@ RAM	32.0 GB
 
 
 ```
-nps 使用 ehang-io/nps仓库 v0.26.10
-npipe 使用 tkzcfc/npipe仓库 v1.0.1 （使用TCP连接且未启用tls）
-iperf3 使用 ar51an/iperf3-win-builds 仓库 3.18
 
-iperf3服务器 nps服务器 npc客户端 np_client np_server 均在电脑192.168.28.132运行
-
-未压缩未加密
-nps添加转发TCP隧道 5202 到  127.0.0.1:5201
-nps添加转发UDP隧道 5202 到  127.0.0.1:5201
-
-未压缩未加密
-npipe添加转发TCP隧道 5203 到  127.0.0.1:5201 并且隧道入口在服务端 出口在客户端 模拟和nps一样的转发流程
-npipe添加转发UDP隧道 5203 到  127.0.0.1:5201 并且隧道入口在服务端 出口在客户端 模拟和nps一样的转发流程
+nps uses ehang io/nps repository v0.26.10
+npipe uses tkzcfc/npipe repository v1.0.1 (using TCP connection and tls not enabled)
+iperf3 uses ar51an/iperf3 win builds repository 3.18
+iperf3 server nps server NPC client np_cient np_server is running on computer 192.168.28.132
 
 
-所有测试在本机 192.168.28.204 上进行
+nps adds forwarding TCP tunnel 5202 to 127.0.0.1:5201 (Uncompressed and unencrypted)
+nps adds forwarding UDP tunnel 5202 to 127.0.0.1:5201 (Uncompressed and unencrypted)
+
+
+npipe adds forwarding TCP tunnel 5203 to 127.0.0.1:5201, with the tunnel entrance at the server exit and the client simulating the same forwarding process as nps (Uncompressed and unencrypted)
+npipe adds forwarding UDP tunnel 5203 to 127.0.0.1:5201, and the tunnel entrance is at the server exit, simulating the same forwarding process as nps on the client side (Uncompressed and unencrypted)
+
+All tests were conducted on the local machine 192.168.28.204
 ```
 
 
 
-## TCP转发
+## TCP forwarding test
 
 ```
 
-iperf3 TCP直连
+iperf3
 iperf3 -c 192.168.28.132 -p 5201
 Connecting to host 192.168.28.132, port 5201
 [  5] local 192.168.28.204 port 10185 connected to 192.168.28.132 port 5201
@@ -61,7 +60,7 @@ Connecting to host 192.168.28.132, port 5201
 [  5]   0.00-10.01  sec   977 MBytes   819 Mbits/sec                  receiver
 
 
-nps TCP转发
+nps
 iperf3 -c 192.168.28.132 -p 5202
 Connecting to host 192.168.28.132, port 5202
 [  5] local 192.168.28.204 port 10463 connected to 192.168.28.132 port 5202
@@ -82,7 +81,7 @@ Connecting to host 192.168.28.132, port 5202
 [  5]   0.00-10.01  sec   190 MBytes   160 Mbits/sec                  receiver
 
 
-npipe TCP转发
+npipe
 iperf3 -c 192.168.28.132 -p 5203
 Connecting to host 192.168.28.132, port 5203
 [  5] local 192.168.28.204 port 10485 connected to 192.168.28.132 port 5203
@@ -103,11 +102,11 @@ Connecting to host 192.168.28.132, port 5203
 [  5]   0.00-10.01  sec   806 MBytes   675 Mbits/sec                  receiver
 ```
 
-## UDP转发
+## UDP forwarding test
 
 ```
 
-iperf3 UDP直连
+iperf3
 iperf3 -c 192.168.28.132 -p 5201 -u -b 10G -t 10 -i 1
 Connecting to host 192.168.28.132, port 5201
 [  5] local 192.168.28.204 port 49579 connected to 192.168.28.132 port 5201
@@ -127,7 +126,7 @@ Connecting to host 192.168.28.132, port 5201
 [  5]   0.00-10.00  sec  1.02 GBytes   878 Mbits/sec  0.000 ms  0/754324 (0%)  sender
 [  5]   0.00-10.00  sec   692 MBytes   580 Mbits/sec  0.011 ms  256178/754322 (34%)  receiver
 
-nps UDP转发
+nps
 iperf3 -c 192.168.28.132 -p 5202 -u -b 10G -t 10 -i 1
 Connecting to host 192.168.28.132, port 5202
 [  5] local 192.168.28.204 port 63592 connected to 192.168.28.132 port 5202
@@ -148,7 +147,7 @@ Connecting to host 192.168.28.132, port 5202
 [  5]   0.00-10.01  sec  59.4 MBytes  49.8 Mbits/sec  0.414 ms  710963/753762 (94%)  receiver
 
 
-npipe UDP转发
+npipe
 iperf3 -c 192.168.28.132 -p 5203 -u -b 10G -t 10 -i 1
 Connecting to host 192.168.28.132, port 5203
 [  5] local 192.168.28.204 port 52439 connected to 192.168.28.132 port 5203
