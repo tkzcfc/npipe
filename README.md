@@ -68,29 +68,6 @@ Options:
           net type [default: tcp] [possible values: tcp, kcp, auto]
   -h, --help
           Print help (see more with '--help')
-Usage: np_client.exe run [OPTIONS] --server <SERVER> --username <USERNAME> --password <PASSWORD>
-
-Options:
-      --backtrace <BACKTRACE>
-          print backtracking information [default: false] [possible values: true, false]
-  -s, --server <SERVER>
-          server address
-  -u, --username <USERNAME>
-          username
-  -p, --password <PASSWORD>
-          password
-      --enable-tls
-          enable tls
-      --insecure
-          If true, the validity of the SSL certificate is not verified
-      --ca-cert <CA_CERT>
-          ca file path (optional), if not provided, the client’s certificate will not be verified [default: ]
-      --log-level <LOG_LEVEL>
-          set log level [default: info]
-      --base-log-level <BASE_LOG_LEVEL>
-          set log level [default: error]
-  -h, --help
-          Print help
 ```
 
 
