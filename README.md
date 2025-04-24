@@ -132,6 +132,8 @@ Options:
 | web_username            | Web interface management account (if left blank, close web management) | admin                                                        |
 | web_password            | Web interface management password (if left blank, turn off web management) | admin@1234                                                   |
 | illegal_traffic_forward | Illegal traffic request forwarding address                   | You can forward traffic that is not npipe to other programs, such as nginx. Configuration format example: 127.0.0.1:80. If it is empty, do not forward the request |
+| quiet                   | Quiet mode. Do not print logs                                | true/false                                                   |
+| log_dir                 | Log saving directory                                         | logs                                                         |
 
 
 

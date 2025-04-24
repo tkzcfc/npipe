@@ -1,4 +1,5 @@
 use super::opts::GLOBAL_OPTS;
+use crate::global::config::GLOBAL_CONFIG;
 use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming, WriteMode};
 use std::env;
 
@@ -10,6 +11,10 @@ pub(crate) fn init_logger() -> anyhow::Result<()> {
         env::set_var("RUST_BACKTRACE", "1");
     }
 
+    if GLOBAL_CONFIG.quiet {
+        return Ok(());
+    }
+
     // 日志初始化
     let logger = Logger::try_with_str(format!(
         "{}, sqlx=error, actix=error, mio=error, sea_orm=error, np_base={}",
@@ -17,7 +22,7 @@ pub(crate) fn init_logger() -> anyhow::Result<()> {
     ))?
     .log_to_file(
         FileSpec::default()
-            .directory("logs")
+            .directory(&GLOBAL_CONFIG.log_dir)
             .suppress_timestamp()
             .suffix("log"),
     )

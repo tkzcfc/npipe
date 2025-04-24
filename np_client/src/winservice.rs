@@ -197,6 +197,7 @@ pub fn install_service(common_args: CommonArgs) -> anyhow::Result<()> {
         OsString::from(format!("--password={}", common_args.password)),
         OsString::from(format!("--log-level={}", common_args.log_level)),
         OsString::from(format!("--base-log-level={}", common_args.base_log_level)),
+        OsString::from(format!("--log-dir={}", common_args.log_dir)),
         OsString::from(format!("--ca-cert={}", common_args.ca_cert)),
         OsString::from(format!("--net-type={}", common_args.net_type.to_string())),
     ];
@@ -206,6 +207,9 @@ pub fn install_service(common_args: CommonArgs) -> anyhow::Result<()> {
     }
     if common_args.insecure {
         service_binary_arguments.push(OsString::from("--insecure"));
+    }
+    if common_args.quiet {
+        service_binary_arguments.push(OsString::from("--quiet"));
     }
 
     // Run the current service as `System` type

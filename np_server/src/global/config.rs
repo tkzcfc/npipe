@@ -9,10 +9,10 @@ pub struct Config {
     /// 数据库地址
     pub database_url: String,
     /// tcp服务监听地址
-    #[serde(default = "default_config_string_function")]
+    #[serde(default = "default_config_empty_string_function")]
     pub listen_addr: String,
     /// kcp服务监听地址
-    #[serde(default = "default_config_string_function")]
+    #[serde(default = "default_config_empty_string_function")]
     pub kcp_listen_addr: String,
     /// 启用tls
     pub enable_tls: bool,
@@ -29,12 +29,24 @@ pub struct Config {
     /// web目录
     pub web_base_dir: String,
     /// 非法流量转发地址
-    #[serde(default = "default_config_string_function")]
+    #[serde(default = "default_config_empty_string_function")]
     pub illegal_traffic_forward: String,
+    /// 安静模式下不输出日志
+    #[serde(default = "default_config_quiet_function")]
+    pub quiet: bool,
+    /// 日志保存路径
+    #[serde(default = "default_config_log_dir_function")]
+    pub log_dir: String,
 }
 
-fn default_config_string_function() -> String {
+fn default_config_empty_string_function() -> String {
     "".to_string()
+}
+fn default_config_quiet_function() -> bool {
+    false
+}
+fn default_config_log_dir_function() -> String {
+    "logs".to_string()
 }
 
 pub static GLOBAL_CONFIG: Lazy<Config> = Lazy::new(|| {

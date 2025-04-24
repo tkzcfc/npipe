@@ -60,6 +60,10 @@ pub(crate) struct CommonArgs {
     #[arg(long, default_value = "false")]
     pub insecure: bool,
 
+    /// Quiet mode. Do not print logs
+    #[arg(long, default_value = "false")]
+    pub quiet: bool,
+
     /// ca file path (optional), if not provided, the client’s certificate will not be verified.
     #[arg(long, default_value = "")]
     pub ca_cert: String,
@@ -71,6 +75,10 @@ pub(crate) struct CommonArgs {
     /// set log level
     #[arg(long, default_value = "error")]
     pub base_log_level: String,
+
+    /// set log directory
+    #[arg(long, default_value = "logs")]
+    pub log_dir: String,
 
     /// net type
     #[clap(long, default_value_t, value_enum)]
@@ -126,6 +134,10 @@ pub(crate) fn init_logger(common_args: &CommonArgs) -> anyhow::Result<()> {
         unsafe { env::set_var("RUST_BACKTRACE", "1") }
     }
 
+    if common_args.quiet {
+        return Ok(());
+    }
+
     // 日志初始化
     let logger = Logger::try_with_str(format!(
         "{}, mio=error, np_base={}",
@@ -133,7 +145,7 @@ pub(crate) fn init_logger(common_args: &CommonArgs) -> anyhow::Result<()> {
     ))?
     .log_to_file(
         FileSpec::default()
-            .directory("logs")
+            .directory(&common_args.log_dir)
             .suppress_timestamp()
             .suffix("log"),
     )
