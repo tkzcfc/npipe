@@ -1,6 +1,6 @@
 # npipe
 
-npipe is  is cross platform (Windows, Linux, OSX) and comes as standalone executables.
+npipe is  is cross platform (Windows, Linux, OSX) 
 
 It provides simple and efficient ways to forward data from multiple sockets (TCP or UDP) through a single secure TLS tunnel to a remote computer.
 
