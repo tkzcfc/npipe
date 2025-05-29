@@ -153,32 +153,42 @@ pub async fn run(common_args: &CommonArgs, use_tcp: bool) -> anyhow::Result<()> 
         let connector = TlsConnector::from(Arc::new(config));
 
         if use_tcp {
-            let stream = timeout(
+            let stream = match timeout(
                 Duration::from_secs(TIMEOUT_TLS),
                 connector.connect(
                     ServerName::try_from(str_vec[0])?,
                     connect_with_tcp(&common_args.server).await?,
                 ),
             )
-            .await??;
+            .await
+            {
+                Ok(result) => result?,
+                Err(err) => {
+                    return Err(anyhow!("tls connect timeout, error: {}", err));
+                }
+            };
 
             run_client(common_args, stream).await
         } else {
             let kcp_stream = connect_with_kcp(&common_args.server).await?;
-            let stream = timeout(
+            let stream = match timeout(
                 Duration::from_secs(TIMEOUT_TLS),
                 connector.connect(ServerName::try_from(str_vec[0])?, kcp_stream),
             )
-            .await??;
+            .await
+            {
+                Ok(result) => result?,
+                Err(err) => {
+                    return Err(anyhow!("tls connect timeout, error: {}", err));
+                }
+            };
 
             run_client(common_args, stream).await
         }
+    } else if use_tcp {
+        run_client(common_args, connect_with_tcp(&common_args.server).await?).await
     } else {
-        if use_tcp {
-            run_client(common_args, connect_with_tcp(&common_args.server).await?).await
-        } else {
-            run_client(common_args, connect_with_kcp(&common_args.server).await?).await
-        }
+        run_client(common_args, connect_with_kcp(&common_args.server).await?).await
     }
 }
 
@@ -348,15 +358,13 @@ where
                 };
             }
             return Err(anyhow!("Login failed"));
-        } else {
-            if serial == 0 {
-                self.handle_push(message).await?;
-            }
+        } else if serial == 0 {
+            self.handle_push(message).await?;
         }
         Ok(())
     }
 
-    async fn sync_tunnels(&mut self, tunnels: &Vec<Tunnel>) {
+    async fn sync_tunnels(&mut self, tunnels: &[Tunnel]) {
         // 收集无效的出口
         let mut keys_to_remove: Vec<_> = self
             .outlets
@@ -368,11 +376,11 @@ where
                     **id == tunnel.id
                         && tunnel.enabled
                         && tunnel.sender == self.player_id
-                        && &outlet_description(&tunnel) == outlet.description()
+                        && &outlet_description(tunnel) == outlet.description()
                 });
                 !retain
             })
-            .map(|(key, _)| key.clone())
+            .map(|(key, _)| *key)
             .collect();
 
         // 删除无效的出口
@@ -396,11 +404,11 @@ where
                     **id == tunnel.id
                         && tunnel.enabled
                         && tunnel.receiver == self.player_id
-                        && &inlet_description(&tunnel) == inlet.description()
+                        && &inlet_description(tunnel) == inlet.description()
                 });
-                return !retain;
+                !retain
             })
-            .map(|(key, _)| key.clone())
+            .map(|(key, _)| *key)
             .collect();
 
         // 删除无效入口
@@ -452,10 +460,10 @@ where
                         }
                     })
                 });
-                debug!("start outlet({})", outlet_description(&tunnel));
+                debug!("start outlet({})", outlet_description(tunnel));
                 self.outlets.write().await.insert(
                     tunnel_id,
-                    Outlet::new(outlet_output, outlet_description(&tunnel)),
+                    Outlet::new(outlet_output, outlet_description(tunnel)),
                 );
             }
         }
@@ -516,7 +524,7 @@ where
                         source, tunnel.tunnel_type
                     );
                 } else {
-                    let mut inlet = Inlet::new(inlet_output, inlet_description(&tunnel));
+                    let mut inlet = Inlet::new(inlet_output, inlet_description(tunnel));
                     if let Err(err) = inlet
                         .start(
                             inlet_proxy_type,
@@ -552,10 +560,8 @@ where
                 if let Some(outlet) = outlets.read().await.get(&tunnel_id) {
                     outlet.input(proxy_message).await;
                 }
-            } else {
-                if let Some(inlet) = inlets.read().await.get(&tunnel_id) {
-                    inlet.input(proxy_message).await;
-                }
+            } else if let Some(inlet) = inlets.read().await.get(&tunnel_id) {
+                inlet.input(proxy_message).await;
             }
         } else {
             let message = message_bridge::proxy_message_2_pb(proxy_message, tunnel_id);
@@ -605,8 +611,7 @@ where
                 return;
             }
             self.tunnels.insert(tunnel.id, tunnel);
-            let tunnel_list: Vec<Tunnel> =
-                self.tunnels.clone().into_iter().map(|(_, x)| x).collect();
+            let tunnel_list: Vec<Tunnel> = self.tunnels.clone().into_values().collect();
             self.sync_tunnels(&tunnel_list).await;
         }
     }
@@ -643,10 +648,8 @@ where
 /// 注意：这个函数只能使用消耗 buffer 数据的函数，否则框架会一直循环调用本函数来驱动处理消息
 ///
 fn try_extract_frame(buffer: &mut BytesMut) -> anyhow::Result<Option<Vec<u8>>> {
-    if buffer.len() > 0 {
-        if buffer[0] != 33u8 {
-            return Err(anyhow!("Bad flag"));
-        }
+    if !buffer.is_empty() && buffer[0] != 33u8 {
+        return Err(anyhow!("Bad flag"));
     }
     // 数据小于5字节,继续读取数据
     if buffer.len() < 5 {
@@ -658,7 +661,7 @@ fn try_extract_frame(buffer: &mut BytesMut) -> anyhow::Result<Option<Vec<u8>>> {
     let len = BigEndian::read_u32(buf) as usize;
 
     // 超出最大限制
-    if len <= 0 || len >= 1024 * 1024 * 5 {
+    if len >= 1024 * 1024 * 5 {
         return Err(anyhow!("Message too long"));
     }
 
@@ -675,9 +678,7 @@ fn try_extract_frame(buffer: &mut BytesMut) -> anyhow::Result<Option<Vec<u8>>> {
 
 fn fmt_point(point: &Option<TunnelPoint>) -> String {
     match point {
-        Some(point) => {
-            format!("{}", point.addr)
-        }
+        Some(point) => point.addr.to_string(),
         _ => "none".to_string(),
     }
 }
@@ -690,11 +691,15 @@ fn outlet_description(tunnel: &Tunnel) -> String {
 }
 
 fn inlet_description(tunnel: &Tunnel) -> String {
-    let custom_mapping: String = tunnel
-        .custom_mapping
-        .iter()
-        .map(|(key, value)| format!("{}:{}\n", key, value))
-        .collect();
+    let custom_mapping: String =
+        tunnel
+            .custom_mapping
+            .iter()
+            .fold(String::with_capacity(1024), |mut acc, (key, value)| {
+                acc.push_str(&format!("{}:{}\n", key, value));
+                acc
+            });
+
     format!(
         "id:{}-source:{}-endpoint:{}-sender:{}-receiver:{}-tunnel_type:{}-username:{}-password:{}-enabled:{}-is_compressed:{}-encryption_method:{}-custom_mapping:[{}]",
         tunnel.id,

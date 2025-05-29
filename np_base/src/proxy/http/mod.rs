@@ -112,7 +112,7 @@ impl ProxyContext for HttpContext {
                                 // b"connection".as_slice(), // 有时也需要移除
                             ]);
 
-                            let mut headers_vec: Vec<_> = req.headers.iter().cloned().collect();
+                            let mut headers_vec: Vec<_> = req.headers.to_vec();
                             headers_vec.retain(|header| {
                                 let binding = header.name.to_ascii_lowercase();
                                 let name = binding.as_bytes();
@@ -252,10 +252,7 @@ impl ProxyContext for HttpContext {
     }
 
     fn is_ready_for_read(&self) -> bool {
-        match self.status {
-            Status::Connecting | Status::Invalid => false,
-            _ => true,
-        }
+        !matches!(self.status, Status::Connecting | Status::Invalid)
     }
 }
 
@@ -330,18 +327,16 @@ fn format_httparse_request(req: &httparse::Request) -> String {
     );
 
     // 2. 拼接头字段
-    let headers: String = req
+    let headers = req
         .headers
         .iter()
-        .map(|h| {
+        .fold(String::with_capacity(1024), |mut acc, h| {
             let name = std::str::from_utf8(h.name.as_bytes()).unwrap_or("");
             let value = std::str::from_utf8(h.value).unwrap_or("");
-            format!("{}: {}\r\n", name, value)
-        })
-        .collect();
+            acc.push_str(&format!("{}: {}\r\n", name, value));
+            acc
+        });
 
     // 3. 组合所有部分
-    let request_str = request_line + &headers + "\r\n";
-
-    request_str
+    request_line + &headers + "\r\n"
 }

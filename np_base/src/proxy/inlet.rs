@@ -230,37 +230,37 @@ impl Inlet {
                     "O2iConnect: session_id:{session_id}, success:{success}, error_msg:{error_msg}"
                 );
 
-                if let Some(session) = session_info_map.read().await.get(&session_id) {
+                if let Some(session) = session_info_map.read().await.get(session_id) {
                     session.proxy_message_tx.send(message)?;
                 }
             }
             ProxyMessage::O2iDisconnect(session_id) => {
                 trace!("O2iDisconnect: session_id:{session_id}");
-                if let Some(session) = session_info_map.read().await.get(&session_id) {
+                if let Some(session) = session_info_map.read().await.get(session_id) {
                     session.proxy_message_tx.send(message)?;
                 }
             }
             ProxyMessage::O2iSendDataResult(session_id, data_len) => {
                 // trace!("O2iSendDataResult: session_id:{session_id}, data_len:{data_len}");
-                if let Some(session) = session_info_map.read().await.get(&session_id) {
+                if let Some(session) = session_info_map.read().await.get(session_id) {
                     let mut read_buf_len = session.common_info.read_buf_len.write().await;
                     if *read_buf_len <= *data_len {
                         *read_buf_len = 0;
                     } else {
-                        *read_buf_len = *read_buf_len - data_len;
+                        *read_buf_len -= data_len;
                     }
                     // println!("[inlet] O2iSendDataResult: session_id:{session_id}, data_len:{data_len}, read_buf_len:{}", *read_buf_len);
                     drop(read_buf_len);
                 }
             }
             ProxyMessage::O2iRecvDataFrom(session_id, _data, _remote_addr) => {
-                if let Some(session) = session_info_map.read().await.get(&session_id) {
+                if let Some(session) = session_info_map.read().await.get(session_id) {
                     session.proxy_message_tx.send(message)?;
                 }
             }
             ProxyMessage::O2iRecvData(session_id, _data) => {
                 // trace!("O2iRecvData: session_id:{session_id}");
-                if let Some(session) = session_info_map.read().await.get(&session_id) {
+                if let Some(session) = session_info_map.read().await.get(session_id) {
                     session.proxy_message_tx.send(message)?;
                 }
             }
@@ -370,7 +370,7 @@ impl SessionDelegate for InletSession {
         self.proxy_ctx
             .write()
             .await
-            .on_start(self.proxy_ctx_data.clone(), addr.clone(), write_msg_tx)
+            .on_start(self.proxy_ctx_data.clone(), *addr, write_msg_tx)
             .await?;
 
         Ok(())

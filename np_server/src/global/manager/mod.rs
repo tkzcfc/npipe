@@ -23,4 +23,4 @@ impl GlobalManager {
     }
 }
 
-pub static GLOBAL_MANAGER: Lazy<GlobalManager> = Lazy::new(|| GlobalManager::new());
+pub static GLOBAL_MANAGER: Lazy<GlobalManager> = Lazy::new(GlobalManager::new);

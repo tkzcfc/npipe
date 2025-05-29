@@ -94,7 +94,7 @@ impl Player {
         tx: UnboundedSender<WriterMessage>,
     ) {
         trace!("on_connect_session, player_id: {}", self.player_id);
-        assert_eq!(self.is_online(), false);
+        assert!(!self.is_online());
         self.session_id = session_id;
         self.tx = Some(tx);
     }

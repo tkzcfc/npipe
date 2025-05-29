@@ -21,7 +21,6 @@ once_cell = "1.19.0"
 clap = { version = "4.4.12", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-sqlx = { version = "0.7", features = [ "mysql", "sqlite", "runtime-tokio"] }
 sea-orm = { version = "0.12", features = ["sqlx-mysql", "sqlx-sqlite", "runtime-tokio"] }
 rand = "0.8.5"
 actix-web = { version = "4.4" }
@@ -35,8 +34,3 @@ socket2 = "0.5"
 tokio_kcp = { git = "https://github.com/tkzcfc/tokio_kcp.git" }
 
 [dev-dependencies]
-
-#ref https://github.com/launchbadge/sqlx
-[profile.dev.package.sqlx-macros]
-opt-level = 3
-

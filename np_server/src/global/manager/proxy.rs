@@ -40,7 +40,7 @@ impl ProxyManager {
                 });
                 !retain
             })
-            .map(|(key, _)| key.clone())
+            .map(|(key, _)| *key)
             .collect();
 
         // 删除无效的出口
@@ -66,9 +66,9 @@ impl ProxyManager {
                         && tunnel.receiver == 0
                         && &tunnel.inlet_description() == inlet.description()
                 });
-                return !retain;
+                !retain
             })
-            .map(|(key, _)| key.clone())
+            .map(|(key, _)| *key)
             .collect();
 
         // 删除无效入口

@@ -11,7 +11,7 @@ pub fn compress_data(input: &[u8]) -> Result<Vec<u8>, io::Error> {
 
 // Function to decompress data using Brotli
 pub fn decompress_data(compressed: &[u8]) -> Result<Vec<u8>, io::Error> {
-    let uncompressed = decompress_size_prepended(&compressed).unwrap();
+    let uncompressed = decompress_size_prepended(compressed).unwrap();
     Ok(uncompressed)
 }
 
@@ -24,10 +24,7 @@ pub enum EncryptionMethod {
 
 impl EncryptionMethod {
     pub fn is_none(&self) -> bool {
-        match self {
-            EncryptionMethod::None => true,
-            _ => false,
-        }
+        matches!(self, EncryptionMethod::None)
     }
 }
 

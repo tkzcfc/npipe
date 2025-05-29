@@ -22,14 +22,12 @@ enum NetType {
     /// alternate between using TCP and KCP connections
     Auto,
 }
-
-impl NetType {
-    #[cfg(windows)]
-    fn to_string(&self) -> String {
+impl std::fmt::Display for NetType {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            NetType::Tcp => String::from("tcp"),
-            NetType::Kcp => String::from("kcp"),
-            NetType::Auto => String::from("auto"),
+            NetType::Tcp => write!(f, "tcp"),
+            NetType::Kcp => write!(f, "kcp"),
+            NetType::Auto => write!(f, "auto"),
         }
     }
 }
@@ -172,7 +170,7 @@ pub(crate) fn init_logger(common_args: &CommonArgs) -> anyhow::Result<()> {
 }
 
 async fn run_and_handle_errors(common_args: &CommonArgs, is_tcp: bool) {
-    if let Err(err) = client::run(&common_args, is_tcp).await {
+    if let Err(err) = client::run(common_args, is_tcp).await {
         error!("{err}");
         sleep(Duration::from_secs(5)).await;
     } else {

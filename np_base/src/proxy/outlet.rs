@@ -244,7 +244,7 @@ impl Outlet {
             if *read_buf_len <= data_len {
                 *read_buf_len = 0;
             } else {
-                *read_buf_len = *read_buf_len - data_len;
+                *read_buf_len -= data_len;
             }
             // println!("[outlet] on_i2o_recv_data_result: session_id:{session_id}, data_len:{data_len}, read_buf_len:{}", *read_buf_len);
             drop(read_buf_len);
@@ -252,6 +252,7 @@ impl Outlet {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn on_i2o_connect(
         session_info_map: SessionInfoMap,
         session_id: u32,

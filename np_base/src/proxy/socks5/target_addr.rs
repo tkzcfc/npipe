@@ -106,7 +106,7 @@ pub trait ToTargetAddr {
     fn to_target_addr(&self) -> io::Result<TargetAddr>;
 }
 
-impl<'a> ToTargetAddr for (&'a str, u16) {
+impl ToTargetAddr for (&str, u16) {
     fn to_target_addr(&self) -> io::Result<TargetAddr> {
         // try to parse as an IP first
         if let Ok(addr) = self.0.parse::<Ipv4Addr>() {
@@ -191,9 +191,7 @@ pub fn read_address(data: &[u8], atyp: u8) -> anyhow::Result<Option<(TargetAddr,
             if data.len() < addr_data_len {
                 Addr::Unknown
             } else {
-                let domain = data[1..len]
-                    .try_into()
-                    .expect("Slice with incorrect length");
+                let domain = data[1..len].into();
                 // make sure the bytes are correct utf8 string
                 let domain = String::from_utf8(domain)?;
                 Addr::Domain(domain)
@@ -202,11 +200,8 @@ pub fn read_address(data: &[u8], atyp: u8) -> anyhow::Result<Option<(TargetAddr,
         _ => return Err(anyhow!("incorrect address type")),
     };
 
-    match addr {
-        Addr::Unknown => {
-            return Ok(None);
-        }
-        _ => {}
+    if let Addr::Unknown = addr {
+        return Ok(None);
     }
 
     // Convert (u8 * 2) into u16

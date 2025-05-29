@@ -111,7 +111,7 @@ async fn logout(id: Identity) -> actix_web::Result<HttpResponse, Error> {
 async fn login(request: HttpRequest, body: String) -> actix_web::Result<HttpResponse, Error> {
     let req = serde_json::from_str::<proto::LoginReq>(&body)?;
 
-    if GLOBAL_CONFIG.web_username.len() > 0
+    if !GLOBAL_CONFIG.web_username.is_empty()
         && GLOBAL_CONFIG.web_username == req.username
         && GLOBAL_CONFIG.web_password == req.password
     {
@@ -148,7 +148,7 @@ async fn player_list(
     let req = serde_json::from_str::<proto::PlayerListRequest>(&body)?;
 
     let page_number = req.page_number;
-    let page_size = if req.page_size <= 0 || req.page_size > 100 {
+    let page_size = if req.page_size == 0 || req.page_size > 100 {
         1
     } else {
         req.page_size
@@ -159,17 +159,13 @@ async fn player_list(
     let users = paginator
         .fetch_page(page_number as u64)
         .await
-        .map_err(|err| {
-            error::ErrorInternalServerError(format!("sqlx error:{}", err.to_string()))
-        })?;
+        .map_err(|err| error::ErrorInternalServerError(format!("sqlx error:{}", err)))?;
 
     // 查询玩家总条数
     let total_count = User::find()
         .count(GLOBAL_DB_POOL.get().unwrap())
         .await
-        .map_err(|err| {
-            error::ErrorInternalServerError(format!("sqlx error:{}", err.to_string()))
-        })?;
+        .map_err(|err| error::ErrorInternalServerError(format!("sqlx error:{}", err)))?;
 
     let mut players: Vec<proto::PlayerListItem> = Vec::new();
 

@@ -101,17 +101,15 @@ pub fn pb_2_proxy_message(message: MessageType) -> Option<(ProxyMessage, u32)> {
 
 pub fn is_i2o_message(proxy_message: &ProxyMessage) -> bool {
     match proxy_message {
-        ProxyMessage::I2oConnect(_, ..)
-        | ProxyMessage::I2oSendData(_, ..)
-        | ProxyMessage::I2oSendToData(_, ..)
-        | ProxyMessage::I2oDisconnect(_)
-        | ProxyMessage::I2oRecvDataResult(_, ..) => true,
+        ProxyMessage::I2oConnect(..) | ProxyMessage::I2oSendData(..) | ProxyMessage::I2oSendToData(..) | ProxyMessage::I2oDisconnect(..) | ProxyMessage::I2oRecvDataResult(..) => {
+            true
+        }
 
-        ProxyMessage::O2iConnect(_, ..)
-        | ProxyMessage::O2iSendDataResult(_, ..)
-        | ProxyMessage::O2iRecvData(_, ..)
-        | ProxyMessage::O2iRecvDataFrom(_, ..)
-        | ProxyMessage::O2iDisconnect(_, ..) => false,
+        ProxyMessage::O2iConnect(..)
+        | ProxyMessage::O2iSendDataResult(..)
+        | ProxyMessage::O2iRecvData(..)
+        | ProxyMessage::O2iRecvDataFrom(..)
+        | ProxyMessage::O2iDisconnect(..) => false,
     }
 }
 

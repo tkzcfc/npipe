@@ -177,7 +177,10 @@ impl Builder {
         };
 
         // 设置超时时间，无法优雅退出则强制退出
-        if let Err(_) = tokio::time::timeout(Duration::from_secs(600), wait_task).await {
+        if tokio::time::timeout(Duration::from_secs(60), wait_task)
+            .await
+            .is_err()
+        {
             error!("TCP Server exit timeout, forced exit");
         }
 

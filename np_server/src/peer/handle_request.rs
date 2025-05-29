@@ -94,10 +94,10 @@ impl Peer {
             }));
         }
 
-        return Ok(MessageType::GenericError(generic::Error {
+        Ok(MessageType::GenericError(generic::Error {
             number: -3,
             message: "unable to find player".into(),
-        }));
+        }))
     }
 
     async fn on_register_request(

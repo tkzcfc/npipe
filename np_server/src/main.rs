@@ -86,10 +86,10 @@ async fn run_logic_server() -> anyhow::Result<()> {
 async fn run_web_server() -> anyhow::Result<()> {
     info!("HttpServer listening: {}", GLOBAL_CONFIG.web_addr);
     let addr = GLOBAL_CONFIG.web_addr.parse::<SocketAddr>();
-    return match addr {
+    match addr {
         Ok(addr) => web::run_http_server(&addr, GLOBAL_CONFIG.web_base_dir.clone()).await,
         Err(parse_error) => Err(anyhow!(parse_error.to_string())),
-    };
+    }
 }
 
 #[tokio::main]

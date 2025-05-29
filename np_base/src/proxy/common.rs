@@ -8,7 +8,7 @@ use tokio::sync::mpsc::{Receiver, UnboundedSender};
 use tokio::sync::RwLock;
 use tokio::task::yield_now;
 
-const INLET_BUFFER_MAX_LEN: usize = 1024 * 1024 * 1;
+const INLET_BUFFER_MAX_LEN: usize = 1024 * 1024;
 const OUTLET_BUFFER_MAX_LEN: usize = 1024 * 1024 * 4;
 
 // 输入通道发送端类型
@@ -78,7 +78,7 @@ impl SessionCommonInfo {
         }
 
         let mut read_buf_len_rw = self.read_buf_len.write().await;
-        *read_buf_len_rw = *read_buf_len_rw + data.len();
+        *read_buf_len_rw += data.len();
         // println!(
         //     "[{}] read_buf_len_rw: {}, add len: {}",
         //     if self.is_inlet { "inlet" } else { "outlet" },
@@ -119,11 +119,11 @@ pub async fn async_receive_output(
 
 pub async fn parse_addr(host: &String) -> anyhow::Result<SocketAddr> {
     if let Ok(addr) = host.parse::<SocketAddr>() {
-        return Ok(addr);
+        Ok(addr)
     } else {
-        for addr in tokio::net::lookup_host(host).await? {
-            return Ok(addr);
+        match tokio::net::lookup_host(host).await?.next() {
+            Some(addr) => Ok(addr),
+            None => Err(anyhow!("No address resolved for '{}'", host)),
         }
     }
-    return Err(anyhow!("The address format is invalid: '{}'", host));
 }

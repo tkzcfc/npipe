@@ -94,7 +94,7 @@ impl TunnelManager {
 
             GLOBAL_MANAGER.proxy_manager.sync_tunnels().await;
         }
-        return Ok(());
+        Ok(())
     }
 
     /// 更新通道
@@ -222,24 +222,17 @@ impl TunnelManager {
         tunnel_id: Option<u32>,
         is_udp: bool,
     ) -> bool {
-        self.tunnels
-            .read()
-            .await
-            .iter()
-            .position(|x| {
-                x.receiver == receiver
-                    && tunnel_id != Some(x.id)
-                    && get_tunnel_address_port(&x.source) == port
-                    && matches!(InletProxyType::from_u32(x.tunnel_type), InletProxyType::UDP)
-                        == is_udp
-            })
-            .is_some()
+        self.tunnels.read().await.iter().any(|x| {
+            x.receiver == receiver
+                && tunnel_id != Some(x.id)
+                && is_udp == matches!(InletProxyType::from_u32(x.tunnel_type), InletProxyType::UDP)
+                && get_tunnel_address_port(&x.source) == port
+        })
     }
 
     /// 查询通道
     pub async fn query(&self, page_number: usize, page_size: usize) -> Vec<tunnel::Model> {
-        let page_number = page_number;
-        let page_size = if page_size <= 0 || page_size > 100 {
+        let page_size = if page_size == 0 || page_size > 100 {
             10
         } else {
             page_size
@@ -252,10 +245,7 @@ impl TunnelManager {
         }
 
         if start <= end && end <= tunnel_num {
-            self.tunnels.read().await[start..end]
-                .iter()
-                .map(|x| x.clone())
-                .collect()
+            self.tunnels.read().await[start..end].to_vec()
         } else {
             vec![]
         }

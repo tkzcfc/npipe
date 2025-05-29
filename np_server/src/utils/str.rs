@@ -7,12 +7,12 @@ pub fn is_ascii_nospace(s: &str) -> bool {
 
 /// 是否是有效的用户名
 pub fn is_valid_username(s: &str) -> bool {
-    s.len() >= 1 && s.len() <= 30 && is_ascii_nospace(s)
+    s.len() >= 2 && s.len() <= 30 && is_ascii_nospace(s)
 }
 
 /// 是否是有效的密码
 pub fn is_valid_password(s: &str) -> bool {
-    s.len() >= 1 && s.len() <= 15 && is_ascii_nospace(s)
+    s.len() >= 2 && s.len() <= 15 && is_ascii_nospace(s)
 }
 
 /// 是否是有效的域名

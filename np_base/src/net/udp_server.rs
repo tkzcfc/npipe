@@ -52,10 +52,7 @@ pub async fn run_server(
 
                 // 创建有界通道，限制积压消息数量
                 let (udp_recv_sender, udp_recv_receiver) = mpsc::channel::<Vec<u8>>(100);
-                hashmap
-                    .lock()
-                    .await
-                    .insert(addr.clone(), udp_recv_sender.clone());
+                hashmap.lock().await.insert(addr, udp_recv_sender.clone());
 
                 let hashmap_cloned = hashmap.clone();
                 // 新连接单独起一个异步任务处理
@@ -106,7 +103,10 @@ pub async fn run_server(
     };
 
     // 设置超时时间，无法优雅退出则强制退出
-    if let Err(_) = tokio::time::timeout(Duration::from_secs(600), wait_task).await {
+    if tokio::time::timeout(Duration::from_secs(60), wait_task)
+        .await
+        .is_err()
+    {
         error!("UDP Server exit timeout, forced exit");
     }
 

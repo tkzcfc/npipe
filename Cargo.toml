@@ -7,6 +7,7 @@ members = [
     "np_test",
     "np_client",
 ]
+resolver = "2"
 
 # https://www.aloxaf.com/2018/09/reduce_rust_size/
 [profile.release]
@@ -16,4 +17,3 @@ lto = true
 codegen-units = 1
 strip = true        # Strip symbols from binary*
 opt-level = "z"  # 最小化二进制文件大小
-

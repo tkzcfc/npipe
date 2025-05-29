@@ -104,7 +104,7 @@ async fn poll_write<S>(
                     }
                 }
             }
-            WriterMessage::SendTo(_, ..) => {
+            WriterMessage::SendTo(..) => {
                 panic!("not support");
             }
             WriterMessage::SendAndThen(data, callback) => {

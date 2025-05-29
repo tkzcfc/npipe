@@ -26,8 +26,8 @@ impl Server {
     ) -> anyhow::Result<()> {
         let tls_acceptor: Option<TlsAcceptor> = match tls_configuration {
             Some(tls_configuration) => {
-                let certs = super::tls::load_certs(&tls_configuration.certificate)?;
-                let keys = super::tls::load_private_key(&tls_configuration.key)?;
+                let certs = tls::load_certs(&tls_configuration.certificate)?;
+                let keys = tls::load_private_key(&tls_configuration.key)?;
 
                 let server_config = ServerConfig::builder()
                     .with_safe_defaults()
@@ -155,7 +155,10 @@ impl Builder {
         };
 
         // 设置超时时间，无法优雅退出则强制退出
-        if let Err(_) = tokio::time::timeout(Duration::from_secs(600), wait_task).await {
+        if tokio::time::timeout(Duration::from_secs(60), wait_task)
+            .await
+            .is_err()
+        {
             error!("KCP Server exit timeout, forced exit");
         }
 

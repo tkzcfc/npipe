@@ -27,11 +27,11 @@ pub fn load_private_key(path: &str) -> anyhow::Result<PrivateKey> {
     let mut reader = BufReader::new(File::open(path)?);
     let private_key_der = rustls_pemfile::private_key(&mut reader)?;
 
-    return if let Some(private_key_der) = private_key_der {
+    if let Some(private_key_der) = private_key_der {
         Ok(PrivateKey(private_key_der.secret_der().into()))
     } else {
         Err(anyhow!("The private key file ({path}) format is incorrect"))
-    };
+    }
 }
 
 const TIMEOUT_TLS: u64 = 15;

@@ -66,15 +66,18 @@ impl Peer {
         serial: i32,
         message: MessageType,
     ) -> anyhow::Result<MessageType> {
-        return if serial < 0 {
-            self.handle_request(message).await
-        } else if serial > 0 {
-            self.handle_response(message).await?;
-            Ok(MessageType::None)
-        } else {
-            self.handle_push(message).await?;
-            Ok(MessageType::None)
-        };
+        match serial {
+            s if s < 0 => self.handle_request(message).await,
+            s if s > 0 => {
+                self.handle_response(message).await?;
+                Ok(MessageType::None)
+            }
+            _ => {
+                // serial == 0
+                self.handle_push(message).await?;
+                Ok(MessageType::None)
+            }
+        }
     }
 
     // 模拟http 404请求结果
@@ -126,17 +129,15 @@ impl Peer {
             let tx = tx.clone();
             tokio::spawn(async move {
                 let mut buffer = BytesMut::with_capacity(4096);
-                loop {
-                    if let Ok(size) = reader.read_buf(&mut buffer).await {
-                        if size == 0 {
-                            break;
-                        }
-                        let frame = buffer.split().to_vec();
-                        let _ = tx.send(WriterMessage::Send(frame, true));
-                    } else {
+
+                while let Ok(size) = reader.read_buf(&mut buffer).await {
+                    if size == 0 {
                         break;
                     }
+                    let frame = buffer.split().to_vec();
+                    let _ = tx.send(WriterMessage::Send(frame, true));
                 }
+
                 let _ = tx.send(WriterMessage::Close);
             });
             self.traffic_forward_writer = Some(writer);
@@ -184,14 +185,14 @@ impl SessionDelegate for Peer {
         &mut self,
         buffer: &mut BytesMut,
     ) -> anyhow::Result<Option<Vec<u8>>> {
-        if buffer.len() > 0 && self.traffic_forward_writer.is_none() {
-            if buffer[0] != 33u8 {
-                if self.create_traffic_forward_channel().await.is_err() {
-                    debug!("bad flag");
-                    self.send_http_404_response().await?;
-                    return Err(anyhow!("Bad flag"));
-                }
-            }
+        if !buffer.is_empty()
+            && buffer[0] != 33u8
+            && self.traffic_forward_writer.is_none()
+            && self.create_traffic_forward_channel().await.is_err()
+        {
+            debug!("bad flag");
+            self.send_http_404_response().await?;
+            return Err(anyhow!("Bad flag"));
         }
 
         if let Some(ref mut writer) = self.traffic_forward_writer {
@@ -210,7 +211,7 @@ impl SessionDelegate for Peer {
         let len = BigEndian::read_u32(buf) as usize;
 
         // 超出最大限制
-        if len <= 0 || len >= 1024 * 1024 * 2 {
+        if len == 0 || len >= 1024 * 1024 * 2 {
             debug!("Message too long");
             self.send_http_404_response().await?;
             return Err(anyhow!("Message too long"));

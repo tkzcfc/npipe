@@ -15,7 +15,7 @@ struct MessageInfo {
     id: u32,
 }
 
-const ANNOTATION_PREFIX: &'static str = "//@build_automatically_generate_message_id@";
+const ANNOTATION_PREFIX: &str = "//@build_automatically_generate_message_id@";
 
 // https://docs.rs/prost-build/latest/prost_build/
 fn main() -> io::Result<()> {
@@ -50,7 +50,7 @@ fn main() -> io::Result<()> {
         backups.insert(proto_file, contents);
     }
 
-    let result = build(&proto_file_list, &include_list, &out_dir);
+    let result = build(&proto_file_list, &include_list, out_dir);
 
     // 还原协议文件
     for proto_file in &proto_file_list {
@@ -139,7 +139,7 @@ fn format_message_type_name(message_info: &MessageInfo) -> String {
     format!("{}{}", to_upper_camel(&format_package_name(message_info)), to_upper_camel(&message_info.name))
 }
 
-fn build_code(messages: &Vec<MessageInfo>) -> String {
+fn build_code(messages: &[MessageInfo]) -> String {
     let mut code_message = Vec::new();
     let mut code_get_message_id = Vec::new();
     let mut code_decode_message = Vec::new();
@@ -195,10 +195,7 @@ pub enum MessageType {{
 
 impl MessageType {{
     pub fn is_none(&self) -> bool {{
-        match self {{
-            MessageType::None => true,
-            _ => false,
-        }}
+        matches!(self, MessageType::None)
     }}
 }}
 
@@ -285,16 +282,16 @@ fn build(proto_file_list: &[impl AsRef<Path>], include_list: &[impl AsRef<Path>]
 
             // 获取包名
             if line.starts_with("package") {
-                for id_cap in package_re.captures_iter(&line) {
+                for id_cap in package_re.captures_iter(line) {
                     package_name = id_cap.get(1).map_or("", |m| m.as_str()).to_string();
                 }
             } else if line.starts_with("message ") {
-                for msg_cap in msg_re.captures_iter(&line) {
+                for msg_cap in msg_re.captures_iter(line) {
                     msg_name = msg_cap.get(1).map_or("", |m| m.as_str()).to_string();
                 }
-            } else if (line.starts_with(ANNOTATION_PREFIX) || line.starts_with("enum")) && id_match_re.captures(&line).is_some() {
+            } else if (line.starts_with(ANNOTATION_PREFIX) || line.starts_with("enum")) && id_match_re.captures(line).is_some() {
                 let mut has_id = false;
-                for id_cap in id_re.captures_iter(&line) {
+                for id_cap in id_re.captures_iter(line) {
                     has_id = true;
                     msg_id = id_cap.get(1).map_or("", |m| m.as_str()).parse().expect("message id not a number");
                 }
@@ -320,7 +317,7 @@ fn build(proto_file_list: &[impl AsRef<Path>], include_list: &[impl AsRef<Path>]
     Config::new()
         .out_dir(out_dir)
         .type_attribute(".", "#[cfg_attr(feature = \"serde-serialize\", derive(serde::Serialize, serde::Deserialize))]")
-        .compile_protos(&proto_file_list, &include_list)?;
+        .compile_protos(proto_file_list, include_list)?;
 
     // 将生成的 pb.abc_def.rc重命名为abc_def.rc
     for entry in fs::read_dir(out_dir)? {

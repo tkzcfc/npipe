@@ -329,7 +329,7 @@ impl Socks5Context {
                         let is_tcp = match cmd {
                             SOCKS5_CMD_TCP_CONNECT => true,
                             SOCKS5_CMD_UDP_ASSOCIATE => {
-                                let mut addr = self.peer_addr.as_ref().unwrap().clone();
+                                let mut addr: SocketAddr = *self.peer_addr.as_ref().unwrap();
                                 addr.set_port(target_addr.port());
                                 target_addr = TargetAddr::Ip(addr);
                                 false
@@ -513,23 +513,21 @@ impl Socks5Context {
                             0x00,
                             0x00,
                         ]
+                    } else if let Ok(data) = self.udp_bind().await {
+                        data
                     } else {
-                        if let Ok(data) = self.udp_bind().await {
-                            data
-                        } else {
-                            vec![
-                                SOCKS5_VERSION,
-                                0x04, // 0x04主机不可达
-                                0x00,
-                                0x01,
-                                0x00,
-                                0x00,
-                                0x00,
-                                0x00,
-                                0x00,
-                                0x00,
-                            ]
-                        }
+                        vec![
+                            SOCKS5_VERSION,
+                            0x04, // 0x04主机不可达
+                            0x00,
+                            0x01,
+                            0x00,
+                            0x00,
+                            0x00,
+                            0x00,
+                            0x00,
+                            0x00,
+                        ]
                     }
                 } else {
                     vec![

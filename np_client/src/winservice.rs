@@ -199,7 +199,7 @@ pub fn install_service(common_args: CommonArgs) -> anyhow::Result<()> {
         OsString::from(format!("--base-log-level={}", common_args.base_log_level)),
         OsString::from(format!("--log-dir={}", common_args.log_dir)),
         OsString::from(format!("--ca-cert={}", common_args.ca_cert)),
-        OsString::from(format!("--net-type={}", common_args.net_type.to_string())),
+        OsString::from(format!("--net-type={}", common_args.net_type)),
     ];
 
     if common_args.enable_tls {

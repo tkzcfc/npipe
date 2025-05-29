@@ -48,11 +48,7 @@ impl PlayerManager {
     }
 
     pub async fn get_player(&self, player_id: PlayerId) -> Option<Arc<RwLock<Player>>> {
-        if let Some(player) = self.player_map.read().await.get(&player_id) {
-            Some(player.clone())
-        } else {
-            None
-        }
+        self.player_map.read().await.get(&player_id).cloned()
     }
 
     pub async fn create_player(&self, player_id: PlayerId) -> Arc<RwLock<Player>> {
