@@ -54,6 +54,10 @@ pub(crate) struct CommonArgs {
     #[arg(long, default_value = "false")]
     pub enable_tls: bool,
 
+    /// tls servername
+    #[arg(long, default_value = "")]
+    pub tls_server_name: String,
+
     /// if true, the validity of the SSL certificate is not verified.
     #[arg(long, default_value = "false")]
     pub insecure: bool,

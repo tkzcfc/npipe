@@ -150,15 +150,18 @@ pub async fn run(common_args: &CommonArgs, use_tcp: bool) -> anyhow::Result<()> 
         if str_vec.is_empty() {
             return Err(anyhow!("invalid addr: {}", common_args.server));
         }
+
         let connector = TlsConnector::from(Arc::new(config));
+        let server_name = if common_args.tls_server_name.is_empty() {
+            ServerName::try_from(str_vec[0])?
+        } else {
+            ServerName::try_from(common_args.tls_server_name.as_str())?
+        };
 
         if use_tcp {
             let stream = match timeout(
                 Duration::from_secs(TIMEOUT_TLS),
-                connector.connect(
-                    ServerName::try_from(str_vec[0])?,
-                    connect_with_tcp(&common_args.server).await?,
-                ),
+                connector.connect(server_name, connect_with_tcp(&common_args.server).await?),
             )
             .await
             {
@@ -173,7 +176,7 @@ pub async fn run(common_args: &CommonArgs, use_tcp: bool) -> anyhow::Result<()> 
             let kcp_stream = connect_with_kcp(&common_args.server).await?;
             let stream = match timeout(
                 Duration::from_secs(TIMEOUT_TLS),
-                connector.connect(ServerName::try_from(str_vec[0])?, kcp_stream),
+                connector.connect(server_name, kcp_stream),
             )
             .await
             {

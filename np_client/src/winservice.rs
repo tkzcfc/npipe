@@ -200,6 +200,7 @@ pub fn install_service(common_args: CommonArgs) -> anyhow::Result<()> {
         OsString::from(format!("--log-dir={}", common_args.log_dir)),
         OsString::from(format!("--ca-cert={}", common_args.ca_cert)),
         OsString::from(format!("--net-type={}", common_args.net_type)),
+        OsString::from(format!("--tls-server-name={}", common_args.tls_server_name)),
     ];
 
     if common_args.enable_tls {
