@@ -17,13 +17,13 @@ use actix_web::{
 };
 use sea_orm::{EntityTrait, PaginatorTrait};
 use std::collections::HashMap;
-use std::net::SocketAddr;
 
 /// http server
-pub async fn run_http_server(addr: &SocketAddr, web_base_dir: String) -> anyhow::Result<()> {
+pub async fn run_http_server(addr: &str, web_base_dir: &str) -> anyhow::Result<()> {
     let secret_key = Key::generate();
+    let web_base_dir = web_base_dir.to_string();
 
-    HttpServer::new(move || {
+    let server = HttpServer::new(move || {
         App::new()
             // 添加 Cors 中间件，并允许所有跨域请求
             .wrap(
@@ -43,7 +43,7 @@ pub async fn run_http_server(addr: &SocketAddr, web_base_dir: String) -> anyhow:
             .service(web::resource("/api/remove_tunnel").route(web::post().to(remove_tunnel)))
             .service(web::resource("/api/add_tunnel").route(web::post().to(add_tunnel)))
             .service(web::resource("/api/update_tunnel").route(web::post().to(update_tunnel)))
-            .service(actix_files::Files::new("/", web_base_dir.as_str()).index_file("index.html"))
+            .service(actix_files::Files::new("/", &web_base_dir).index_file("index.html"))
             .wrap(IdentityMiddleware::default())
             .wrap(
                 SessionMiddleware::builder(CookieSessionStore::default(), secret_key.clone())
@@ -58,8 +58,8 @@ pub async fn run_http_server(addr: &SocketAddr, web_base_dir: String) -> anyhow:
     })
     .workers(1)
     .bind(addr)?
-    .run()
-    .await?;
+    .run();
+    server.await?;
     Ok(())
 }
 

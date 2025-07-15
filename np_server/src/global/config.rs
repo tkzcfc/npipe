@@ -8,12 +8,9 @@ use std::io::BufReader;
 pub struct Config {
     /// 数据库地址
     pub database_url: String,
-    /// tcp服务监听地址
+    /// 服务监听地址
     #[serde(default = "default_config_empty_string_function")]
     pub listen_addr: String,
-    /// kcp服务监听地址
-    #[serde(default = "default_config_empty_string_function")]
-    pub kcp_listen_addr: String,
     /// 启用tls
     pub enable_tls: bool,
     /// tls证书

@@ -8,18 +8,18 @@ mod web;
 use crate::global::config::GLOBAL_CONFIG;
 use crate::global::opts::GLOBAL_OPTS;
 use crate::peer::Peer;
-use anyhow::anyhow;
-use log::info;
-use np_base::net::kcp_server;
+use log::{error, info};
 use np_base::net::session_delegate::SessionDelegate;
 use np_base::net::tcp_server;
+use np_base::net::{kcp_server, net_type};
 use once_cell::sync::Lazy;
-use std::net::SocketAddr;
 use std::time::Duration;
-use tokio::{select, signal};
+use tokio::signal;
+use tokio::task::JoinSet;
 use tokio_kcp::{KcpConfig, KcpNoDelayConfig};
 
-async fn run_tcp_server() -> anyhow::Result<()> {
+async fn run_tcp_server(addr: &str) -> anyhow::Result<()> {
+    info!("TCP Server listening: {}", addr);
     let mut builder = tcp_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
         Box::new(Peer::new())
     }));
@@ -28,12 +28,11 @@ async fn run_tcp_server() -> anyhow::Result<()> {
         builder = builder.set_tls_configuration(&GLOBAL_CONFIG.tls_cert, &GLOBAL_CONFIG.tls_key);
     }
 
-    builder
-        .build(GLOBAL_CONFIG.listen_addr.as_str(), signal::ctrl_c())
-        .await
+    builder.build(addr, signal::ctrl_c()).await
 }
 
-async fn run_kcp_server() -> anyhow::Result<()> {
+async fn run_kcp_server(addr: &str) -> anyhow::Result<()> {
+    info!("KCP Server listening: {}", addr);
     let mut builder = kcp_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
         Box::new(Peer::new())
     }))
@@ -52,44 +51,7 @@ async fn run_kcp_server() -> anyhow::Result<()> {
         builder = builder.set_tls_configuration(&GLOBAL_CONFIG.tls_cert, &GLOBAL_CONFIG.tls_key);
     }
 
-    builder
-        .build(GLOBAL_CONFIG.listen_addr.as_str(), signal::ctrl_c())
-        .await
-}
-
-async fn run_logic_server() -> anyhow::Result<()> {
-    match (
-        !GLOBAL_CONFIG.kcp_listen_addr.is_empty(),
-        !GLOBAL_CONFIG.listen_addr.is_empty(),
-    ) {
-        (true, true) => {
-            select! {
-                res = run_tcp_server() => {
-                    if let Err(e) = res {
-                        return Err(anyhow!("TCP server error: {}", e));
-                    }
-                },
-                res = run_kcp_server() => {
-                    if let Err(e) = res {
-                        return Err(anyhow!("KCP server error: {}", e));
-                    }
-                },
-            }
-            Ok(())
-        }
-        (false, true) => run_tcp_server().await,
-        (true, false) => run_kcp_server().await,
-        (false, false) => Err(anyhow!("No listening address configured")),
-    }
-}
-
-async fn run_web_server() -> anyhow::Result<()> {
-    info!("HttpServer listening: {}", GLOBAL_CONFIG.web_addr);
-    let addr = GLOBAL_CONFIG.web_addr.parse::<SocketAddr>();
-    match addr {
-        Ok(addr) => web::run_http_server(&addr, GLOBAL_CONFIG.web_base_dir.clone()).await,
-        Err(parse_error) => Err(anyhow!(parse_error.to_string())),
-    }
+    builder.build(addr, signal::ctrl_c()).await
 }
 
 #[tokio::main]
@@ -98,19 +60,45 @@ pub async fn main() -> anyhow::Result<()> {
     Lazy::force(&GLOBAL_CONFIG);
     global::init_global().await?;
 
-    if GLOBAL_CONFIG.web_username.is_empty()
-        || GLOBAL_CONFIG.web_password.is_empty()
-        || GLOBAL_CONFIG.web_addr.is_empty()
+    let mut set = JoinSet::new();
+
+    if !GLOBAL_CONFIG.web_password.is_empty()
+        && !GLOBAL_CONFIG.web_username.is_empty()
+        && !GLOBAL_CONFIG.web_addr.is_empty()
     {
-        run_logic_server().await
-    } else {
-        let result: anyhow::Result<()>;
-
-        select! {
-            r1 = run_logic_server() => { result = r1 },
-            r2 = run_web_server() => { result = r2 },
-        }
-
-        result
+        set.spawn(async move {
+            info!("HttpServer listening: {}", GLOBAL_CONFIG.web_addr);
+            web::run_http_server(&GLOBAL_CONFIG.web_addr, &GLOBAL_CONFIG.web_base_dir).await
+        });
     }
+
+    net_type::parse(&GLOBAL_CONFIG.listen_addr)
+        .iter()
+        .for_each(|(net_type, addr)| {
+            let addr = addr.clone();
+            match net_type {
+                net_type::NetType::Tcp => {
+                    set.spawn(async move { run_tcp_server(&addr).await });
+                }
+                net_type::NetType::Kcp => {
+                    set.spawn(async move { run_kcp_server(&addr).await });
+                }
+                _ => {
+                    panic!("Unsupported network type: {:?}", net_type);
+                }
+            }
+        });
+
+    if let Some(res) = set.join_next().await {
+        set.abort_all();
+        if let Err(err) = res? {
+            error!("The server unexpectedly shutdown, error: {}", err);
+        } else {
+            info!("Server gracefully shutdown");
+        }
+    } else {
+        error!("No listening address configured");
+    }
+
+    Ok(())
 }

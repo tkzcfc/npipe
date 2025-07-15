@@ -5,6 +5,7 @@ use std::time::Duration;
 
 pub mod kcp_server;
 pub mod net_session;
+pub mod net_type;
 pub mod session_delegate;
 pub mod tcp_server;
 pub mod tls;
