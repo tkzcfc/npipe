@@ -158,11 +158,20 @@ jobs:
     - name: Update all Cargo.toml versions
       shell: bash
       run: |
-        # 更新 np_client 的版本
-        sed -i 's/^version = .*/version = "'"${{ steps.tag.outputs.version }}"'"/' np_client/Cargo.toml
-          
-        # 更新 np_server 的版本
-        sed -i 's/^version = .*/version = "'"${{ steps.tag.outputs.version }}"'"/' np_server/Cargo.toml
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+
+          # 更新 np_client 的版本
+          sed -i '' 's/^version = .*/version = "'"${{ steps.tag.outputs.version }}"'"/' np_client/Cargo.toml
+
+          # 更新 np_server 的版本
+          sed -i '' 's/^version = .*/version = "'"${{ steps.tag.outputs.version }}"'"/' np_server/Cargo.toml
+        else
+          # 更新 np_client 的版本
+          sed -i 's/^version = .*/version = "'"${{ steps.tag.outputs.version }}"'"/' np_client/Cargo.toml
+
+          # 更新 np_server 的版本
+          sed -i 's/^version = .*/version = "'"${{ steps.tag.outputs.version }}"'"/' np_server/Cargo.toml
+        fi
     
     - name: Commit version updates
       if: matrix.target == 'x86_64-unknown-linux-musl'
