@@ -66,7 +66,7 @@ pub(crate) struct CommonArgs {
 }
 
 #[derive(Parser)]
-#[command(author = "https://github.com/tkzcfc/npipe", version, about, long_about = None)]
+#[command(author = "https://github.com/tkzcfc/npipe", version = env!("CARGO_PKG_VERSION", "dev"), about, long_about = None)]
 pub struct Opts {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -144,9 +144,9 @@ pub(crate) fn init_logger(common_args: &CommonArgs) -> anyhow::Result<()> {
         panic!("set logger error");
     }
 
-    panic::set_hook(Box::new(|panic_info| {
-        error!("Panic occurred: {:?}", panic_info);
-    }));
+    // panic::set_hook(Box::new(|panic_info| {
+    //     error!("Panic occurred: {:?}", panic_info);
+    // }));
 
     Ok(())
 }
