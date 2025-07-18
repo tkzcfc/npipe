@@ -66,7 +66,7 @@ pub(crate) struct CommonArgs {
 }
 
 #[derive(Parser)]
-#[command(author = "https://github.com/tkzcfc/npipe", version = env!("N_PIPE_VERSION", "dev"), about, long_about = None)]
+#[command(author = "https://github.com/tkzcfc/npipe", version = env!("BIN_VERSION", "dev"), about, long_about = None)]
 pub struct Opts {
     #[command(subcommand)]
     command: Option<Commands>,
