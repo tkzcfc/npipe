@@ -155,30 +155,10 @@ jobs:
         TAG=${GITHUB_REF#refs/tags/v}  # 移除refs/tags/和v前缀
         echo "version=${TAG}" >> $GITHUB_OUTPUT
 
-    - name: Update all Cargo.toml versions
-      shell: bash
-      run: |
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-          sed -i '' 's/^version = .*/version = "'"${{ steps.tag.outputs.version }}"'"/' np_client/Cargo.toml
-          sed -i '' 's/^version = .*/version = "'"${{ steps.tag.outputs.version }}"'"/' np_server/Cargo.toml
-        else
-          sed -i 's/^version = .*/version = "'"${{ steps.tag.outputs.version }}"'"/' np_client/Cargo.toml
-          sed -i 's/^version = .*/version = "'"${{ steps.tag.outputs.version }}"'"/' np_server/Cargo.toml
-        fi
-    
-    - name: Commit version updates
-      if: matrix.target == 'x86_64-unknown-linux-musl'
-      run: |
-        git diff
-        git config --global user.name "GitHub Actions"
-        git config --global user.email "actions@github.com"
-        git add np_client/Cargo.toml np_server/Cargo.toml
-        git commit -m "Update versions to ${{ steps.tag.outputs.version }} [skip ci]"
-        git push
-
     - name: Build
       shell: bash
       run: |
+        N_PIPE_VERSION="${{ steps.tag.outputs.version }}"
         $CARGO build --bin np_client $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
         $CARGO build --bin np_server $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
 
@@ -192,6 +172,17 @@ jobs:
     #     cargo build --bin np_client --release --target ${{ matrix.target }}
     #     cargo build --bin np_server --release --target ${{ matrix.target }}
       
+    - name: Update Cargo.toml versions and commit version updates
+      if: matrix.target == 'x86_64-unknown-linux-musl'
+      run: |
+        sed -i 's/^version = .*/version = "'"${{ steps.tag.outputs.version }}"'"/' np_client/Cargo.toml
+        sed -i 's/^version = .*/version = "'"${{ steps.tag.outputs.version }}"'"/' np_server/Cargo.toml
+        git diff
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+        git add np_client/Cargo.toml np_server/Cargo.toml
+        git commit -m "Update versions to ${{ steps.tag.outputs.version }} [skip ci]"
+        git push
 
     - name: Setup archive
       shell: bash
