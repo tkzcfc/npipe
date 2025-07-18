@@ -22,9 +22,9 @@ jobs:
           #   target: x86_64-unknown-linux-gnu
           #   use-cross: false
 
-          # - os: ubuntu-latest
-          #   target: x86_64-unknown-linux-musl
-          #   use-cross: false
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            use-cross: false
 
           # - os: windows-latest
           #   target: x86_64-pc-windows-gnu
@@ -34,17 +34,17 @@ jobs:
             target: x86_64-pc-windows-msvc
             use-cross: false
 
-          # - os: windows-latest
-          #   target: x86_64-win7-windows-msvc
-          #   use-cross: false
+          - os: windows-latest
+            target: x86_64-win7-windows-msvc
+            use-cross: false
 
-          # - os: macos-latest
-          #   target: x86_64-apple-darwin
-          #   use-cross: false
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            use-cross: false
 
-          # - os: macos-latest
-          #   target: aarch64-apple-darwin
-          #   use-cross: false
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            use-cross: false
 
           # - os: ubuntu-latest
           #   target: arm-unknown-linux-gnueabihf
@@ -77,7 +77,9 @@ jobs:
       shell: bash
       if: env.BIN_VERSION == ''
       run: |
-        echo "BIN_VERSION=$GITHUB_REF_NAME" >> $GITHUB_ENV
+        echo "BIN_VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+        # 带v的版本号
+        # echo "BIN_VERSION=$GITHUB_REF_NAME" >> $GITHUB_ENV
         echo "version is: ${{ env.BIN_VERSION }}"
 
     - name: Install dependencies
@@ -149,17 +151,9 @@ jobs:
         echo "CARGO=cross" >> $GITHUB_ENV
         echo "TARGET_DIR=./target/${{ matrix.target }}" >> $GITHUB_ENV
 
-    - name: Get version from tag
-      id: tag
-      shell: bash
-      run: |
-        tag=${GITHUB_REF#refs/tags/v}
-        echo "version=${tag}" >> $GITHUB_OUTPUT
-
     - name: Build
       shell: bash
       run: |
-        N_PIPE_VERSION="${{ steps.tag.outputs.version }}"
         $CARGO build --bin np_client $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
         $CARGO build --bin np_server $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
 
@@ -176,19 +170,19 @@ jobs:
     - name: Update Cargo.toml versions and commit version updates
       if: matrix.target == 'x86_64-unknown-linux-musl'
       run: |
-        sed -i 's/^version = .*/version = "'"${{ steps.tag.outputs.version }}"'"/' np_client/Cargo.toml
-        sed -i 's/^version = .*/version = "'"${{ steps.tag.outputs.version }}"'"/' np_server/Cargo.toml
+        sed -i 's/^version = .*/version = "'"${{ env.BIN_VERSION }}"'"/' np_client/Cargo.toml
+        sed -i 's/^version = .*/version = "'"${{ env.BIN_VERSION }}"'"/' np_server/Cargo.toml
         git diff
         git config --global user.name "GitHub Actions"
         git config --global user.email "actions@github.com"
         git add np_client/Cargo.toml np_server/Cargo.toml
-        git commit -m "Update versions to ${{ steps.tag.outputs.version }} [skip ci]"
+        git commit -m "Update versions to ${{ env.BIN_VERSION }} [skip ci]"
         git push
 
     - name: Setup archive
       shell: bash
       run: |
-        staging="np-${{ env.BIN_VERSION }}-${{ matrix.target }}"
+        staging="np-v${{ env.BIN_VERSION }}-${{ matrix.target }}"
         mkdir -p "$staging"
 
         git clone https://github.com/tkzcfc/npipe-webui.git
