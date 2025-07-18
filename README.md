@@ -43,8 +43,6 @@ Options:
           set log level [default: error]
       --log-dir <LOG_DIR>
           set log directory [default: logs]
-      --net-type <NET_TYPE>
-          net type [default: tcp] [possible values: tcp, kcp, auto]
   -h, --help
           Print help (see more with '--help')
 ```
@@ -77,8 +75,6 @@ Options:
           set log level [default: error]
       --log-dir <LOG_DIR>
           set log directory [default: logs]
-      --net-type <NET_TYPE>
-          net type [default: tcp] [possible values: tcp, kcp, auto]
   -h, --help
           Print help (see more with '--help')
 ```
@@ -87,6 +83,11 @@ Then start the service and typing:
 
 ```
 sc.exe start "np_client"
+```
+
+Example usage：
+
+```
 ```
 
 
@@ -118,8 +119,7 @@ Options:
 ```json
 {
 	"database_url": "sqlite://data.db?mode=rwc",
-	"listen_addr": "0.0.0.0:8118",
-	"kcp_listen_addr": "0.0.0.0:8118",
+	"listen_addr": "tcp://0.0.0.0:8118,kcp://0.0.0.0:8118",
 	"illegal_traffic_forward": "",
 	"enable_tls": false,
 	"tls_cert": "./cert.pem",
@@ -138,8 +138,7 @@ Options:
 | Configuration key       | Description                                                  | Example                                                      |
 | ----------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | database_url            | database address                                             | sqlite://data.db?mode=rwc<br> mysql://username:password@server:port/dbname, |
-| listen_addr             | Server TCP listening address                                 | 0.0.0.0:8118                                                 |
-| kcp_listen_addr         | Server KCP listening address                                 | 0.0.0.0:8118                                                 |
+| listen_addr             | Server listening address(Multiple addresses should be separated by commas) | tcp://0.0.0.0:8118,kcp://0.0.0.0:8118                        |
 | enable_tls              | Enable TLS connection                                        | true/false                                                   |
 | tls_cert                | Cert file path                                               | ./cert.pem                                                   |
 | tls_key                 | Key file path                                                | ./server.key.pem                                             |
