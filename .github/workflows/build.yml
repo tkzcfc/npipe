@@ -22,9 +22,9 @@ jobs:
           #   target: x86_64-unknown-linux-gnu
           #   use-cross: false
 
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-            use-cross: false
+          # - os: ubuntu-latest
+          #   target: x86_64-unknown-linux-musl
+          #   use-cross: false
 
           # - os: windows-latest
           #   target: x86_64-pc-windows-gnu
@@ -34,17 +34,17 @@ jobs:
             target: x86_64-pc-windows-msvc
             use-cross: false
 
-          - os: windows-latest
-            target: x86_64-win7-windows-msvc
-            use-cross: false
+          # - os: windows-latest
+          #   target: x86_64-win7-windows-msvc
+          #   use-cross: false
 
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            use-cross: false
+          # - os: macos-latest
+          #   target: x86_64-apple-darwin
+          #   use-cross: false
 
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            use-cross: false
+          # - os: macos-latest
+          #   target: aarch64-apple-darwin
+          #   use-cross: false
 
           # - os: ubuntu-latest
           #   target: arm-unknown-linux-gnueabihf
@@ -151,9 +151,10 @@ jobs:
 
     - name: Get version from tag
       id: tag
+      shell: bash
       run: |
-        TAG=${GITHUB_REF#refs/tags/v}  # 移除refs/tags/和v前缀
-        echo "version=${TAG}" >> $GITHUB_OUTPUT
+        tag=${GITHUB_REF#refs/tags/v}
+        echo "version=${tag}" >> $GITHUB_OUTPUT
 
     - name: Build
       shell: bash
