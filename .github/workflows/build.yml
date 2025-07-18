@@ -59,7 +59,16 @@ jobs:
           #   use-cross: true
 
     steps:
+    
     - name: Checkout code
+      if: matrix.target == 'x86_64-unknown-linux-musl'
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # 需要完整的git历史记录来创建提交
+        token: ${{ secrets.GITHUB_TOKEN }}  # 用于推送更改的权限
+
+    - name: Checkout code
+      if: matrix.target != 'x86_64-unknown-linux-musl'
       uses: actions/checkout@v4
       with:
         fetch-depth: 1
@@ -139,6 +148,31 @@ jobs:
         tar xf cross-x86_64-unknown-linux-musl.tar.gz
         echo "CARGO=cross" >> $GITHUB_ENV
         echo "TARGET_DIR=./target/${{ matrix.target }}" >> $GITHUB_ENV
+
+    - name: Get version from tag
+      id: tag
+      run: |
+        TAG=${GITHUB_REF#refs/tags/v}  # 移除refs/tags/和v前缀
+        echo "version=${TAG}" >> $GITHUB_OUTPUT
+
+    - name: Update all Cargo.toml versions
+      shell: bash
+      run: |
+        # 更新 np_client 的版本
+        sed -i 's/^version = .*/version = "'"${{ steps.tag.outputs.version }}"'"/' np_client/Cargo.toml
+          
+        # 更新 np_server 的版本
+        sed -i 's/^version = .*/version = "'"${{ steps.tag.outputs.version }}"'"/' np_server/Cargo.toml
+    
+    - name: Commit version updates
+      if: matrix.target == 'x86_64-unknown-linux-musl'
+      run: |
+        git diff
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+        git add np_client/Cargo.toml np_server/Cargo.toml
+        git commit -m "Update versions to ${{ steps.tag.outputs.version }} [skip ci]"
+        git push
 
     - name: Build
       shell: bash
