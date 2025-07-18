@@ -15,10 +15,6 @@ jobs:
   build:
     name: ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
-    permissions:                # Job-level permissions configuration starts here
-      contents: write           # 'write' access to repository contents
-      pull-requests: write      # 'write' access to pull requests
-      
     strategy:
       matrix:
         include:
@@ -34,21 +30,21 @@ jobs:
           #   target: x86_64-pc-windows-gnu
           #   use-cross: false
 
-          # - os: windows-latest
-          #   target: x86_64-pc-windows-msvc
-          #   use-cross: false
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            use-cross: false
 
-          # - os: windows-latest
-          #   target: x86_64-win7-windows-msvc
-          #   use-cross: false
+          - os: windows-latest
+            target: x86_64-win7-windows-msvc
+            use-cross: false
 
-          # - os: macos-latest
-          #   target: x86_64-apple-darwin
-          #   use-cross: false
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            use-cross: false
 
-          # - os: macos-latest
-          #   target: aarch64-apple-darwin
-          #   use-cross: false
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            use-cross: false
 
           # - os: ubuntu-latest
           #   target: arm-unknown-linux-gnueabihf
@@ -63,16 +59,7 @@ jobs:
           #   use-cross: true
 
     steps:
-    
     - name: Checkout code
-      if: matrix.target == 'x86_64-unknown-linux-musl'
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0  # 需要完整的git历史记录来创建提交
-        persist-credentials: false # https://github.com/ad-m/github-push-action
-
-    - name: Checkout code
-      if: matrix.target != 'x86_64-unknown-linux-musl'
       uses: actions/checkout@v4
       with:
         fetch-depth: 1
@@ -155,11 +142,11 @@ jobs:
         echo "CARGO=cross" >> $GITHUB_ENV
         echo "TARGET_DIR=./target/${{ matrix.target }}" >> $GITHUB_ENV
 
-    # - name: Build
-    #   shell: bash
-    #   run: |
-    #     $CARGO build --bin np_client $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
-    #     $CARGO build --bin np_server $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
+    - name: Build
+      shell: bash
+      run: |
+        $CARGO build --bin np_client $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
+        $CARGO build --bin np_server $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
 
     # - name: Build
     #   id: build
@@ -171,24 +158,6 @@ jobs:
     #     cargo build --bin np_client --release --target ${{ matrix.target }}
     #     cargo build --bin np_server --release --target ${{ matrix.target }}
       
-    - name: Update Cargo.toml versions and commit version updates
-      if: matrix.target == 'x86_64-unknown-linux-musl'
-      run: |
-        sed -i 's/^version = .*/version = "'"${{ env.BIN_VERSION }}"'"/' np_client/Cargo.toml
-        sed -i 's/^version = .*/version = "'"${{ env.BIN_VERSION }}"'"/' np_server/Cargo.toml
-        git diff
-        git config --global user.name "GitHub Actions"
-        git config --global user.email "actions@github.com"
-        git add np_client/Cargo.toml np_server/Cargo.toml
-        git commit -m "Update versions to ${{ env.BIN_VERSION }} [skip ci]"
-
-    - name: Push changes
-      if: matrix.target == 'x86_64-unknown-linux-musl'
-      uses: ad-m/github-push-action@master
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        branch: ${{ github.ref }}
-
     - name: Setup archive
       shell: bash
       run: |
