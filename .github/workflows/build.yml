@@ -151,11 +151,11 @@ jobs:
         echo "CARGO=cross" >> $GITHUB_ENV
         echo "TARGET_DIR=./target/${{ matrix.target }}" >> $GITHUB_ENV
 
-    - name: Build
-      shell: bash
-      run: |
-        $CARGO build --bin np_client $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
-        $CARGO build --bin np_server $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
+    # - name: Build
+    #   shell: bash
+    #   run: |
+    #     $CARGO build --bin np_client $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
+    #     $CARGO build --bin np_server $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
 
     # - name: Build
     #   id: build
@@ -177,7 +177,7 @@ jobs:
         git config --global user.email "actions@github.com"
         git add np_client/Cargo.toml np_server/Cargo.toml
         git commit -m "Update versions to ${{ env.BIN_VERSION }} [skip ci]"
-        git push origin ${{ github.ref_name }}
+        git push origin main:main
 
 
     - name: Setup archive
