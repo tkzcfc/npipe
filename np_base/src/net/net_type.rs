@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 #[derive(Debug)]
 pub enum NetType {
     Tcp,
@@ -5,6 +7,15 @@ pub enum NetType {
     Ws,
 }
 
+impl Display for NetType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NetType::Tcp => write!(f, "tcp"),
+            NetType::Kcp => write!(f, "kcp"),
+            NetType::Ws => write!(f, "ws"),
+        }
+    }
+}
 pub fn parse(addrs: &str) -> Vec<(NetType, String)> {
     addrs
         .split(',')

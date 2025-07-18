@@ -84,7 +84,7 @@ pub async fn main() -> anyhow::Result<()> {
                     set.spawn(async move { run_kcp_server(&addr).await });
                 }
                 _ => {
-                    panic!("Unsupported network type: {:?}", net_type);
+                    panic!("Unsupported network type: {}", net_type);
                 }
             }
         });

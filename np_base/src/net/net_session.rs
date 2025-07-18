@@ -94,13 +94,13 @@ async fn poll_write<S>(
                 }
 
                 if let Err(error) = writer.write_all(&data).await {
-                    error!("[{addr}] error when write_all {:?}", error);
+                    error!("[{addr}] error when write_all {}", error);
                     break;
                 }
 
                 if flush {
                     if let Err(error) = writer.flush().await {
-                        error!("[{addr}] error when flushing {:?}", error);
+                        error!("[{addr}] error when flushing {}", error);
                     }
                 }
             }
@@ -114,17 +114,17 @@ async fn poll_write<S>(
                 }
 
                 if let Err(error) = writer.write_all(&data).await {
-                    error!("[{addr}] error when write_all {:?}", error);
+                    error!("[{addr}] error when write_all {}", error);
                     break;
                 }
                 if let Err(error) = writer.flush().await {
-                    error!("[{addr}] error when flushing {:?}", error);
+                    error!("[{addr}] error when flushing {}", error);
                 }
                 callback().await;
             }
             WriterMessage::Flush => {
                 if let Err(error) = writer.flush().await {
-                    error!("[{addr}] error when flushing {:?}", error);
+                    error!("[{addr}] error when flushing {}", error);
                 }
             }
         }

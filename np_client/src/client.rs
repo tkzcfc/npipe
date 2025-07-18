@@ -4,6 +4,7 @@ use byteorder::BigEndian;
 use byteorder::ByteOrder;
 use bytes::BytesMut;
 use log::{debug, error, info};
+use np_base::net::net_type::NetType;
 use np_base::net::tls;
 use np_base::proxy::inlet::{Inlet, InletDataEx, InletProxyType};
 use np_base::proxy::outlet::Outlet;
@@ -106,8 +107,12 @@ async fn connect_with_kcp(addr: &str) -> anyhow::Result<KcpStream> {
     }
 }
 
-pub async fn run(common_args: &CommonArgs, use_tcp: bool) -> anyhow::Result<()> {
-    info!("Start connecting to server {}", common_args.server);
+pub async fn run(
+    common_args: &CommonArgs,
+    server_addr: &String,
+    net_type: &NetType,
+) -> anyhow::Result<()> {
+    info!("Start connecting to server {}", server_addr);
 
     // 升级为TLS连接
     if common_args.enable_tls {
@@ -146,9 +151,9 @@ pub async fn run(common_args: &CommonArgs, use_tcp: bool) -> anyhow::Result<()> 
                 .set_certificate_verifier(Arc::new(NoCertificateVerifier {}));
         }
 
-        let str_vec: Vec<&str> = common_args.server.split(":").collect();
+        let str_vec: Vec<&str> = server_addr.split(":").collect();
         if str_vec.is_empty() {
-            return Err(anyhow!("invalid addr: {}", common_args.server));
+            return Err(anyhow!("invalid addr: {}", server_addr));
         }
 
         let connector = TlsConnector::from(Arc::new(config));
@@ -158,40 +163,54 @@ pub async fn run(common_args: &CommonArgs, use_tcp: bool) -> anyhow::Result<()> 
             ServerName::try_from(common_args.tls_server_name.as_str())?
         };
 
-        if use_tcp {
-            let stream = match timeout(
-                Duration::from_secs(TIMEOUT_TLS),
-                connector.connect(server_name, connect_with_tcp(&common_args.server).await?),
-            )
-            .await
-            {
-                Ok(result) => result?,
-                Err(err) => {
-                    return Err(anyhow!("tls connect timeout, error: {}", err));
-                }
-            };
+        match net_type {
+            NetType::Tcp => {
+                info!("Connecting to server {} with TCP&TLS", server_addr);
+                let stream = match timeout(
+                    Duration::from_secs(TIMEOUT_TLS),
+                    connector.connect(server_name, connect_with_tcp(server_addr).await?),
+                )
+                .await
+                {
+                    Ok(result) => result?,
+                    Err(err) => {
+                        return Err(anyhow!("tls connect timeout, error: {}", err));
+                    }
+                };
 
-            run_client(common_args, stream).await
-        } else {
-            let kcp_stream = connect_with_kcp(&common_args.server).await?;
-            let stream = match timeout(
-                Duration::from_secs(TIMEOUT_TLS),
-                connector.connect(server_name, kcp_stream),
-            )
-            .await
-            {
-                Ok(result) => result?,
-                Err(err) => {
-                    return Err(anyhow!("tls connect timeout, error: {}", err));
-                }
-            };
+                run_client(common_args, stream).await
+            }
+            NetType::Kcp => {
+                info!("Connecting to server {} with KCP&TLS", server_addr);
+                let kcp_stream = connect_with_kcp(server_addr).await?;
+                let stream = match timeout(
+                    Duration::from_secs(TIMEOUT_TLS),
+                    connector.connect(server_name, kcp_stream),
+                )
+                .await
+                {
+                    Ok(result) => result?,
+                    Err(err) => {
+                        return Err(anyhow!("tls connect timeout, error: {}", err));
+                    }
+                };
 
-            run_client(common_args, stream).await
+                run_client(common_args, stream).await
+            }
+            _ => Err(anyhow!("Unsupported network type: {}", net_type)),
         }
-    } else if use_tcp {
-        run_client(common_args, connect_with_tcp(&common_args.server).await?).await
     } else {
-        run_client(common_args, connect_with_kcp(&common_args.server).await?).await
+        match net_type {
+            NetType::Tcp => {
+                info!("Connecting to server {} with TCP", server_addr);
+                run_client(common_args, connect_with_tcp(server_addr).await?).await
+            }
+            NetType::Kcp => {
+                info!("Connecting to server {} with KCP", server_addr);
+                run_client(common_args, connect_with_kcp(server_addr).await?).await
+            }
+            _ => Err(anyhow!("Unsupported network type: {}", net_type)),
+        }
     }
 }
 

@@ -3,6 +3,8 @@ use flexi_logger::{
     Age, Cleanup, Criterion, Duplicate, FileSpec, Logger, LoggerHandle, Naming, WriteMode,
 };
 use log::error;
+use np_base::net::net_type;
+use np_base::net::net_type::NetType;
 use once_cell::sync::OnceCell;
 use std::time::Duration;
 use std::{env, panic};
@@ -11,26 +13,6 @@ use tokio::time::sleep;
 mod client;
 #[cfg(windows)]
 mod winservice;
-
-#[derive(clap::ValueEnum, Clone, Default, Debug)]
-enum NetType {
-    /// use TCP connection
-    #[default]
-    Tcp,
-    /// use KCP connection
-    Kcp,
-    /// alternate between using TCP and KCP connections
-    Auto,
-}
-impl std::fmt::Display for NetType {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            NetType::Tcp => write!(f, "tcp"),
-            NetType::Kcp => write!(f, "kcp"),
-            NetType::Auto => write!(f, "auto"),
-        }
-    }
-}
 
 #[derive(Args)]
 pub(crate) struct CommonArgs {
@@ -81,10 +63,6 @@ pub(crate) struct CommonArgs {
     /// set log directory
     #[arg(long, default_value = "logs")]
     pub log_dir: String,
-
-    /// net type
-    #[clap(long, default_value_t, value_enum)]
-    pub net_type: NetType,
 }
 
 #[derive(Parser)]
@@ -173,8 +151,8 @@ pub(crate) fn init_logger(common_args: &CommonArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn run_and_handle_errors(common_args: &CommonArgs, is_tcp: bool) {
-    if let Err(err) = client::run(common_args, is_tcp).await {
+async fn run_and_handle_errors(common_args: &CommonArgs, server_addr: &String, net_type: &NetType) {
+    if let Err(err) = client::run(common_args, server_addr, net_type).await {
         error!("{err}");
         sleep(Duration::from_secs(5)).await;
     } else {
@@ -183,18 +161,14 @@ async fn run_and_handle_errors(common_args: &CommonArgs, is_tcp: bool) {
 }
 
 pub(crate) async fn run_with_args(common_args: CommonArgs) -> anyhow::Result<()> {
+    let addrs = net_type::parse(&common_args.server);
+    let mut cycle_iter = addrs.iter().cycle();
     loop {
-        match common_args.net_type {
-            NetType::Tcp => {
-                run_and_handle_errors(&common_args, true).await;
-            }
-            NetType::Kcp => {
-                run_and_handle_errors(&common_args, false).await;
-            }
-            NetType::Auto => {
-                run_and_handle_errors(&common_args, false).await;
-                run_and_handle_errors(&common_args, true).await;
-            }
+        if let Some((net_type, server_addr)) = cycle_iter.next() {
+            run_and_handle_errors(&common_args, server_addr, net_type).await;
+        } else {
+            error!("No valid server address found");
+            return Err(anyhow::anyhow!("No valid server address found"));
         }
     }
 }
