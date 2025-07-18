@@ -159,17 +159,10 @@ jobs:
       shell: bash
       run: |
         if [[ "$OSTYPE" == "darwin"* ]]; then
-
-          # 更新 np_client 的版本
           sed -i '' 's/^version = .*/version = "'"${{ steps.tag.outputs.version }}"'"/' np_client/Cargo.toml
-
-          # 更新 np_server 的版本
           sed -i '' 's/^version = .*/version = "'"${{ steps.tag.outputs.version }}"'"/' np_server/Cargo.toml
         else
-          # 更新 np_client 的版本
           sed -i 's/^version = .*/version = "'"${{ steps.tag.outputs.version }}"'"/' np_client/Cargo.toml
-
-          # 更新 np_server 的版本
           sed -i 's/^version = .*/version = "'"${{ steps.tag.outputs.version }}"'"/' np_server/Cargo.toml
         fi
     
