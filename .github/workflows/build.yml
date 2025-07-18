@@ -63,6 +63,9 @@ jobs:
     - name: Checkout code
       if: matrix.target == 'x86_64-unknown-linux-musl'
       uses: actions/checkout@v4
+      permissions:                # Job-level permissions configuration starts here
+        contents: write           # 'write' access to repository contents
+        pull-requests: write      # 'write' access to pull requests
       with:
         fetch-depth: 0  # 需要完整的git历史记录来创建提交
         persist-credentials: false # https://github.com/ad-m/github-push-action
