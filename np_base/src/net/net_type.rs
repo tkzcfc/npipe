@@ -5,6 +5,7 @@ pub enum NetType {
     Tcp,
     Kcp,
     Ws,
+    Unknown,
 }
 
 impl Display for NetType {
@@ -13,6 +14,7 @@ impl Display for NetType {
             NetType::Tcp => write!(f, "tcp"),
             NetType::Kcp => write!(f, "kcp"),
             NetType::Ws => write!(f, "ws"),
+            NetType::Unknown => write!(f, "unknown"),
         }
     }
 }
@@ -28,7 +30,7 @@ pub fn parse(addrs: &str) -> Vec<(NetType, String)> {
             } else if let Some(stripped) = trimmed_addr.strip_prefix("ws://") {
                 (NetType::Ws, stripped.to_string())
             } else {
-                panic!("Unsupported URL scheme: {}", trimmed_addr);
+                (NetType::Unknown, trimmed_addr.to_string())
             }
         })
         .collect()

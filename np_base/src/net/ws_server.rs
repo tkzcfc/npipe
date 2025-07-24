@@ -1,4 +1,5 @@
 use crate::net::session_delegate::CreateSessionDelegateCallback;
+use crate::net::ws_async_io::WebSocketAsyncIo;
 use crate::net::{net_session, tls};
 use log::{debug, error};
 use log::{info, trace};
@@ -41,7 +42,10 @@ impl Server {
                         stream = s;
                     }
                     Err(error) => {
-                        error!("TCP Server on_stream_init error:{}", error.to_string());
+                        error!(
+                            "Websocket Server on_stream_init error:{}",
+                            error.to_string()
+                        );
                         continue;
                     }
                 }
@@ -54,36 +58,48 @@ impl Server {
 
             // 新连接单独起一个异步任务处理
             tokio::spawn(async move {
-                trace!("TCP Server new connection: {}", addr);
+                trace!("Websocket Server new connection: {}", addr);
 
                 if let Some(tls_acceptor) = tls_acceptor {
                     match tls::try_tls(stream, tls_acceptor).await {
+                        Ok(stream) => match tokio_tungstenite::accept_async(stream).await {
+                            Ok(stream) => {
+                                net_session::run(
+                                    net_session::create_session_id(),
+                                    addr,
+                                    delegate,
+                                    shutdown,
+                                    WebSocketAsyncIo::new(stream),
+                                )
+                                .await;
+                            }
+                            Err(err) => {
+                                error!("Websocket Server accept error: {err}");
+                            }
+                        },
+                        Err(err) => {
+                            debug!("Websocket Server tls error: {err}");
+                        }
+                    }
+                } else {
+                    match tokio_tungstenite::accept_async(stream).await {
                         Ok(stream) => {
                             net_session::run(
                                 net_session::create_session_id(),
                                 addr,
                                 delegate,
                                 shutdown,
-                                stream,
+                                WebSocketAsyncIo::new(stream),
                             )
                             .await;
                         }
                         Err(err) => {
-                            debug!("TCP Server tls error: {err}");
+                            error!("Websocket Server accept error: {err}");
                         }
                     }
-                } else {
-                    net_session::run(
-                        net_session::create_session_id(),
-                        addr,
-                        delegate,
-                        shutdown,
-                        stream,
-                    )
-                    .await;
                 }
 
-                trace!("TCP Server disconnect: {}", addr);
+                trace!("Websocket Server disconnect: {}", addr);
                 // 反向通知此会话结束
                 drop(shutdown_complete);
             });
@@ -138,11 +154,11 @@ impl Builder {
         select! {
             res = server.start_server(listener, self.create_session_delegate_callback, self.steam_init_callback, self.tls_configuration) => {
                 if let Err(err) = res {
-                    error!("TCP Server error: {}", err);
+                    error!("Websocket Server error: {}", err);
                 }
             },
             _ = shutdown_condition => {
-                info!("TCP Server shutting down");
+                info!("Websocket Server shutting down");
             }
         }
 
@@ -167,10 +183,10 @@ impl Builder {
             .await
             .is_err()
         {
-            error!("TCP Server exit timeout, forced exit");
+            error!("Websocket Server exit timeout, forced exit");
         }
 
-        info!("TCP Server shutdown finish");
+        info!("Websocket Server shutdown finish");
 
         Ok(())
     }

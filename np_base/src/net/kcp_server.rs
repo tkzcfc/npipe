@@ -3,13 +3,11 @@ use crate::net::{net_session, tls};
 use log::{debug, error};
 use log::{info, trace};
 use std::future::Future;
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::ToSocketAddrs;
 use tokio::select;
 use tokio::sync::{broadcast, mpsc};
 use tokio_kcp::{KcpConfig, KcpListener};
-use tokio_rustls::rustls::ServerConfig;
 use tokio_rustls::TlsAcceptor;
 
 struct Server {
@@ -24,20 +22,7 @@ impl Server {
         on_create_session_delegate_callback: CreateSessionDelegateCallback,
         tls_configuration: Option<tls::TlsConfiguration>,
     ) -> anyhow::Result<()> {
-        let tls_acceptor: Option<TlsAcceptor> = match tls_configuration {
-            Some(tls_configuration) => {
-                let certs = tls::load_certs(&tls_configuration.certificate)?;
-                let keys = tls::load_private_key(&tls_configuration.key)?;
-
-                let server_config = ServerConfig::builder()
-                    .with_safe_defaults()
-                    .with_no_client_auth()
-                    .with_single_cert(certs, keys)?;
-
-                Some(TlsAcceptor::from(Arc::new(server_config)))
-            }
-            None => None,
-        };
+        let tls_acceptor = tls_configuration.map(TlsAcceptor::try_from).transpose()?;
 
         loop {
             let (stream, addr) = listener.accept().await?;

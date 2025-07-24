@@ -10,8 +10,8 @@ use crate::global::opts::GLOBAL_OPTS;
 use crate::peer::Peer;
 use log::{error, info};
 use np_base::net::session_delegate::SessionDelegate;
-use np_base::net::tcp_server;
 use np_base::net::{kcp_server, net_type};
+use np_base::net::{tcp_server, ws_server};
 use once_cell::sync::Lazy;
 use std::time::Duration;
 use tokio::signal;
@@ -54,6 +54,19 @@ async fn run_kcp_server(addr: &str) -> anyhow::Result<()> {
     builder.build(addr, signal::ctrl_c()).await
 }
 
+async fn run_ws_server(addr: &str) -> anyhow::Result<()> {
+    info!("Websocket Server listening: {}", addr);
+    let mut builder = ws_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
+        Box::new(Peer::new())
+    }));
+
+    if GLOBAL_CONFIG.enable_tls {
+        builder = builder.set_tls_configuration(&GLOBAL_CONFIG.tls_cert, &GLOBAL_CONFIG.tls_key);
+    }
+
+    builder.build(addr, signal::ctrl_c()).await
+}
+
 #[tokio::main]
 pub async fn main() -> anyhow::Result<()> {
     Lazy::force(&GLOBAL_OPTS);
@@ -83,8 +96,11 @@ pub async fn main() -> anyhow::Result<()> {
                 net_type::NetType::Kcp => {
                     set.spawn(async move { run_kcp_server(&addr).await });
                 }
+                net_type::NetType::Ws => {
+                    set.spawn(async move { run_ws_server(&addr).await });
+                }
                 _ => {
-                    panic!("Unsupported network type: {}", net_type);
+                    error!("Unsupported URL scheme: {}", addr);
                 }
             }
         });

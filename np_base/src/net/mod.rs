@@ -11,6 +11,8 @@ pub mod tcp_server;
 pub mod tls;
 pub mod udp_server;
 pub mod udp_session;
+mod ws_async_io;
+pub mod ws_server;
 
 pub type SendMessageFuncType =
     Box<dyn Fn() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
