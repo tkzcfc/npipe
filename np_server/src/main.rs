@@ -8,17 +8,30 @@ mod web;
 use crate::global::config::GLOBAL_CONFIG;
 use crate::global::opts::GLOBAL_OPTS;
 use crate::peer::Peer;
+use anyhow::anyhow;
+use http::Uri;
 use log::{error, info};
+use np_base::net::kcp_server;
 use np_base::net::session_delegate::SessionDelegate;
-use np_base::net::{kcp_server, net_type};
 use np_base::net::{tcp_server, ws_server};
 use once_cell::sync::Lazy;
+use std::str::FromStr;
 use std::time::Duration;
 use tokio::signal;
 use tokio::task::JoinSet;
 use tokio_kcp::{KcpConfig, KcpNoDelayConfig};
 
-async fn run_tcp_server(addr: &str) -> anyhow::Result<()> {
+fn uri_to_socket_addr(uri: &Uri) -> anyhow::Result<String> {
+    let host = uri
+        .host()
+        .ok_or_else(|| anyhow!("Invalid URI: missing host"))?;
+    let port = uri
+        .port_u16()
+        .ok_or_else(|| anyhow!("Invalid URI: missing port"))?;
+    Ok(format!("{}:{}", host, port))
+}
+
+async fn run_tcp_server(addr: String) -> anyhow::Result<()> {
     info!("TCP Server listening: {}", addr);
     let mut builder = tcp_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
         Box::new(Peer::new())
@@ -31,7 +44,7 @@ async fn run_tcp_server(addr: &str) -> anyhow::Result<()> {
     builder.build(addr, signal::ctrl_c()).await
 }
 
-async fn run_kcp_server(addr: &str) -> anyhow::Result<()> {
+async fn run_kcp_server(addr: String) -> anyhow::Result<()> {
     info!("KCP Server listening: {}", addr);
     let mut builder = kcp_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
         Box::new(Peer::new())
@@ -54,7 +67,7 @@ async fn run_kcp_server(addr: &str) -> anyhow::Result<()> {
     builder.build(addr, signal::ctrl_c()).await
 }
 
-async fn run_ws_server(addr: &str) -> anyhow::Result<()> {
+async fn run_ws_server(addr: String) -> anyhow::Result<()> {
     info!("Websocket Server listening: {}", addr);
     let mut builder = ws_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
         Box::new(Peer::new())
@@ -85,24 +98,30 @@ pub async fn main() -> anyhow::Result<()> {
         });
     }
 
-    net_type::parse(&GLOBAL_CONFIG.listen_addr)
-        .iter()
-        .for_each(|(net_type, addr)| {
-            let addr = addr.clone();
-            match net_type {
-                net_type::NetType::Tcp => {
-                    set.spawn(async move { run_tcp_server(&addr).await });
-                }
-                net_type::NetType::Kcp => {
-                    set.spawn(async move { run_kcp_server(&addr).await });
-                }
-                net_type::NetType::Ws => {
-                    set.spawn(async move { run_ws_server(&addr).await });
-                }
-                _ => {
-                    error!("Unsupported URL scheme: {}", addr);
-                }
+    GLOBAL_CONFIG
+        .listen_addr
+        .split(",")
+        .filter_map(|s| {
+            Uri::from_str(s)
+                .map_err(|e| {
+                    error!("Failed to parse URI '{}': {}", s, e);
+                    e
+                })
+                .ok() // 丢弃错误，保留成功的 Uri
+        })
+        .collect::<Vec<_>>()
+        .into_iter()
+        .for_each(|request| match request.scheme_str() {
+            Some("tcp") => {
+                set.spawn(async move { run_tcp_server(uri_to_socket_addr(&request)?).await });
             }
+            Some("kcp") => {
+                set.spawn(async move { run_kcp_server(uri_to_socket_addr(&request)?).await });
+            }
+            Some("ws") => {
+                set.spawn(async move { run_ws_server(uri_to_socket_addr(&request)?).await });
+            }
+            _ => error!("Unsupported URL scheme: {}", request),
         });
 
     if let Some(res) = set.join_next().await {

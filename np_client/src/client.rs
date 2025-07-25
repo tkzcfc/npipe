@@ -1,11 +1,11 @@
-use crate::CommonArgs;
+use crate::{tls_danger, CommonArgs};
 use anyhow::anyhow;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
 use bytes::BytesMut;
+use http::Uri;
 use log::{debug, error, info};
-use np_base::net::net_type::NetType;
-use np_base::net::tls;
+use np_base::net::ws_async_io::WebSocketAsyncIo;
 use np_base::proxy::inlet::{Inlet, InletDataEx, InletProxyType};
 use np_base::proxy::outlet::Outlet;
 use np_base::proxy::{OutputFuncType, ProxyMessage};
@@ -25,9 +25,10 @@ use tokio::select;
 use tokio::sync::{Mutex, RwLock};
 use tokio::time::{sleep, timeout, Instant};
 use tokio_kcp::{KcpConfig, KcpNoDelayConfig, KcpStream};
-use tokio_rustls::rustls::client::ServerCertVerified;
-use tokio_rustls::rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore, ServerName};
-use tokio_rustls::{rustls, TlsConnector};
+use tokio_rustls::rustls::pki_types::pem::PemObject;
+use tokio_rustls::rustls::pki_types::{CertificateDer, ServerName};
+use tokio_rustls::rustls::{ClientConfig, RootCertStore};
+use tokio_rustls::TlsConnector;
 use webpki_roots::TLS_SERVER_ROOTS;
 
 const TIMEOUT_TLS: u64 = 30;
@@ -45,25 +46,13 @@ where
     tunnels: HashMap<u32, Tunnel>,
 }
 
-struct NoCertificateVerifier;
-
-impl rustls::client::ServerCertVerifier for NoCertificateVerifier {
-    fn verify_server_cert(
-        &self,
-        _end_entity: &rustls::Certificate,
-        _intermediates: &[rustls::Certificate],
-        _server_name: &ServerName,
-        _scts: &mut dyn Iterator<Item = &[u8]>,
-        _ocsp_response: &[u8],
-        _now: SystemTime,
-    ) -> Result<ServerCertVerified, rustls::Error> {
-        Ok(ServerCertVerified::assertion())
-    }
-}
-
-async fn connect_with_tcp(addr: &str) -> anyhow::Result<TcpStream> {
-    let stream = TcpStream::connect(&addr).await?;
-    info!("TCP successfully connected to serve {}", addr);
+async fn connect_with_tcp(request: &Uri) -> anyhow::Result<TcpStream> {
+    let host = request
+        .host()
+        .ok_or_else(|| anyhow!("Invalid URI: missing host"))?;
+    let port = request.port_u16().unwrap_or(80); // 默认端口为80
+    let stream = TcpStream::connect(format!("{}:{}", host, port)).await?;
+    info!("TCP successfully connected to {}:{}", host, port);
 
     let ka = TcpKeepalive::new().with_time(Duration::from_secs(30));
     let sf = SockRef::from(&stream);
@@ -71,8 +60,12 @@ async fn connect_with_tcp(addr: &str) -> anyhow::Result<TcpStream> {
     Ok(stream)
 }
 
-async fn connect_with_kcp(addr: &str) -> anyhow::Result<KcpStream> {
-    let addrs = tokio::net::lookup_host(addr).await?;
+async fn connect_with_kcp(request: &Uri) -> anyhow::Result<KcpStream> {
+    let host = request
+        .host()
+        .ok_or_else(|| anyhow!("Invalid URI: missing host"))?;
+    let port = request.port_u16().unwrap_or(80); // 默认端口为80
+    let addrs = tokio::net::lookup_host(format!("{}:{}", host, port)).await?;
 
     let mut last_err = None;
 
@@ -107,68 +100,50 @@ async fn connect_with_kcp(addr: &str) -> anyhow::Result<KcpStream> {
     }
 }
 
-pub async fn run(
-    common_args: &CommonArgs,
-    server_addr: &String,
-    net_type: &NetType,
-) -> anyhow::Result<()> {
-    info!("Start connecting to server {}", server_addr);
+pub async fn run(common_args: &CommonArgs, request: Uri) -> anyhow::Result<()> {
+    info!("Start connecting to server {}", request);
 
     // 升级为TLS连接
     if common_args.enable_tls {
         let mut root_cert_store = RootCertStore::empty();
-
-        // 加载系统默认的根证书
-        let trust_anchors = TLS_SERVER_ROOTS.0.iter().map(|ta| {
-            OwnedTrustAnchor::from_subject_spki_name_constraints(
-                ta.subject,
-                ta.spki,
-                ta.name_constraints,
-            )
-        });
-        root_cert_store.add_server_trust_anchors(trust_anchors);
-
-        // 加载自签证书
+        // 加载自定义的根证书
         if !common_args.ca_cert.is_empty() {
-            let ca_certs = tls::load_certs(&common_args.ca_cert)?;
-            anyhow::ensure!(
-                !ca_certs.is_empty(),
-                "invalid cert file: {}",
-                common_args.ca_cert
-            );
-            root_cert_store.add(&ca_certs[0])?;
+            for cert in CertificateDer::pem_file_iter(&common_args.ca_cert)? {
+                root_cert_store.add(cert?)?;
+            }
         }
+        // 加载系统默认的根证书
+        root_cert_store.extend(TLS_SERVER_ROOTS.iter().cloned());
 
         // 创建TLS配置
         let mut config = ClientConfig::builder()
-            .with_safe_defaults()
             .with_root_certificates(root_cert_store)
-            .with_no_client_auth(); // 不需要客户端认证
+            .with_no_client_auth(); // i guess this was previously the default?
 
         if common_args.insecure {
-            config
-                .dangerous()
-                .set_certificate_verifier(Arc::new(NoCertificateVerifier {}));
+            config.dangerous().set_certificate_verifier(Arc::new(
+                tls_danger::NoCertificateVerification::default(),
+            ));
         }
 
-        let str_vec: Vec<&str> = server_addr.split(":").collect();
-        if str_vec.is_empty() {
-            return Err(anyhow!("invalid addr: {}", server_addr));
-        }
+        let config = Arc::new(config);
 
-        let connector = TlsConnector::from(Arc::new(config));
-        let server_name = if common_args.tls_server_name.is_empty() {
-            ServerName::try_from(str_vec[0])?
+        let connector = TlsConnector::from(config.clone());
+        let domain = if common_args.tls_server_name.is_empty() {
+            let host = request
+                .host()
+                .ok_or_else(|| anyhow!("Invalid URI: missing host"))?;
+            ServerName::try_from(host)?.to_owned()
         } else {
-            ServerName::try_from(common_args.tls_server_name.as_str())?
+            ServerName::try_from(common_args.tls_server_name.as_str())?.to_owned()
         };
 
-        match net_type {
-            NetType::Tcp => {
-                info!("Connecting to server {} with TCP&TLS", server_addr);
+        match request.scheme_str() {
+            Some("tcp") => {
+                info!("Connecting to server {} with TCP&TLS", request);
                 let stream = match timeout(
                     Duration::from_secs(TIMEOUT_TLS),
-                    connector.connect(server_name, connect_with_tcp(server_addr).await?),
+                    connector.connect(domain, connect_with_tcp(&request).await?),
                 )
                 .await
                 {
@@ -180,12 +155,12 @@ pub async fn run(
 
                 run_client(common_args, stream).await
             }
-            NetType::Kcp => {
-                info!("Connecting to server {} with KCP&TLS", server_addr);
-                let kcp_stream = connect_with_kcp(server_addr).await?;
+            Some("kcp") => {
+                info!("Connecting to server {} with KCP&TLS", request);
+                let kcp_stream = connect_with_kcp(&request).await?;
                 let stream = match timeout(
                     Duration::from_secs(TIMEOUT_TLS),
-                    connector.connect(server_name, kcp_stream),
+                    connector.connect(domain, kcp_stream),
                 )
                 .await
                 {
@@ -197,19 +172,36 @@ pub async fn run(
 
                 run_client(common_args, stream).await
             }
-            _ => Err(anyhow!("Unsupported network type: {}", net_type)),
+            Some("ws") => {
+                info!("Connecting to server {} with WSS", request);
+                let connector = tokio_tungstenite::Connector::Rustls(config);
+                let (stream, _) = tokio_tungstenite::connect_async_tls_with_config(
+                    request,
+                    None,
+                    false,
+                    Some(connector),
+                )
+                .await?;
+                run_client(common_args, WebSocketAsyncIo::new(stream)).await
+            }
+            _ => Err(anyhow!("Unsupported URL scheme: {}", request)),
         }
     } else {
-        match net_type {
-            NetType::Tcp => {
-                info!("Connecting to server {} with TCP", server_addr);
-                run_client(common_args, connect_with_tcp(server_addr).await?).await
+        match request.scheme_str() {
+            Some("tcp") => {
+                info!("Connecting to server {} with TCP", request);
+                run_client(common_args, connect_with_tcp(&request).await?).await
             }
-            NetType::Kcp => {
-                info!("Connecting to server {} with KCP", server_addr);
-                run_client(common_args, connect_with_kcp(server_addr).await?).await
+            Some("kcp") => {
+                info!("Connecting to server {} with KCP", request);
+                run_client(common_args, connect_with_kcp(&request).await?).await
             }
-            _ => Err(anyhow!("Unsupported network type: {}", net_type)),
+            Some("ws") => {
+                info!("Connecting to server {} with WS", request);
+                let (stream, _) = tokio_tungstenite::connect_async(request).await?;
+                run_client(common_args, WebSocketAsyncIo::new(stream)).await
+            }
+            _ => Err(anyhow!("Unsupported URL scheme: {}", request)),
         }
     }
 }

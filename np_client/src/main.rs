@@ -2,15 +2,16 @@ use clap::{Args, Parser, Subcommand};
 use flexi_logger::{
     Age, Cleanup, Criterion, Duplicate, FileSpec, Logger, LoggerHandle, Naming, WriteMode,
 };
+use http::Uri;
 use log::error;
-use np_base::net::net_type;
-use np_base::net::net_type::NetType;
 use once_cell::sync::OnceCell;
+use std::str::FromStr;
 use std::time::Duration;
 use std::{env, panic};
 use tokio::time::sleep;
 
 mod client;
+mod tls_danger;
 #[cfg(windows)]
 mod winservice;
 
@@ -151,24 +152,33 @@ pub(crate) fn init_logger(common_args: &CommonArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn run_and_handle_errors(common_args: &CommonArgs, server_addr: &String, net_type: &NetType) {
-    if let Err(err) = client::run(common_args, server_addr, net_type).await {
-        error!("{err}");
-        sleep(Duration::from_secs(5)).await;
-    } else {
-        sleep(Duration::from_secs(1)).await;
-    }
-}
-
 pub(crate) async fn run_with_args(common_args: CommonArgs) -> anyhow::Result<()> {
-    let addrs = net_type::parse(&common_args.server);
-    let mut cycle_iter = addrs.iter().cycle();
+    let mut uri_cycle_iter = common_args
+        .server
+        .split(",")
+        .filter_map(|s| {
+            Uri::from_str(s)
+                .map_err(|e| {
+                    error!("Failed to parse URI '{}': {}", s, e);
+                    e
+                })
+                .ok() // 丢弃错误，保留成功的 Uri
+        })
+        .collect::<Vec<_>>()
+        .into_iter() // 转换为 owned iterator 避免生命周期问题
+        .cycle();
+
     loop {
-        if let Some((net_type, server_addr)) = cycle_iter.next() {
-            run_and_handle_errors(&common_args, server_addr, net_type).await;
+        if let Some(uri) = uri_cycle_iter.next() {
+            if let Err(err) = client::run(&common_args, uri).await {
+                error!("{err}");
+                sleep(Duration::from_secs(5)).await;
+            } else {
+                sleep(Duration::from_secs(1)).await;
+            }
         } else {
-            error!("No valid server address found");
-            return Err(anyhow::anyhow!("No valid server address found"));
+            error!("No valid uri found");
+            return Err(anyhow::anyhow!("No valid uri found"));
         }
     }
 }
