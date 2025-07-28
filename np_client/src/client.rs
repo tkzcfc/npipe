@@ -653,6 +653,7 @@ where
         encode_raw_message(message, &mut buf);
 
         writer.lock().await.write_all(&buf).await?;
+        writer.lock().await.flush().await?;
         Ok(())
     } else {
         Err(anyhow!("Message id not found"))
