@@ -119,7 +119,7 @@ Options:
 ```json
 {
 	"database_url": "sqlite://data.db?mode=rwc",
-	"listen_addr": "tcp://0.0.0.0:8118,kcp://0.0.0.0:8118",
+	"listen_addr": "tcp://0.0.0.0:8118,kcp://0.0.0.0:8118,,ws://0.0.0.0:8119",
 	"illegal_traffic_forward": "",
 	"enable_tls": false,
 	"tls_cert": "./cert.pem",
