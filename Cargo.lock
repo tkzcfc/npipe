@@ -1965,7 +1965,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -3933,7 +3933,7 @@ dependencies = [
 [[package]]
 name = "tokio_kcp"
 version = "0.10.0"
-source = "git+https://github.com/tkzcfc/tokio_kcp.git#3ef0f5f40be764a780b7010e9a5fc4634f5fa923"
+source = "git+https://github.com/tkzcfc/tokio_kcp.git#682e85fc01454eb064adb12be8b59eabe92d5b47"
 dependencies = [
  "byte_string",
  "bytes",

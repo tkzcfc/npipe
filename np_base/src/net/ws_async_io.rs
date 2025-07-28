@@ -1,6 +1,5 @@
 use bytes::Bytes;
-use futures::{Sink, SinkExt, Stream};
-use std::future::Future;
+use futures::{Sink, Stream};
 use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -42,8 +41,7 @@ where
             return Poll::Ready(Ok(()));
         }
 
-        // 使用 `futures::StreamExt::poll_next` 读取 WebSocket 消息
-        // match futures::StreamExt::poll_next(Pin::new(&mut self.ws_stream), cx) {
+        // 使用 `futures::Stream::poll_next` 读取 WebSocket 消息
         match Pin::new(&mut self.ws_stream).poll_next(cx) {
             Poll::Ready(Some(Ok(msg))) => {
                 match msg {
@@ -53,9 +51,32 @@ where
                     Message::Binary(data) => {
                         self.read_buf.extend(data);
                     }
-                    Message::Ping(_) | Message::Pong(_) => {
-                        // 丢弃 Ping/Pong 消息，继续读取
-                        return self.poll_read(cx, buf);
+                    Message::Ping(payload) => {
+                        // 自动回复Pong
+                        // 确保Sink就绪后再发送Pong
+                        match Pin::new(&mut self.ws_stream).poll_ready(cx) {
+                            Poll::Ready(Ok(())) => {
+                                if let Err(e) =
+                                    Pin::new(&mut self.ws_stream).start_send(Message::Pong(payload))
+                                {
+                                    return Poll::Ready(Err(io::Error::new(
+                                        io::ErrorKind::Other,
+                                        e,
+                                    )));
+                                }
+                            }
+                            Poll::Ready(Err(e)) => {
+                                return Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e)));
+                            }
+                            Poll::Pending => {
+                                // Sink未就绪，返回Pending
+                                return Poll::Pending;
+                            }
+                        }
+                    }
+                    Message::Pong(_) => {
+                        // 丢弃 Pong 消息，继续读取
+                        // return self.poll_read(cx, buf);
                     }
                     Message::Close(_) => {
                         return Poll::Ready(Err(io::Error::new(
@@ -65,7 +86,7 @@ where
                     }
                     Message::Frame(_) => {
                         // 处理 Frame 消息，这里简单处理为忽略
-                        return self.poll_read(cx, buf);
+                        // return self.poll_read(cx, buf);
                     }
                 }
 
@@ -98,20 +119,17 @@ where
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
-        let msg = Message::Binary(Bytes::copy_from_slice(buf));
-        match futures::ready!(Pin::new(&mut self.ws_stream).poll_ready(cx)) {
-            Ok(()) => {
-                let send_fut = self.ws_stream.send(msg);
-                tokio::pin!(send_fut);
-                match send_fut.poll(cx) {
-                    Poll::Ready(Ok(())) => Poll::Ready(Ok(buf.len())),
-                    Poll::Ready(Err(e)) => {
-                        Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e.to_string())))
-                    }
-                    Poll::Pending => Poll::Pending,
+        // 确保sink就绪
+        match Pin::new(&mut self.ws_stream).poll_ready(cx) {
+            Poll::Ready(Ok(())) => {
+                let message = Message::Binary(Bytes::copy_from_slice(buf));
+                if let Err(e) = Pin::new(&mut self.ws_stream).start_send(message) {
+                    return Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e)));
                 }
+                Poll::Ready(Ok(buf.len()))
             }
-            Err(e) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e.to_string()))),
+            Poll::Ready(Err(e)) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+            Poll::Pending => Poll::Pending,
         }
     }
 

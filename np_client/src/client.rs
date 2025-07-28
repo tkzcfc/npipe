@@ -17,6 +17,7 @@ use np_proto::utils::message_bridge;
 use np_proto::{generic, message_map};
 use socket2::{SockRef, TcpKeepalive};
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
@@ -173,6 +174,7 @@ pub async fn run(common_args: &CommonArgs, request: Uri) -> anyhow::Result<()> {
                 run_client(common_args, stream).await
             }
             Some("ws") => {
+                let request = Uri::from_str(&request.to_string().replace("ws://", "wss://"))?;
                 info!("Connecting to server {} with WSS", request);
                 let connector = tokio_tungstenite::Connector::Rustls(config);
                 let (stream, _) = tokio_tungstenite::connect_async_tls_with_config(

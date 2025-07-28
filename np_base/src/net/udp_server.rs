@@ -9,6 +9,7 @@ use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::select;
 use tokio::sync::{broadcast, mpsc, Mutex};
+use tokio::task::yield_now;
 
 pub async fn run_server(
     socket: UdpSocket,
@@ -29,6 +30,7 @@ pub async fn run_server(
         loop {
             let result = socket.recv_from(&mut buf).await;
             if result.is_err() {
+                yield_now().await;
                 continue;
             }
             let (amt, addr) = result.unwrap();
