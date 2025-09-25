@@ -114,8 +114,8 @@ where
                 }
                 Poll::Ready(None) => {
                     buf.clear();
-                    return Poll::Ready(Ok(()))
-                }, // EOF
+                    return Poll::Ready(Ok(()));
+                } // EOF
                 Poll::Pending => {
                     if is_read_data_tag {
                         return Poll::Ready(Ok(()));
@@ -162,4 +162,3 @@ where
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
     }
 }
-

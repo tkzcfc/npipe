@@ -243,14 +243,10 @@ impl Inlet {
             ProxyMessage::O2iSendDataResult(session_id, data_len) => {
                 // trace!("O2iSendDataResult: session_id:{session_id}, data_len:{data_len}");
                 if let Some(session) = session_info_map.read().await.get(session_id) {
-                    let mut read_buf_len = session.common_info.read_buf_len.write().await;
-                    if *read_buf_len <= *data_len {
-                        *read_buf_len = 0;
-                    } else {
-                        *read_buf_len -= data_len;
-                    }
-                    // println!("[inlet] O2iSendDataResult: session_id:{session_id}, data_len:{data_len}, read_buf_len:{}", *read_buf_len);
-                    drop(read_buf_len);
+                    session
+                        .common_info
+                        .flow_controller
+                        .release_read_permit(*data_len);
                 }
             }
             ProxyMessage::O2iRecvDataFrom(session_id, _data, _remote_addr) => {

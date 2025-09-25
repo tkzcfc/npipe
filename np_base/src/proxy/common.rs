@@ -5,42 +5,70 @@ use anyhow::anyhow;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, UnboundedSender};
-use tokio::sync::RwLock;
-use tokio::task::yield_now;
-
-const INLET_BUFFER_MAX_LEN: usize = 1024 * 1024;
-const OUTLET_BUFFER_MAX_LEN: usize = 1024 * 1024 * 4;
+use tokio::sync::Semaphore;
 
 // 输入通道发送端类型
 pub type InputSenderType = UnboundedSender<WriterMessage>;
 
 #[derive(Clone)]
+pub struct FlowController {
+    read_semaphore: Arc<Semaphore>,
+    max_bytes: usize,
+}
+
+impl FlowController {
+    fn new(max_bytes: usize) -> Self {
+        Self {
+            read_semaphore: Arc::new(Semaphore::new(max_bytes)),
+            max_bytes,
+        }
+    }
+
+    // 申请读取许可
+    async fn acquire_read_permit(&self, size: usize) {
+        // 等待有足够的空间可以读取
+        let permit = self
+            .read_semaphore
+            .acquire_many(if size > self.max_bytes {
+                self.max_bytes as u32
+            } else {
+                size as u32
+            })
+            .await
+            .unwrap();
+        permit.forget(); // 手动管理释放
+    }
+
+    // 写入成功后释放读取许可
+    pub fn release_read_permit(&self, size: usize) {
+        self.read_semaphore.add_permits(size);
+    }
+}
+
+#[derive(Clone)]
 pub struct SessionCommonInfo {
-    // 是否是通道入口
-    is_inlet: bool,
     // 是否压缩数据
     pub is_compressed: bool,
     // 加密方法
     pub encryption_method: EncryptionMethod,
     // 加密key
     pub encryption_key: Vec<u8>,
-    // 读缓存大小
-    pub read_buf_len: Arc<RwLock<usize>>,
+    // 信号量, 用于限制并发
+    pub flow_controller: FlowController,
 }
 
 impl SessionCommonInfo {
     pub fn new(
-        is_inlet: bool,
+        _is_inlet: bool,
         is_compressed: bool,
         encryption_method: EncryptionMethod,
         encryption_key: Vec<u8>,
     ) -> Self {
         Self {
-            is_inlet,
             is_compressed,
             encryption_method,
             encryption_key,
-            read_buf_len: Arc::new(RwLock::new(0)),
+            flow_controller: FlowController::new(1024 * 1024 * 2), // 默认最大2MB未处理数据
         }
     }
 
@@ -67,25 +95,7 @@ impl SessionCommonInfo {
             )?;
         }
 
-        let read_buf_max: usize = if self.is_inlet {
-            INLET_BUFFER_MAX_LEN
-        } else {
-            OUTLET_BUFFER_MAX_LEN
-        };
-
-        while *self.read_buf_len.read().await > read_buf_max {
-            yield_now().await;
-        }
-
-        let mut read_buf_len_rw = self.read_buf_len.write().await;
-        *read_buf_len_rw += data.len();
-        // println!(
-        //     "[{}] read_buf_len_rw: {}, add len: {}",
-        //     if self.is_inlet { "inlet" } else { "outlet" },
-        //     *read_buf_len_rw,
-        //     data.len()
-        // );
-        drop(read_buf_len_rw);
+        self.flow_controller.acquire_read_permit(data.len()).await;
 
         Ok(data)
     }
