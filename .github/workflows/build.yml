@@ -95,8 +95,11 @@ jobs:
 
     - name: Install dependencies
       if: matrix.target == 'x86_64-unknown-linux-musl'
-      run: sudo apt update && sudo apt install musl-tools -y
-      
+      run: | 
+        sudo apt update && sudo apt install musl-tools -y
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake clang pkg-config libclang-dev
+
     # - name: Install Rust
     #   if: matrix.target == 'x86_64-win7-windows-msvc'
     #   shell: bash
