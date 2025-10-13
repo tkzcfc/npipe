@@ -99,8 +99,6 @@ jobs:
         sudo apt update && sudo apt install musl-tools -y
         sudo apt-get update && sudo sudo apt-get install -y llvm clang libclang-dev
 
-
-
     # - name: Install Rust
     #   if: matrix.target == 'x86_64-win7-windows-msvc'
     #   shell: bash
@@ -138,8 +136,8 @@ jobs:
         toolchain: 1.84.1
         target: ${{ matrix.target }}
 
-    - name: Add target
-      run: rustup target add ${{ matrix.target }}
+    # - name: Add target
+    #   run: rustup target add ${{ matrix.target }}
       
     - name: Setup native compilation
       if: ${{ matrix.use-cross == false }}
