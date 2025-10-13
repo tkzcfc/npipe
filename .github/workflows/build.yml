@@ -134,8 +134,8 @@ jobs:
         toolchain: 1.84.1
         target: ${{ matrix.target }}
 
-    # - name: Add target
-    #   run: rustup target add ${{ matrix.target }}
+    - name: Add target
+      run: rustup target add ${{ matrix.target }}
       
     - name: Setup native compilation
       if: ${{ matrix.use-cross == false }}
