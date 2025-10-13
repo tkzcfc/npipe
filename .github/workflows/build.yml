@@ -27,9 +27,9 @@ jobs:
             target: armv7-unknown-linux-musleabihf
             use-cross: true
             
-          # - os: ubuntu-latest
-          #   target: arm-unknown-linux-musleabihf
-          #   use-cross: true
+          - os: ubuntu-latest
+            target: arm-unknown-linux-musleabihf
+            use-cross: true
             
           - os: ubuntu-latest
             target: i686-unknown-linux-musl
