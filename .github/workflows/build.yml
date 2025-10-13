@@ -165,7 +165,7 @@ jobs:
     # https://aws.github.io/aws-lc-rs/requirements/linux.html
     # fix error: failed to run custom build command for `aws-lc-sys v0.30.0`
     - name: Install bindgen-cli
-      if: matrix.use-cross
+      # if: matrix.use-cross
       shell: bash
       run: |
         cargo install --force --locked bindgen-cli
