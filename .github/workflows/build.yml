@@ -50,9 +50,9 @@ jobs:
           #   target: arm-unknown-linux-gnueabihf
           #   use-cross: true
 
-          # - os: ubuntu-latest
-          #   target: aarch64-unknown-linux-musl
-          #   use-cross: true
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            use-cross: true
 
           # - os: ubuntu-latest
           #   target: armv7-unknown-linux-gnueabihf
