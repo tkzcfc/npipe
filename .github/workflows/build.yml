@@ -175,8 +175,8 @@ jobs:
     - name: Build
       shell: bash
       run: |
-        $CARGO build --bin np_client $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
-        $CARGO build --bin np_server $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
+        $CARGO build --features bindgen --bin np_client $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
+        $CARGO build --features bindgen  --bin np_server $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
 
     # - name: Build
     #   id: build
