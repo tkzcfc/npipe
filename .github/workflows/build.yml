@@ -18,17 +18,42 @@ jobs:
     strategy:
       matrix:
         include:
-          # - os: ubuntu-latest
-          #   target: x86_64-unknown-linux-gnu
-          #   use-cross: false
 
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             use-cross: false
 
+          - os: ubuntu-latest
+            target: armv7-unknown-linux-musleabihf
+            use-cross: true
+            
+          - os: ubuntu-latest
+            target: arm-unknown-linux-musleabihf
+            use-cross: true
+            
+          - os: ubuntu-latest
+            target: i686-unknown-linux-musl
+            use-cross: true
+            
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            use-cross: true
+
+          # - os: ubuntu-latest
+          #   target: x86_64-unknown-linux-gnu
+          #   use-cross: false
+          
           # - os: windows-latest
           #   target: x86_64-pc-windows-gnu
           #   use-cross: false
+          
+          # - os: ubuntu-latest
+          #   target: arm-unknown-linux-gnueabihf
+          #   use-cross: true
+
+          # - os: ubuntu-latest
+          #   target: armv7-unknown-linux-gnueabihf
+          #   use-cross: true
 
           - os: windows-latest
             target: x86_64-pc-windows-msvc
@@ -37,27 +62,22 @@ jobs:
           - os: windows-latest
             target: x86_64-win7-windows-msvc
             use-cross: false
+            
+          - os: windows-latest
+            target: i686-pc-windows-msvc
+            use-cross: true
 
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            use-cross: true
+          
           - os: macos-latest
             target: x86_64-apple-darwin
             use-cross: false
 
           - os: macos-latest
             target: aarch64-apple-darwin
-            use-cross: false
-
-          - os: ubuntu-latest
-            target: arm-unknown-linux-gnueabihf
             use-cross: true
-
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-musl
-            use-cross: true
-
-          - os: ubuntu-latest
-            target: armv7-unknown-linux-gnueabihf
-            use-cross: true
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -129,16 +149,16 @@ jobs:
           echo "CARGO_BUILD_ARG=--release" >> $GITHUB_ENV
         fi
 
-    - name: Setup cross compilation
-      if: ${{ matrix.use-cross == true }}
+    - name: Install cross
+      if: matrix.use-cross
+      uses: taiki-e/install-action@v2
+      with:
+        tool: cross
+
+    - name: Overwrite build command env variable
+      if: matrix.use-cross
       shell: bash
       run: |
-        dir="$RUNNER_TEMP/cross-download"
-        mkdir "$dir"
-        echo "$dir" >> $GITHUB_PATH
-        cd "$dir"
-        curl -LO "https://github.com/cross-rs/cross/releases/download/v0.2.5/cross-x86_64-unknown-linux-musl.tar.gz"
-        tar xf cross-x86_64-unknown-linux-musl.tar.gz
         echo "CARGO=cross" >> $GITHUB_ENV
         echo "TARGET_DIR=./target/${{ matrix.target }}" >> $GITHUB_ENV
 
