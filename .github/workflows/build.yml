@@ -162,6 +162,14 @@ jobs:
         echo "CARGO=cross" >> $GITHUB_ENV
         echo "TARGET_DIR=./target/${{ matrix.target }}" >> $GITHUB_ENV
 
+    # https://aws.github.io/aws-lc-rs/requirements/linux.html
+    # fix error: failed to run custom build command for `aws-lc-sys v0.30.0`
+    - name: Install bindgen-cli
+      if: matrix.use-cross
+      shell: bash
+      run: |
+        cargo install --force --locked bindgen-cli
+
     - name: Build
       shell: bash
       run: |
