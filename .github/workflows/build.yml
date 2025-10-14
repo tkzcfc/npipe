@@ -19,10 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-            use-cross: false
+          # - os: ubuntu-latest
+          #   target: x86_64-unknown-linux-musl
+          #   use-cross: false
 
           - os: ubuntu-latest
             target: armv7-unknown-linux-musleabihf
@@ -40,9 +39,9 @@ jobs:
             target: aarch64-unknown-linux-musl
             use-cross: true
 
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            use-cross: false
+          # - os: ubuntu-latest
+          #   target: x86_64-unknown-linux-gnu
+          #   use-cross: false
           
           - os: ubuntu-latest
             target: arm-unknown-linux-gnueabihf
@@ -52,33 +51,33 @@ jobs:
             target: armv7-unknown-linux-gnueabihf
             use-cross: true
 
-          - os: windows-latest
-            target: x86_64-pc-windows-gnu
-            use-cross: false
+          # - os: windows-latest
+          #   target: x86_64-pc-windows-gnu
+          #   use-cross: false
 
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            use-cross: false
+          # - os: windows-latest
+          #   target: x86_64-pc-windows-msvc
+          #   use-cross: false
 
-          - os: windows-latest
-            target: x86_64-win7-windows-msvc
-            use-cross: false
+          # - os: windows-latest
+          #   target: x86_64-win7-windows-msvc
+          #   use-cross: false
             
-          - os: windows-latest
-            target: i686-pc-windows-msvc
-            use-cross: false
+          # - os: windows-latest
+          #   target: i686-pc-windows-msvc
+          #   use-cross: false
 
-          - os: windows-latest
-            target: aarch64-pc-windows-msvc
-            use-cross: false
+          # - os: windows-latest
+          #   target: aarch64-pc-windows-msvc
+          #   use-cross: false
           
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            use-cross: false
+          # - os: macos-latest
+          #   target: x86_64-apple-darwin
+          #   use-cross: false
 
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            use-cross: false
+          # - os: macos-latest
+          #   target: aarch64-apple-darwin
+          #   use-cross: false
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -94,26 +93,13 @@ jobs:
         # echo "BIN_VERSION=$GITHUB_REF_NAME" >> $GITHUB_ENV
         echo "version is: ${{ env.BIN_VERSION }}"
 
-    - name: Install dependencies
-      if: matrix.target == 'x86_64-unknown-linux-musl'
-      run: | 
-        sudo apt update && sudo apt install musl-tools -y
-        sudo apt-get update && sudo sudo apt-get install -y llvm clang libclang-dev
+    # - name: Install dependencies
+    #   if: matrix.target == 'x86_64-unknown-linux-musl'
+    #   run: | 
+    #     sudo apt update && sudo apt install musl-tools -y
+    #     sudo apt-get update && sudo apt-get install -y llvm clang libclang-dev
 
-    # - name: Install Rust
-    #   if: matrix.target == 'x86_64-win7-windows-msvc'
-    #   shell: bash
-    #   run: |
-    #     clang-cl --version
-    #     lld-link --version
-    #     rustup install nightly
-    #     rustup toolchain install nightly
-    #     rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
-    #     cargo install xwin
-    #     echo yes | xwin splat --output winsdk
-    #     set RUSTFLAGS=-C linker=%CD%\xwin-lld-link && set CC=%CD%\xwin-clang-cl
-
-  # nightly-2023-12-28 = nightly1.75.0
+    # nightly-2023-12-28 = nightly1.75.0
     - name: Install Rust
       if: matrix.target == 'x86_64-win7-windows-msvc'
       shell: bash
@@ -134,13 +120,14 @@ jobs:
         # beta: 使用测试版本的Rust。
         # nightly: 使用最新的夜间版本的Rust。
         # 具体版本号: 如1.56.0，指定特定的Rust版本。
-        toolchain: 1.84.1
+        # toolchain: 1.84.1
+        toolchain: stable
         target: ${{ matrix.target }}
 
-    - name: Install bindgen
-      shell: bash
-      run: |
-        cargo install --force --locked bindgen-cli
+    # - name: Install bindgen
+    #   shell: bash
+    #   run: |
+    #     cargo install --force --locked bindgen-cli
       
     - name: Setup native compilation
       if: ${{ matrix.use-cross == false }}
@@ -156,48 +143,39 @@ jobs:
 
     - name: Install cross
       if: matrix.use-cross
-      uses: taiki-e/install-action@v2
-      with:
-        tool: cross
-
-    - name: Overwrite build command env variable
-      if: matrix.use-cross
       shell: bash
       run: |
+        cargo install cross --locked --git https://github.com/cross-rs/cross
         echo "CARGO=cross" >> $GITHUB_ENV
         echo "TARGET_DIR=./target/${{ matrix.target }}" >> $GITHUB_ENV
 
-    # https://github.com/cross-rs/cross/blob/main/docs/config_file.md
-    - name: Create Cross.toml
-      if: matrix.use-cross && matrix.os == 'ubuntu-latest'
-      shell: bash
-      run: |
-        cat > Cross.toml <<EOF
-        [target.${{ matrix.target }}]
-        image = "my-custom-cross-image-${{ matrix.target }}"
-        dockerfile = "Dockerfile-${{ matrix.target }}.cross"
-        EOF
-        cat Cross.toml
+    # # https://github.com/cross-rs/cross/blob/main/docs/config_file.md
+    # # https://aws.github.io/aws-lc-rs/requirements/linux.html
+    # # fix error: failed to run custom build command for `aws-lc-sys v0.30.0`
+    # - name: Create Cross.toml
+    #   if: matrix.use-cross && matrix.os == 'ubuntu-latest'
+    #   shell: bash
+    #   run: |
+    #     cat > Cross.toml <<EOF
+    #     [target.${{ matrix.target }}]
+    #     image = "my-custom-cross-image-${{ matrix.target }}"
+    #     dockerfile = "Dockerfile-${{ matrix.target }}.cross"
+    #     EOF
+    #     cat Cross.toml
+    #     cat > Dockerfile-${{ matrix.target }}.cross <<EOF
+    #     FROM ghcr.io/cross-rs/${{ matrix.target }}:latest
 
-    # https://aws.github.io/aws-lc-rs/requirements/linux.html
-    # fix error: failed to run custom build command for `aws-lc-sys v0.30.0`
-    - name: Create Dockerfile.cross
-      shell: bash
-      run: |
-        cat > Dockerfile-${{ matrix.target }}.cross <<EOF
-        FROM ghcr.io/cross-rs/${{ matrix.target }}:latest
+    #     # 安装 Rust 工具链
+    #     RUN apt-get update && \
+    #         apt-get install -y curl && \
+    #         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+    #         . ~/.cargo/env && \
+    #         cargo install --force --locked bindgen-cli
 
-        # 安装 Rust 工具链
-        RUN apt-get update && \
-            apt-get install -y curl && \
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
-            . ~/.cargo/env && \
-            cargo install --force --locked bindgen-cli
-
-        # 设置环境变量
-        ENV PATH="/root/.cargo/bin:\${PATH}"
-        EOF
-        cat Dockerfile-${{ matrix.target }}.cross
+    #     # 设置环境变量
+    #     ENV PATH="/root/.cargo/bin:\${PATH}"
+    #     EOF
+    #     cat Dockerfile-${{ matrix.target }}.cross
 
     - name: Build
       shell: bash
