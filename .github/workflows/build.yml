@@ -39,22 +39,21 @@ jobs:
             target: aarch64-unknown-linux-musl
             use-cross: true
 
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            use-cross: false
+          # - os: ubuntu-latest
+          #   target: x86_64-unknown-linux-gnu
+          #   use-cross: false
           
-          
-          - os: ubuntu-latest
-            target: arm-unknown-linux-gnueabihf
-            use-cross: true
+          # - os: ubuntu-latest
+          #   target: arm-unknown-linux-gnueabihf
+          #   use-cross: true
 
-          - os: ubuntu-latest
-            target: armv7-unknown-linux-gnueabihf
-            use-cross: true
+          # - os: ubuntu-latest
+          #   target: armv7-unknown-linux-gnueabihf
+          #   use-cross: true
 
-          - os: windows-latest
-            target: x86_64-pc-windows-gnu
-            use-cross: false
+          # - os: windows-latest
+          #   target: x86_64-pc-windows-gnu
+          #   use-cross: false
 
           - os: windows-latest
             target: x86_64-pc-windows-msvc
@@ -175,15 +174,16 @@ jobs:
         cat > Cross.toml <<EOF
         [target.${{ matrix.target }}]
         image = "my-custom-cross-image"
-        dockerfile = "Dockerfile.cross"
+        dockerfile = "Dockerfile-${{ matrix.target }}.cross"
         EOF
+        cat Cross.toml
 
     # https://aws.github.io/aws-lc-rs/requirements/linux.html
     # fix error: failed to run custom build command for `aws-lc-sys v0.30.0`
     - name: Create Dockerfile.cross
       shell: bash
       run: |
-        cat > Dockerfile.cross <<EOF
+        cat > Dockerfile-${{ matrix.target }}.cross <<EOF
         FROM ghcr.io/cross-rs/${{ matrix.target }}:latest
 
         # 安装 Rust 工具链
@@ -196,6 +196,7 @@ jobs:
         # 设置环境变量
         ENV PATH="/root/.cargo/bin:\${PATH}"
         EOF
+        cat Dockerfile-${{ matrix.target }}.cross
 
     - name: Build
       shell: bash
