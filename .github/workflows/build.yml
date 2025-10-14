@@ -27,29 +27,29 @@ jobs:
             target: armv7-unknown-linux-musleabihf
             use-cross: true
             
-          - os: ubuntu-latest
-            target: arm-unknown-linux-musleabihf
-            use-cross: true
+          # - os: ubuntu-latest
+          #   target: arm-unknown-linux-musleabihf
+          #   use-cross: true
             
-          - os: ubuntu-latest
-            target: i686-unknown-linux-musl
-            use-cross: true
+          # - os: ubuntu-latest
+          #   target: i686-unknown-linux-musl
+          #   use-cross: true
             
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-musl
-            use-cross: true
+          # - os: ubuntu-latest
+          #   target: aarch64-unknown-linux-musl
+          #   use-cross: true
 
           # - os: ubuntu-latest
           #   target: x86_64-unknown-linux-gnu
           #   use-cross: false
           
-          - os: ubuntu-latest
-            target: arm-unknown-linux-gnueabihf
-            use-cross: true
+          # - os: ubuntu-latest
+          #   target: arm-unknown-linux-gnueabihf
+          #   use-cross: true
 
-          - os: ubuntu-latest
-            target: armv7-unknown-linux-gnueabihf
-            use-cross: true
+          # - os: ubuntu-latest
+          #   target: armv7-unknown-linux-gnueabihf
+          #   use-cross: true
 
           # - os: windows-latest
           #   target: x86_64-pc-windows-gnu
@@ -59,17 +59,17 @@ jobs:
           #   target: x86_64-pc-windows-msvc
           #   use-cross: false
 
-          # - os: windows-latest
-          #   target: x86_64-win7-windows-msvc
-          #   use-cross: false
+          - os: windows-latest
+            target: x86_64-win7-windows-msvc
+            use-cross: false
             
           # - os: windows-latest
           #   target: i686-pc-windows-msvc
           #   use-cross: false
 
-          # - os: windows-latest
-          #   target: aarch64-pc-windows-msvc
-          #   use-cross: false
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            use-cross: true
           
           # - os: macos-latest
           #   target: x86_64-apple-darwin
@@ -124,11 +124,6 @@ jobs:
         toolchain: stable
         target: ${{ matrix.target }}
 
-    # - name: Install bindgen
-    #   shell: bash
-    #   run: |
-    #     cargo install --force --locked bindgen-cli
-      
     - name: Setup native compilation
       if: ${{ matrix.use-cross == false }}
       shell: bash
@@ -147,7 +142,6 @@ jobs:
       run: |
         cargo install cross --locked --git https://github.com/cross-rs/cross
         echo "CARGO=cross" >> $GITHUB_ENV
-        echo "TARGET_DIR=./target/${{ matrix.target }}" >> $GITHUB_ENV
 
     # # https://github.com/cross-rs/cross/blob/main/docs/config_file.md
     # # https://aws.github.io/aws-lc-rs/requirements/linux.html
@@ -164,14 +158,12 @@ jobs:
     #     cat Cross.toml
     #     cat > Dockerfile-${{ matrix.target }}.cross <<EOF
     #     FROM ghcr.io/cross-rs/${{ matrix.target }}:latest
-
     #     # 安装 Rust 工具链
     #     RUN apt-get update && \
     #         apt-get install -y curl && \
     #         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
     #         . ~/.cargo/env && \
     #         cargo install --force --locked bindgen-cli
-
     #     # 设置环境变量
     #     ENV PATH="/root/.cargo/bin:\${PATH}"
     #     EOF
@@ -186,6 +178,10 @@ jobs:
     - name: Setup archive
       shell: bash
       run: |
+        pwd
+        ls
+        ls target/
+
         staging="np-v${{ env.BIN_VERSION }}-${{ matrix.target }}"
         mkdir -p "$staging"
 
