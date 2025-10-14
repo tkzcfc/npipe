@@ -6,6 +6,11 @@ pre-build = [
     "rm -rf $HOME/.cargo"
 ]
 
+[build.env]
+passthrough = [
+    "AWS_LC_SYS_CMAKE_BUILDER=1"
+]
+
 [target.aarch64-pc-windows-msvc.build]
 # Windows 镜像下执行 PowerShell 命令
 pre-build = [
@@ -13,9 +18,4 @@ pre-build = [
     "irm https://sh.rustup.rs | iex", # 安装 Rust
     "$env:Path += ';$env:USERPROFILE\\.cargo\\bin'",
     "cargo install --force --locked bindgen-cli"
-]
-
-[build.env]
-passthrough = [
-    "AWS_LC_SYS_CMAKE_BUILDER=1"
 ]
