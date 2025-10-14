@@ -23,9 +23,9 @@ jobs:
           #   target: x86_64-unknown-linux-musl
           #   use-cross: false
 
-          - os: ubuntu-latest
-            target: armv7-unknown-linux-musleabihf
-            use-cross: true
+          # - os: ubuntu-latest
+          #   target: armv7-unknown-linux-musleabihf
+          #   use-cross: true
             
           # - os: ubuntu-latest
           #   target: arm-unknown-linux-musleabihf
@@ -179,7 +179,7 @@ jobs:
         pre-build = [
             "Set-ExecutionPolicy Bypass -Scope Process -Force",
             "irm https://sh.rustup.rs | iex", # 安装 Rust
-            "\{$env}:Path += ';\{$env}:USERPROFILE\\.cargo\\bin'",
+            "\$env:Path += ';\$env:USERPROFILE\\.cargo\\bin'",
             "cargo install --force --locked bindgen-cli"
         ]
 
