@@ -20,9 +20,65 @@ jobs:
         include:
 
           - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            use-cross: false
+
+          - os: ubuntu-latest
             target: armv7-unknown-linux-musleabihf
             use-cross: true
             
+          - os: ubuntu-latest
+            target: arm-unknown-linux-musleabihf
+            use-cross: true
+            
+          - os: ubuntu-latest
+            target: i686-unknown-linux-musl
+            use-cross: true
+            
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            use-cross: true
+
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            use-cross: false
+          
+          
+          - os: ubuntu-latest
+            target: arm-unknown-linux-gnueabihf
+            use-cross: true
+
+          - os: ubuntu-latest
+            target: armv7-unknown-linux-gnueabihf
+            use-cross: true
+
+          - os: windows-latest
+            target: x86_64-pc-windows-gnu
+            use-cross: false
+
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            use-cross: false
+
+          - os: windows-latest
+            target: x86_64-win7-windows-msvc
+            use-cross: false
+            
+          # - os: windows-latest
+          #   target: i686-pc-windows-msvc
+          #   use-cross: true
+
+          # - os: windows-latest
+          #   target: aarch64-pc-windows-msvc
+          #   use-cross: true
+          
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            use-cross: false
+
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            use-cross: false
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -109,29 +165,41 @@ jobs:
         echo "CARGO=cross" >> $GITHUB_ENV
         echo "TARGET_DIR=./target/${{ matrix.target }}" >> $GITHUB_ENV
 
-    # https://aws.github.io/aws-lc-rs/requirements/linux.html
-    # fix error: failed to run custom build command for `aws-lc-sys v0.30.0`
-    - name: Install bindgen-cli
-      # if: matrix.use-cross
+    # https://github.com/cross-rs/cross/blob/main/docs/config_file.md
+    - name: Create Cross.toml
+      if: matrix.use-cross && matrix.os == 'ubuntu-latest'
       shell: bash
       run: |
-        cargo install --force --locked bindgen-cli
+        cat > Cross.toml <<EOF
+[target.${{ matrix.target }}]
+image = "my-custom-cross-image"
+dockerfile = "Dockerfile.cross"
+EOF
+
+    # https://aws.github.io/aws-lc-rs/requirements/linux.html
+    # fix error: failed to run custom build command for `aws-lc-sys v0.30.0`
+    - name: Create Dockerfile.cross
+      shell: bash
+      run: |
+        cat > Dockerfile.cross <<EOF
+FROM ghcr.io/cross-rs/${{ matrix.target }}:latest
+
+# 安装 Rust 工具链
+RUN apt-get update && \
+    apt-get install -y curl && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+    . ~/.cargo/env && \
+    cargo install --force --locked bindgen-cli
+
+# 设置环境变量
+ENV PATH="/root/.cargo/bin:\${PATH}"
+EOF
 
     - name: Build
       shell: bash
       run: |
         $CARGO build --bin np_client $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
         $CARGO build --bin np_server $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
-
-    # - name: Build
-    #   id: build
-    #   env:
-    #     CC: musl-gcc
-    #     RUSTFLAGS: "-C target-feature=+crt-static -C relocation-model=static"
-    #     CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
-    #   run: |
-    #     cargo build --bin np_client --release --target ${{ matrix.target }}
-    #     cargo build --bin np_server --release --target ${{ matrix.target }}
       
     - name: Setup archive
       shell: bash
