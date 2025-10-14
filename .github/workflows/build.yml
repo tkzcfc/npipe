@@ -125,7 +125,8 @@ jobs:
         7z x windows_x86_64_msvc-0.48.5.tar.gz
         7z x windows_x86_64_msvc-0.48.5.crate
         cp windows_x86_64_msvc-0.48.5/lib/windows.0.48.5.lib windows.0.48.5.lib
-
+        cargo install --force --locked bindgen-cli
+        
     - name: Install Rust
       if: matrix.target != 'x86_64-win7-windows-msvc'
       uses: dtolnay/rust-toolchain@stable
