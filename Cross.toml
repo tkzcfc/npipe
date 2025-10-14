@@ -10,12 +10,3 @@ pre-build = [
 passthrough = [
     "AWS_LC_SYS_CMAKE_BUILDER=1"
 ]
-
-[target.aarch64-pc-windows-msvc.build]
-# Windows 镜像下执行 PowerShell 命令
-pre-build = [
-    "Set-ExecutionPolicy Bypass -Scope Process -Force",
-    "irm https://sh.rustup.rs | iex", # 安装 Rust
-    "$env:Path += ';$env:USERPROFILE\\.cargo\\bin'",
-    "cargo install --force --locked bindgen-cli"
-]
