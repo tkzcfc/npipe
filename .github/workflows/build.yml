@@ -59,9 +59,9 @@ jobs:
           #   target: x86_64-pc-windows-msvc
           #   use-cross: false
 
-          - os: windows-latest
-            target: x86_64-win7-windows-msvc
-            use-cross: false
+          # - os: windows-latest
+          #   target: x86_64-win7-windows-msvc
+          #   use-cross: false
             
           # - os: windows-latest
           #   target: i686-pc-windows-msvc
@@ -145,14 +145,56 @@ jobs:
         echo "CARGO=cross" >> $GITHUB_ENV
         echo "CARGO_BUILD_ARG=--release" >> $GITHUB_ENV
 
+
     # use Cross.toml
     # references:
     #   https://github.com/tweedegolf/mailcrab/blob/1375b930f1fd96261a7023ca8022bd471d12b758/backend/Cross.toml
     #   https://github.com/tweedegolf/mailcrab/blob/1375b930f1fd96261a7023ca8022bd471d12b758/.github/workflows/build.yml
+    - name: Create Cross.toml
+      if: matrix.use-cross && matrix.os == 'ubuntu-latest'
+      shell: bash
+      run: |
+        cat > Cross.toml <<EOF
+        [build]
+        pre-build = [
+            "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable",
+            ". $HOME/.cargo/env",
+            "cargo install --force --locked bindgen-cli && mv $HOME/.cargo/bin/bindgen /usr/bin",
+            "rm -rf $HOME/.cargo"
+        ]
 
-    # nouse Cross.toml
-    # # https://github.com/cross-rs/cross/blob/main/docs/config_file.md
-    # # https://aws.github.io/aws-lc-rs/requirements/linux.html
+        [build.env]
+        passthrough = [
+            "AWS_LC_SYS_CMAKE_BUILDER=1"
+        ]
+        EOF
+        cat Cross.toml
+
+    - name: Create Cross.toml
+      if: matrix.use-cross && matrix.os == 'windows-latest'
+      shell: bash
+      run: |
+        cat > Cross.toml <<EOF
+        [build]
+        pre-build = [
+            "Set-ExecutionPolicy Bypass -Scope Process -Force",
+            "irm https://sh.rustup.rs | iex", # 安装 Rust
+            "$env:Path += ';$env:USERPROFILE\\.cargo\\bin'",
+            "cargo install --force --locked bindgen-cli"
+        ]
+
+        [build.env]
+        passthrough = [
+            "AWS_LC_SYS_CMAKE_BUILDER=1"
+        ]
+        EOF
+        cat Cross.toml
+
+
+    # use Cross.toml build image
+    # references:
+    # https://github.com/cross-rs/cross/blob/main/docs/config_file.md
+    # https://aws.github.io/aws-lc-rs/requirements/linux.html
     # # fix error: failed to run custom build command for `aws-lc-sys v0.30.0`
     # - name: Create Cross.toml
     #   if: matrix.use-cross && matrix.os == 'ubuntu-latest'
