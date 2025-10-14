@@ -111,6 +111,7 @@ jobs:
         7z x windows_x86_64_msvc-0.48.5.tar.gz
         7z x windows_x86_64_msvc-0.48.5.crate
         cp windows_x86_64_msvc-0.48.5/lib/windows.0.48.5.lib windows.0.48.5.lib
+        cargo install --force --locked bindgen-cli
 
     - name: Install Rust
       if: matrix.target != 'x86_64-win7-windows-msvc'
@@ -142,7 +143,14 @@ jobs:
       run: |
         cargo install cross --locked --git https://github.com/cross-rs/cross
         echo "CARGO=cross" >> $GITHUB_ENV
+        echo "CARGO_BUILD_ARG=--release" >> $GITHUB_ENV
 
+    # use Cross.toml
+    # references:
+    #   https://github.com/tweedegolf/mailcrab/blob/1375b930f1fd96261a7023ca8022bd471d12b758/backend/Cross.toml
+    #   https://github.com/tweedegolf/mailcrab/blob/1375b930f1fd96261a7023ca8022bd471d12b758/.github/workflows/build.yml
+
+    # nouse Cross.toml
     # # https://github.com/cross-rs/cross/blob/main/docs/config_file.md
     # # https://aws.github.io/aws-lc-rs/requirements/linux.html
     # # fix error: failed to run custom build command for `aws-lc-sys v0.30.0`
@@ -178,10 +186,6 @@ jobs:
     - name: Setup archive
       shell: bash
       run: |
-        pwd
-        ls
-        ls target/
-
         staging="np-v${{ env.BIN_VERSION }}-${{ matrix.target }}"
         mkdir -p "$staging"
 
