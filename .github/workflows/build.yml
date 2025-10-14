@@ -16,6 +16,7 @@ jobs:
     name: ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
 
@@ -39,21 +40,21 @@ jobs:
             target: aarch64-unknown-linux-musl
             use-cross: true
 
-          # - os: ubuntu-latest
-          #   target: x86_64-unknown-linux-gnu
-          #   use-cross: false
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            use-cross: false
           
-          # - os: ubuntu-latest
-          #   target: arm-unknown-linux-gnueabihf
-          #   use-cross: true
+          - os: ubuntu-latest
+            target: arm-unknown-linux-gnueabihf
+            use-cross: true
 
-          # - os: ubuntu-latest
-          #   target: armv7-unknown-linux-gnueabihf
-          #   use-cross: true
+          - os: ubuntu-latest
+            target: armv7-unknown-linux-gnueabihf
+            use-cross: true
 
-          # - os: windows-latest
-          #   target: x86_64-pc-windows-gnu
-          #   use-cross: false
+          - os: windows-latest
+            target: x86_64-pc-windows-gnu
+            use-cross: false
 
           - os: windows-latest
             target: x86_64-pc-windows-msvc
@@ -63,13 +64,13 @@ jobs:
             target: x86_64-win7-windows-msvc
             use-cross: false
             
-          # - os: windows-latest
-          #   target: i686-pc-windows-msvc
-          #   use-cross: true
+          - os: windows-latest
+            target: i686-pc-windows-msvc
+            use-cross: false
 
-          # - os: windows-latest
-          #   target: aarch64-pc-windows-msvc
-          #   use-cross: true
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            use-cross: false
           
           - os: macos-latest
             target: x86_64-apple-darwin
@@ -173,7 +174,7 @@ jobs:
       run: |
         cat > Cross.toml <<EOF
         [target.${{ matrix.target }}]
-        image = "my-custom-cross-image"
+        image = "my-custom-cross-image-${{ matrix.target }}"
         dockerfile = "Dockerfile-${{ matrix.target }}.cross"
         EOF
         cat Cross.toml
