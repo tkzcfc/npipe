@@ -168,10 +168,10 @@ jobs:
       shell: bash
       run: |
         cat > Cross.toml <<EOF
-[target.${{ matrix.target }}]
-image = "my-custom-cross-image"
-dockerfile = "Dockerfile.cross"
-EOF
+        [target.${{ matrix.target }}]
+        image = "my-custom-cross-image"
+        dockerfile = "Dockerfile.cross"
+        EOF
 
     # https://aws.github.io/aws-lc-rs/requirements/linux.html
     # fix error: failed to run custom build command for `aws-lc-sys v0.30.0`
@@ -179,18 +179,18 @@ EOF
       shell: bash
       run: |
         cat > Dockerfile.cross <<EOF
-FROM ghcr.io/cross-rs/${{ matrix.target }}:latest
+        FROM ghcr.io/cross-rs/${{ matrix.target }}:latest
 
-# 安装 Rust 工具链
-RUN apt-get update && \
-    apt-get install -y curl && \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
-    . ~/.cargo/env && \
-    cargo install --force --locked bindgen-cli
+        # 安装 Rust 工具链
+        RUN apt-get update && \
+            apt-get install -y curl && \
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+            . ~/.cargo/env && \
+            cargo install --force --locked bindgen-cli
 
-# 设置环境变量
-ENV PATH="/root/.cargo/bin:\${PATH}"
-EOF
+        # 设置环境变量
+        ENV PATH="/root/.cargo/bin:\${PATH}"
+        EOF
 
     - name: Build
       shell: bash
