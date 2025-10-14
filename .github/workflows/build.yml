@@ -158,9 +158,9 @@ jobs:
         [build]
         pre-build = [
             "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable",
-            ". \${HOME}/.cargo/env",
-            "cargo install --force --locked bindgen-cli && mv \${HOME}/.cargo/bin/bindgen /usr/bin",
-            "rm -rf \${HOME}/.cargo"
+            ". \$HOME/.cargo/env",
+            "cargo install --force --locked bindgen-cli && mv \$HOME/.cargo/bin/bindgen /usr/bin",
+            "rm -rf \$HOME/.cargo"
         ]
 
         [build.env]
@@ -179,7 +179,7 @@ jobs:
         pre-build = [
             "Set-ExecutionPolicy Bypass -Scope Process -Force",
             "irm https://sh.rustup.rs | iex", # 安装 Rust
-            "\$env:Path += ';\$env:USERPROFILE\\.cargo\\bin'",
+            "\$env:Path += ';\$env:USERPROFILE\\\\.cargo\\\\bin'",
             "cargo install --force --locked bindgen-cli"
         ]
 
