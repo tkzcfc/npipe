@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-# ref https://doc.rust-lang.org/rustc/platform-support/win7-windows-msvc.html
-set -e
-XWIN=$(pwd)/winsdk
-lld-link "$@" /libpath:$XWIN/crt/lib/x86_64 /libpath:$XWIN/sdk/lib/um/x86_64 /libpath:$XWIN/sdk/lib/ucrt/x86_64
