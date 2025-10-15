@@ -277,7 +277,7 @@ async fn tunnel_list(
         return result;
     }
 
-    let req = serde_json::from_str::<proto::PlayerListRequest>(&body)?;
+    let req = serde_json::from_str::<proto::TunnelListRequest>(&body)?;
     let tunnel_list = GLOBAL_MANAGER
         .tunnel_manager
         .query(req.page_number, req.page_size)
