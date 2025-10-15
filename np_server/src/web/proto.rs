@@ -61,7 +61,7 @@ pub struct PlayerUpdateReq {
     pub password: String,
 }
 
-/// 玩家列表回复
+/// 玩家列表请求
 #[derive(Serialize, Deserialize)]
 pub struct TunnelListRequest {
     // 页码  从1开始
