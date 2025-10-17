@@ -142,8 +142,15 @@ impl Outlet {
                             err.to_string(),
                             client_addr
                         );
+
+                        let err_info = if is_tcp {
+                            format!("target=tcp://{}, reason={}", addr, err.to_string())
+                        } else {
+                            format!("target=udp://{}, reason={}", addr, err.to_string())
+                        };
+
                         let _ = output
-                            .send(ProxyMessage::O2iConnect(session_id, false, err.to_string()))
+                            .send(ProxyMessage::O2iConnect(session_id, false, err_info))
                             .await;
                     } else {
                         info!(
