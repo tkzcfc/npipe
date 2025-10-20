@@ -6,11 +6,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
 default = ["full"]
+full = ["tcp", "kcp", "ws", "quic"]
 tcp = ["socket2"]
 kcp = ["tokio_kcp"]
 ws = ["tokio-tungstenite", "np_base/ws"]
 quic = ["s2n-quic"]
-full = ["tcp", "kcp", "ws", "quic"]
 
 [dependencies]
 np_base = { path = "../np_base", default-features = false, features = []  }

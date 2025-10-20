@@ -7,10 +7,10 @@ edition = "2021"
 
 [features]
 default = ["full"]
+full = ["kcp", "ws", "quic"]
 kcp = ["np_base/kcp", "tokio_kcp"]
 ws = ["np_base/ws"]
 quic = ["np_base/quic"]
-full = ["kcp", "ws", "quic"]
 
 [dependencies]
 np_base = { path = "../np_base", default-features = false, features = []  }
