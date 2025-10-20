@@ -2028,6 +2028,7 @@ dependencies = [
  "np_proto",
  "once_cell",
  "s2n-quic",
+ "s2n-quic-rustls",
  "socket2 0.6.1",
  "tokio",
  "tokio-rustls",

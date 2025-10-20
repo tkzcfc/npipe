@@ -83,7 +83,7 @@ async fn run_ws_server(addr: String) -> anyhow::Result<()> {
 
 #[cfg(feature = "quic")]
 async fn run_quic_server(addr: String) -> anyhow::Result<()> {
-    info!("Websocket Server listening: {}", addr);
+    info!("QUIC Server listening: {}", addr);
     let mut builder =
         np_base::net::quic_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
             Box::new(Peer::new())
