@@ -4,8 +4,6 @@ use crate::orm_entity::user;
 use crate::player::{Player, PlayerId};
 use crate::utils::str::{is_valid_password, is_valid_username};
 use chrono::Utc;
-use rand::prelude::StdRng;
-use rand::{Rng, SeedableRng};
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter};
 use std::collections::HashMap;
@@ -130,7 +128,6 @@ impl PlayerManager {
             return Ok((-2, "user already exists".into()));
         }
 
-        let mut rng = StdRng::from_entropy();
         let mut count = 0;
         loop {
             count += 1;
@@ -140,7 +137,7 @@ impl PlayerManager {
             }
 
             // 随机新的玩家id
-            let id: u32 = rng.gen_range(10000000..99999999);
+            let id: u32 = rand::random_range(10000000..99999999);
             if self.contain(id).await {
                 continue;
             }

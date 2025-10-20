@@ -5,6 +5,7 @@ use byteorder::ByteOrder;
 use bytes::BytesMut;
 use http::Uri;
 use log::{debug, error, info};
+#[cfg(feature = "ws")]
 use np_base::net::ws_async_io::WebSocketAsyncIo;
 use np_base::proxy::inlet::{Inlet, InletDataEx, InletProxyType};
 use np_base::proxy::outlet::Outlet;
@@ -15,16 +16,22 @@ use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size
 use np_proto::server_client::ModifyTunnelNtf;
 use np_proto::utils::message_bridge;
 use np_proto::{generic, message_map};
+#[cfg(feature = "quic")]
+use s2n_quic::{client::Connect, Client as QUICClient};
+#[cfg(feature = "tcp")]
 use socket2::{SockRef, TcpKeepalive};
 use std::collections::HashMap;
+#[cfg(feature = "ws")]
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
+#[cfg(feature = "tcp")]
 use tokio::net::TcpStream;
 use tokio::select;
 use tokio::sync::{Mutex, RwLock};
 use tokio::time::{sleep, timeout, Instant};
+#[cfg(feature = "kcp")]
 use tokio_kcp::{KcpConfig, KcpNoDelayConfig, KcpStream};
 use tokio_rustls::rustls::pki_types::pem::PemObject;
 use tokio_rustls::rustls::pki_types::{CertificateDer, ServerName};
@@ -46,7 +53,7 @@ where
     inlets: Arc<RwLock<HashMap<u32, Inlet>>>,
     tunnels: HashMap<u32, Tunnel>,
 }
-
+#[cfg(feature = "tcp")]
 async fn connect_with_tcp(request: &Uri) -> anyhow::Result<TcpStream> {
     let host = request
         .host()
@@ -61,6 +68,7 @@ async fn connect_with_tcp(request: &Uri) -> anyhow::Result<TcpStream> {
     Ok(stream)
 }
 
+#[cfg(feature = "kcp")]
 async fn connect_with_kcp(request: &Uri) -> anyhow::Result<KcpStream> {
     let host = request
         .host()
@@ -99,6 +107,44 @@ async fn connect_with_kcp(request: &Uri) -> anyhow::Result<KcpStream> {
     } else {
         Err(anyhow!("could not resolve to any address"))
     }
+}
+
+#[cfg(feature = "quic")]
+async fn connect_with_quic(
+    request: &Uri,
+    server_name: &str,
+    certificate_file: &str,
+) -> anyhow::Result<s2n_quic::stream::BidirectionalStream> {
+    let host = request
+        .host()
+        .ok_or_else(|| anyhow!("Invalid URI: missing host"))?;
+    let port = request.port_u16().unwrap_or(4433); // 默认端口为4433
+    let addr = format!("{}:{}", host, port);
+    let addr: std::net::SocketAddr = addr.parse()?;
+
+    let connect = if server_name.is_empty() {
+        Connect::new(addr)
+    } else {
+        Connect::new(addr).with_server_name(server_name)
+    };
+
+    let client = if certificate_file.is_empty() {
+        QUICClient::builder().with_io("0.0.0.0:0")?.start()?
+    } else {
+        QUICClient::builder()
+            .with_tls(std::path::Path::new(certificate_file))?
+            .with_io("0.0.0.0:0")?
+            .start()?
+    };
+
+    let mut connection = client.connect(connect).await?;
+
+    // ensure the connection doesn't time out with inactivity
+    connection.keep_alive(true)?;
+
+    // open a new stream and split the receiving and sending sides
+    let stream = connection.open_bidirectional_stream().await?;
+    Ok(stream)
 }
 
 pub async fn run(common_args: &CommonArgs, request: Uri) -> anyhow::Result<()> {
@@ -140,6 +186,7 @@ pub async fn run(common_args: &CommonArgs, request: Uri) -> anyhow::Result<()> {
         };
 
         match request.scheme_str() {
+            #[cfg(feature = "tcp")]
             Some("tcp") => {
                 info!("Connecting to server {} with TCP&TLS", request);
                 let stream = match timeout(
@@ -156,6 +203,7 @@ pub async fn run(common_args: &CommonArgs, request: Uri) -> anyhow::Result<()> {
 
                 run_client(common_args, stream).await
             }
+            #[cfg(feature = "kcp")]
             Some("kcp") => {
                 info!("Connecting to server {} with KCP&TLS", request);
                 let kcp_stream = connect_with_kcp(&request).await?;
@@ -173,6 +221,7 @@ pub async fn run(common_args: &CommonArgs, request: Uri) -> anyhow::Result<()> {
 
                 run_client(common_args, stream).await
             }
+            #[cfg(feature = "ws")]
             Some("ws") => {
                 let request = Uri::from_str(&request.to_string().replace("ws://", "wss://"))?;
                 info!("Connecting to server {} with WSS", request);
@@ -186,22 +235,41 @@ pub async fn run(common_args: &CommonArgs, request: Uri) -> anyhow::Result<()> {
                 .await?;
                 run_client(common_args, WebSocketAsyncIo::new(stream)).await
             }
+            #[cfg(feature = "quic")]
+            Some("quic") => {
+                info!("Connecting to server {} with QUIC", request);
+                let stream =
+                    connect_with_quic(&request, &common_args.tls_server_name, &common_args.ca_cert)
+                        .await?;
+                run_client(common_args, stream).await
+            }
             _ => Err(anyhow!("Unsupported URL scheme: {}", request)),
         }
     } else {
         match request.scheme_str() {
+            #[cfg(feature = "tcp")]
             Some("tcp") => {
                 info!("Connecting to server {} with TCP", request);
                 run_client(common_args, connect_with_tcp(&request).await?).await
             }
+            #[cfg(feature = "kcp")]
             Some("kcp") => {
                 info!("Connecting to server {} with KCP", request);
                 run_client(common_args, connect_with_kcp(&request).await?).await
             }
+            #[cfg(feature = "ws")]
             Some("ws") => {
                 info!("Connecting to server {} with WS", request);
                 let (stream, _) = tokio_tungstenite::connect_async(request).await?;
                 run_client(common_args, WebSocketAsyncIo::new(stream)).await
+            }
+            #[cfg(feature = "quic")]
+            Some("quic") => {
+                info!("Connecting to server {} with QUIC", request);
+                let stream =
+                    connect_with_quic(&request, &common_args.tls_server_name, &common_args.ca_cert)
+                        .await?;
+                run_client(common_args, stream).await
             }
             _ => Err(anyhow!("Unsupported URL scheme: {}", request)),
         }

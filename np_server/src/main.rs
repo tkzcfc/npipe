@@ -11,15 +11,11 @@ use crate::peer::Peer;
 use anyhow::anyhow;
 use http::Uri;
 use log::{error, info};
-use np_base::net::kcp_server;
 use np_base::net::session_delegate::SessionDelegate;
-use np_base::net::{tcp_server, ws_server};
 use once_cell::sync::Lazy;
 use std::str::FromStr;
-use std::time::Duration;
 use tokio::signal;
 use tokio::task::JoinSet;
-use tokio_kcp::{KcpConfig, KcpNoDelayConfig};
 
 fn uri_to_socket_addr(uri: &Uri) -> anyhow::Result<String> {
     let host = uri
@@ -33,9 +29,10 @@ fn uri_to_socket_addr(uri: &Uri) -> anyhow::Result<String> {
 
 async fn run_tcp_server(addr: String) -> anyhow::Result<()> {
     info!("TCP Server listening: {}", addr);
-    let mut builder = tcp_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
-        Box::new(Peer::new())
-    }));
+    let mut builder =
+        np_base::net::tcp_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
+            Box::new(Peer::new())
+        }));
 
     if GLOBAL_CONFIG.enable_tls {
         builder = builder.set_tls_configuration(&GLOBAL_CONFIG.tls_cert, &GLOBAL_CONFIG.tls_key);
@@ -44,21 +41,23 @@ async fn run_tcp_server(addr: String) -> anyhow::Result<()> {
     builder.build(addr, signal::ctrl_c()).await
 }
 
+#[cfg(feature = "kcp")]
 async fn run_kcp_server(addr: String) -> anyhow::Result<()> {
     info!("KCP Server listening: {}", addr);
-    let mut builder = kcp_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
-        Box::new(Peer::new())
-    }))
-    .set_kcp_config(KcpConfig {
-        mtu: 1400,
-        nodelay: KcpNoDelayConfig::fastest(),
-        wnd_size: (1024, 1024),
-        session_expire: Some(Duration::from_secs(15)),
-        flush_write: false,
-        flush_acks_input: false,
-        stream: true,
-        allow_recv_empty_packet: false,
-    });
+    let mut builder =
+        np_base::net::kcp_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
+            Box::new(Peer::new())
+        }))
+        .set_kcp_config(tokio_kcp::KcpConfig {
+            mtu: 1400,
+            nodelay: tokio_kcp::KcpNoDelayConfig::fastest(),
+            wnd_size: (1024, 1024),
+            session_expire: Some(std::time::Duration::from_secs(15)),
+            flush_write: false,
+            flush_acks_input: false,
+            stream: true,
+            allow_recv_empty_packet: false,
+        });
 
     if GLOBAL_CONFIG.enable_tls {
         builder = builder.set_tls_configuration(&GLOBAL_CONFIG.tls_cert, &GLOBAL_CONFIG.tls_key);
@@ -67,17 +66,34 @@ async fn run_kcp_server(addr: String) -> anyhow::Result<()> {
     builder.build(addr, signal::ctrl_c()).await
 }
 
+#[cfg(feature = "ws")]
 async fn run_ws_server(addr: String) -> anyhow::Result<()> {
     info!("Websocket Server listening: {}", addr);
-    let mut builder = ws_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
-        Box::new(Peer::new())
-    }));
+    let mut builder =
+        np_base::net::ws_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
+            Box::new(Peer::new())
+        }));
 
     if GLOBAL_CONFIG.enable_tls {
         builder = builder.set_tls_configuration(&GLOBAL_CONFIG.tls_cert, &GLOBAL_CONFIG.tls_key);
     }
 
     builder.build(addr, signal::ctrl_c()).await
+}
+
+#[cfg(feature = "quic")]
+async fn run_quic_server(addr: String) -> anyhow::Result<()> {
+    info!("Websocket Server listening: {}", addr);
+    let mut builder =
+        np_base::net::quic_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
+            Box::new(Peer::new())
+        }));
+
+    if GLOBAL_CONFIG.enable_tls {
+        builder = builder.set_tls_configuration(&GLOBAL_CONFIG.tls_cert, &GLOBAL_CONFIG.tls_key);
+    }
+
+    builder.build(&addr, signal::ctrl_c()).await
 }
 
 #[tokio::main]
@@ -115,11 +131,17 @@ pub async fn main() -> anyhow::Result<()> {
             Some("tcp") => {
                 set.spawn(async move { run_tcp_server(uri_to_socket_addr(&request)?).await });
             }
+            #[cfg(feature = "kcp")]
             Some("kcp") => {
                 set.spawn(async move { run_kcp_server(uri_to_socket_addr(&request)?).await });
             }
+            #[cfg(feature = "ws")]
             Some("ws") => {
                 set.spawn(async move { run_ws_server(uri_to_socket_addr(&request)?).await });
+            }
+            #[cfg(feature = "quic")]
+            Some("quic") => {
+                set.spawn(async move { run_quic_server(uri_to_socket_addr(&request)?).await });
             }
             _ => error!("Unsupported URL scheme: {}", request),
         });
