@@ -165,6 +165,7 @@ jobs:
 
         [build.env]
         passthrough = [
+            "BIN_VERSION",
             "AWS_LC_SYS_CMAKE_BUILDER=1"
         ]
         EOF
@@ -185,6 +186,7 @@ jobs:
 
         [build.env]
         passthrough = [
+            "BIN_VERSION",
             "AWS_LC_SYS_CMAKE_BUILDER=1"
         ]
         EOF
@@ -224,6 +226,8 @@ jobs:
       run: |
         $CARGO build --bin np_client $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
         $CARGO build --bin np_server $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
+      env:
+        BIN_VERSION: ${{ env.BIN_VERSION }}
       
     - name: Setup archive
       shell: bash
