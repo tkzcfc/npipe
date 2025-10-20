@@ -124,7 +124,7 @@ Options:
 ```json
 {
 	"database_url": "sqlite://data.db?mode=rwc",
-	"listen_addr": "tcp://0.0.0.0:8118,kcp://0.0.0.0:8118,ws://0.0.0.0:8119",
+	"listen_addr": "tcp://0.0.0.0:8118,kcp://0.0.0.0:8118,ws://0.0.0.0:8119,quic://0.0.0.0:8119",
 	"illegal_traffic_forward": "",
 	"enable_tls": false,
 	"tls_cert": "./cert.pem",
@@ -143,7 +143,7 @@ Options:
 | Configuration key       | Description                                                  | Example                                                      |
 | ----------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | database_url            | database address                                             | sqlite://data.db?mode=rwc<br> mysql://username:password@server:port/dbname, |
-| listen_addr             | Server listening address(Multiple addresses should be separated by commas) | tcp://0.0.0.0:8118,kcp://0.0.0.0:8118,ws://0.0.0.0:8119      |
+| listen_addr             | Server listening address(Multiple addresses should be separated by commas) | tcp://0.0.0.0:8118,kcp://0.0.0.0:8118,ws://0.0.0.0:8119,quic://0.0.0.0:8119      |
 | enable_tls              | Enable TLS connection                                        | true/false                                                   |
 | tls_cert                | Cert file path                                               | ./cert.pem                                                   |
 | tls_key                 | Key file path                                                | ./server.key.pem                                             |
