@@ -4,7 +4,7 @@ use once_cell::sync::Lazy;
 pub static GLOBAL_OPTS: Lazy<Opts> = Lazy::new(Opts::parse);
 
 #[derive(Parser)]
-#[command(author, version = option_env!("BIN_VERSION").unwrap_or("dev"), about, long_about = None)]
+#[command(author = "https://github.com/tkzcfc/npipe", version = env!("CARGO_PKG_VERSION"), about, long_about = None)]
 pub struct Opts {
     /// Print backtracking information
     #[arg(short, long, default_value_t = false, action = clap::ArgAction::Set)]

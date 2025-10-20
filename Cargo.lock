@@ -2015,7 +2015,7 @@ dependencies = [
 
 [[package]]
 name = "np_client"
-version = "0.1.0"
+version = "1.0.7"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -2054,7 +2054,7 @@ dependencies = [
 
 [[package]]
 name = "np_server"
-version = "0.1.0"
+version = "1.0.7"
 dependencies = [
  "actix-cors",
  "actix-files",
@@ -2838,6 +2838,7 @@ dependencies = [
  "s2n-quic-core",
  "s2n-quic-crypto",
  "s2n-quic-platform",
+ "s2n-quic-rustls",
  "s2n-quic-tls-default",
  "s2n-quic-transport",
  "tokio",
