@@ -4,7 +4,6 @@ members = [
     "np_base",
     "np_proto",
     "np_server",
-    "np_test",
     "np_client",
 ]
 resolver = "2"
