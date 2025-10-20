@@ -10,6 +10,11 @@ Features:
 * Local and remote SOCKS server
 * Local and remote HTTP Proxy server
 * TLS connection with the strongest cipher-suites
+* **Multiple transport protocols**:
+  - TCP
+  - KCP (low-latency)
+  - WebSocket (bypass restrictions)
+  - QUIC (HTTP/3, fast handshake)
 
 ## How to use
 
