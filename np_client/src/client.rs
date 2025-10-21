@@ -115,9 +115,10 @@ async fn connect_with_kcp(request: &Uri) -> anyhow::Result<KcpStream> {
 async fn connect_with_quic(
     request: &Uri,
     server_name: ServerName<'_>,
-    tls_config: Arc<ClientConfig>,
+    mut config: ClientConfig,
 ) -> anyhow::Result<s2n_quic::stream::BidirectionalStream> {
-    let tls_provider: s2n_quic_rustls::Client = tls_config.into();
+    config.alpn_protocols = vec![b"h3".to_vec()];
+    let tls_provider = s2n_quic_rustls::Client::from(config);
 
     let client = QUICClient::builder()
         .with_io("0.0.0.0:0")?
@@ -180,9 +181,6 @@ pub async fn run(common_args: &CommonArgs, request: Uri) -> anyhow::Result<()> {
             ));
         }
 
-        let config = Arc::new(config);
-
-        let connector = TlsConnector::from(config.clone());
         let domain = if common_args.tls_server_name.is_empty() {
             let host = request
                 .host()
@@ -196,6 +194,8 @@ pub async fn run(common_args: &CommonArgs, request: Uri) -> anyhow::Result<()> {
             #[cfg(feature = "tcp")]
             Some("tcp") => {
                 info!("Connecting to server {} with TCP&TLS", request);
+                let connector = TlsConnector::from(Arc::new(config));
+
                 let stream = match timeout(
                     Duration::from_secs(TIMEOUT_TLS),
                     connector.connect(domain, connect_with_tcp(&request).await?),
@@ -214,6 +214,8 @@ pub async fn run(common_args: &CommonArgs, request: Uri) -> anyhow::Result<()> {
             Some("kcp") => {
                 info!("Connecting to server {} with KCP&TLS", request);
                 let kcp_stream = connect_with_kcp(&request).await?;
+                let connector = TlsConnector::from(Arc::new(config));
+
                 let stream = match timeout(
                     Duration::from_secs(TIMEOUT_TLS),
                     connector.connect(domain, kcp_stream),
@@ -232,7 +234,7 @@ pub async fn run(common_args: &CommonArgs, request: Uri) -> anyhow::Result<()> {
             Some("ws") => {
                 let request = Uri::from_str(&request.to_string().replace("ws://", "wss://"))?;
                 info!("Connecting to server {} with WSS", request);
-                let connector = tokio_tungstenite::Connector::Rustls(config);
+                let connector = tokio_tungstenite::Connector::Rustls(Arc::new(config));
                 let (stream, _) = tokio_tungstenite::connect_async_tls_with_config(
                     request,
                     None,
