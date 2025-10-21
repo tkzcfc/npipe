@@ -84,6 +84,15 @@ jobs:
       with:
         fetch-depth: 1
 
+    - name: Set the version
+      shell: bash
+      if: env.BIN_VERSION == ''
+      run: |
+        echo "BIN_VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+        # 带v的版本号
+        # echo "BIN_VERSION=$GITHUB_REF_NAME" >> $GITHUB_ENV
+        echo "version is: ${{ env.BIN_VERSION }}"
+        
     # nightly-2023-12-28 = nightly1.75.0
     - name: Install Rust
       if: matrix.target == 'x86_64-win7-windows-msvc'
