@@ -29,9 +29,13 @@ impl Server {
                     Path::new(&tls_config.key),
                 ))?
                 .with_io(io)?
+                .with_congestion_controller(s2n_quic_core::recovery::bbr::Endpoint::default())?
                 .start()?
         } else {
-            QUICServer::builder().with_io(io)?.start()?
+            QUICServer::builder()
+                .with_io(io)?
+                .with_congestion_controller(s2n_quic_core::recovery::bbr::Endpoint::default())?
+                .start()?
         };
 
         let on_create_session_delegate_callback = Arc::new(on_create_session_delegate_callback);

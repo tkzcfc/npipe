@@ -58,7 +58,7 @@ pub async fn run<S>(
     select! {
         err = poll_read(addr, &mut delegate, reader) => {
             if let Err(err) = err {
-                info!("poll read error: {}", err.to_string());
+                info!("poll read error: {}", err);
             }
         }
         _ = poll_write(addr, delegate_receiver, writer) => {}

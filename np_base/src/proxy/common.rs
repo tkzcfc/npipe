@@ -68,7 +68,7 @@ impl SessionCommonInfo {
             is_compressed,
             encryption_method,
             encryption_key,
-            flow_controller: FlowController::new(1024 * 1024 * 1), // 默认最大1MB未处理数据
+            flow_controller: FlowController::new(1024 * 1024), // 默认最大1MB未处理数据
         }
     }
 

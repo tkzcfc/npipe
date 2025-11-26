@@ -42,10 +42,7 @@ impl Server {
                         stream = s;
                     }
                     Err(error) => {
-                        error!(
-                            "Websocket Server on_stream_init error:{}",
-                            error.to_string()
-                        );
+                        error!("Websocket Server on_stream_init error:{}", error);
                         continue;
                     }
                 }

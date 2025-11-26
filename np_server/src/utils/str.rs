@@ -66,11 +66,8 @@ pub fn is_valid_tunnel_endpoint_address(addr: &str) -> bool {
 pub fn get_tunnel_address_port(addr: &str) -> Option<u16> {
     let s: Vec<&str> = addr.split(":").collect();
     if s.len() == 2 {
-        return if let Ok(value) = s[1].parse::<u16>() {
-            Some(value)
-        } else {
-            None
-        };
+        s[1].parse::<u16>().ok()
+    } else {
+        None
     }
-    None
 }

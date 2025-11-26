@@ -118,11 +118,13 @@ async fn connect_with_quic(
     mut config: ClientConfig,
 ) -> anyhow::Result<s2n_quic::stream::BidirectionalStream> {
     config.alpn_protocols = vec![b"h3".to_vec()];
+
     let tls_provider = s2n_quic_rustls::Client::from(config);
 
     let client = QUICClient::builder()
         .with_io("0.0.0.0:0")?
         .with_tls(tls_provider)?
+        .with_congestion_controller(s2n_quic_core::recovery::bbr::Endpoint::default())?
         .start()?;
 
     let host = request
@@ -269,6 +271,10 @@ pub async fn run(common_args: &CommonArgs, request: Uri) -> anyhow::Result<()> {
                 info!("Connecting to server {} with WS", request);
                 let (stream, _) = tokio_tungstenite::connect_async(request).await?;
                 run_client(common_args, WebSocketAsyncIo::new(stream)).await
+            }
+            #[cfg(feature = "quic")]
+            Some("quic") => {
+                Err(anyhow!("QUIC protocol requires Transport Layer Security (TLS) to be enabled for secure communication."))
             }
             _ => Err(anyhow!("Unsupported URL scheme: {}", request)),
         }

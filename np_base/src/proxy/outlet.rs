@@ -97,7 +97,7 @@ impl Outlet {
     async fn async_receive_input(&self, mut input: UnboundedReceiver<ProxyMessage>) {
         while let Some(message) = input.recv().await {
             if let Err(err) = self.input_internal(message).await {
-                error!("inlet async_receive_input error: {}", err.to_string());
+                error!("inlet async_receive_input error: {}", err);
             }
         }
     }
@@ -138,15 +138,13 @@ impl Outlet {
                     {
                         error!(
                             "Failed to connect to {}, error: {}, remote client addr {}",
-                            addr,
-                            err.to_string(),
-                            client_addr
+                            addr, err, client_addr
                         );
 
                         let err_info = if is_tcp {
-                            format!("target=tcp://{}, reason={}", addr, err.to_string())
+                            format!("target=tcp://{}, reason={}", addr, err)
                         } else {
-                            format!("target=udp://{}, reason={}", addr, err.to_string())
+                            format!("target=udp://{}, reason={}", addr, err)
                         };
 
                         let _ = output
@@ -402,7 +400,7 @@ impl SessionDelegate for OutletSession {
             .await
         {
             tokio::time::sleep(Duration::from_secs(5)).await;
-            Err(anyhow!("on_session_start: {}", err.to_string()))
+            Err(anyhow!("on_session_start: {}", err))
         } else {
             Ok(())
         }

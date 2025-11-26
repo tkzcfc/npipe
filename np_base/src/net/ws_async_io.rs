@@ -29,7 +29,7 @@ where
 
         if data.len() <= remaining {
             // 整个消息可直接写入
-            buf.put_slice(&data);
+            buf.put_slice(data);
         } else {
             // 拆分消息：部分写入，剩余缓存
             buf.put_slice(&data[..remaining]);
@@ -79,17 +79,11 @@ where
                                     if let Err(e) = Pin::new(&mut self.ws_stream)
                                         .start_send(Message::Pong(payload))
                                     {
-                                        return Poll::Ready(Err(io::Error::new(
-                                            io::ErrorKind::Other,
-                                            e,
-                                        )));
+                                        return Poll::Ready(Err(io::Error::other(e)));
                                     }
                                 }
                                 Poll::Ready(Err(e)) => {
-                                    return Poll::Ready(Err(io::Error::new(
-                                        io::ErrorKind::Other,
-                                        e,
-                                    )));
+                                    return Poll::Ready(Err(io::Error::other(e)));
                                 }
                                 Poll::Pending => {
                                     // 如果没有发送就算忽略本次Ping了,也可以将本次Ping请求缓存下来,那样太复杂了
@@ -110,7 +104,7 @@ where
                     }
                 }
                 Poll::Ready(Some(Err(e))) => {
-                    return Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e.to_string())));
+                    return Poll::Ready(Err(io::Error::other(e.to_string())));
                 }
                 Poll::Ready(None) => {
                     buf.clear();
@@ -142,23 +136,23 @@ where
             Ok(()) => {
                 let message = Message::Binary(Bytes::copy_from_slice(buf));
                 if let Err(e) = Pin::new(&mut self.ws_stream).start_send(message) {
-                    return Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e)));
+                    return Poll::Ready(Err(io::Error::other(e)));
                 }
                 Poll::Ready(Ok(buf.len()))
             }
-            Err(e) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+            Err(e) => Poll::Ready(Err(io::Error::other(e))),
         }
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         Pin::new(&mut self.ws_stream)
             .poll_flush(cx)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
+            .map_err(|e| io::Error::other(e.to_string()))
     }
 
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         Pin::new(&mut self.ws_stream)
             .poll_close(cx)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
+            .map_err(|e| io::Error::other(e.to_string()))
     }
 }

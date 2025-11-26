@@ -215,7 +215,7 @@ impl Inlet {
     ) {
         while let Some(message) = input.recv().await {
             if let Err(err) = Self::input_internal(message, &session_info_map).await {
-                error!("inlet async_receive_input error: {}", err.to_string());
+                error!("inlet async_receive_input error: {}", err);
             }
         }
     }
