@@ -47,20 +47,20 @@ impl Player {
 
     #[inline]
     #[allow(dead_code)]
-    pub async fn send_response(&self, serial: i32, message: &MessageType) -> anyhow::Result<()> {
+    pub fn send_response(&self, serial: i32, message: &MessageType) -> anyhow::Result<()> {
         assert!(serial < 0);
-        package_and_send_message(&self.tx, -serial, message, true).await
+        package_and_send_message(&self.tx, -serial, message, true)
     }
 
     // #[inline]
-    // pub async fn send_request(&self, _message: &MessageType) -> anyhow::Result<MessageType> {
+    // pub fn send_request(&self, _message: &MessageType) -> anyhow::Result<MessageType> {
     //     todo!();
     // }
 
     #[inline]
     #[allow(dead_code)]
-    pub async fn send_push(&self, message: &MessageType) -> anyhow::Result<()> {
-        package_and_send_message(&self.tx, 0, message, true).await
+    pub fn send_push(&self, message: &MessageType) -> anyhow::Result<()> {
+        package_and_send_message(&self.tx, 0, message, true)
     }
 
     #[inline]
@@ -88,11 +88,7 @@ impl Player {
     }
 
     // 玩家上线
-    pub async fn on_connect_session(
-        &mut self,
-        session_id: u32,
-        tx: UnboundedSender<WriterMessage>,
-    ) {
+    pub fn on_connect_session(&mut self, session_id: u32, tx: UnboundedSender<WriterMessage>) {
         trace!("on_connect_session, player_id: {}", self.player_id);
         assert!(!self.is_online());
         self.session_id = session_id;
@@ -101,15 +97,14 @@ impl Player {
 
     // 玩家离线
     #[allow(dead_code)]
-    pub async fn on_disconnect_session(&mut self) {
+    pub fn on_disconnect_session(&mut self) {
         trace!("on_disconnect_session, player_id: {}", self.player_id);
         self.reset_session_info();
     }
 
     // 玩家被顶号，需要对旧的会话发送一些消息
-    pub async fn on_terminate_old_session(&mut self) {
+    pub fn on_terminate_old_session(&mut self) {
         trace!("on_terminate_old_session, player_id: {}", self.player_id);
-        //
         self.close_session();
 
         // 重置会话信息

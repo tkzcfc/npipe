@@ -1,51 +1,105 @@
 use crate::global::manager::GLOBAL_MANAGER;
 use crate::player::PlayerId;
+use dashmap::DashMap;
 use log::{debug, error};
 use np_base::proxy::inlet::{Inlet, InletDataEx, InletProxyType};
 use np_base::proxy::outlet::Outlet;
 use np_base::proxy::{OutputFuncType, ProxyMessage};
 use np_proto::message_map::MessageType;
 use np_proto::utils::message_bridge;
-use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 pub struct ProxyManager {
-    outlets: Arc<RwLock<HashMap<u32, Arc<Outlet>>>>,
-    inlets: Arc<RwLock<HashMap<u32, Inlet>>>,
+    /// DashMap 替代 Arc<RwLock<HashMap<u32, ...>>>:
+    /// - 每条代理消息路由时只需访问特定 tunnel 的 inlet/outlet
+    /// - 原来的全局 RwLock 导致所有消息路由串行化
+    /// - DashMap 分片锁，不同 tunnel_id 并发访问无竞争
+    outlets: Arc<DashMap<u32, Arc<Outlet>>>,
+    inlets: Arc<DashMap<u32, Inlet>>,
 }
 
 impl ProxyManager {
     pub fn new() -> Self {
         Self {
-            outlets: Arc::new(RwLock::new(HashMap::new())),
-            inlets: Arc::new(RwLock::new(HashMap::new())),
+            outlets: Arc::new(DashMap::new()),
+            inlets: Arc::new(DashMap::new()),
         }
     }
     pub async fn sync_tunnels(&self) {
-        let tunnels = GLOBAL_MANAGER.tunnel_manager.tunnels.read().await;
+        // ── 收集阶段：持有读锁，全程同步，尽快释放 ───────────────────────────────
+        let (outlet_removes, inlet_removes, outlets_to_add, inlets_to_add) = {
+            let tunnels = GLOBAL_MANAGER.tunnel_manager.tunnels.read().await;
 
-        // 收集无效的出口
-        let mut keys_to_remove: Vec<_> = self
-            .outlets
-            .read()
-            .await
-            .iter()
-            .filter(|(id, outlet)| {
-                let retain = tunnels.iter().any(|tunnel| {
-                    **id == tunnel.id
-                        && tunnel.enabled == 1
-                        && tunnel.sender == 0
-                        && &tunnel.outlet_description() == outlet.description()
-                });
-                !retain
-            })
-            .map(|(key, _)| *key)
-            .collect();
+            // 需要删除的出口 id
+            let outlet_removes: Vec<u32> = self
+                .outlets
+                .iter()
+                .filter(|entry| {
+                    let id = *entry.key();
+                    let outlet = entry.value();
+                    !tunnels.iter().any(|tunnel| {
+                        id == tunnel.id
+                            && tunnel.enabled == 1
+                            && tunnel.sender == 0
+                            && &tunnel.outlet_description() == outlet.description()
+                    })
+                })
+                .map(|e| *e.key())
+                .collect();
 
-        // 删除无效的出口
-        for key in keys_to_remove {
-            if let Some(outlet) = self.outlets.write().await.remove(&key) {
+            // 需要删除的入口 id
+            let inlet_removes: Vec<u32> = self
+                .inlets
+                .iter()
+                .filter(|entry| {
+                    let id = *entry.key();
+                    let inlet = entry.value();
+                    !tunnels.iter().any(|tunnel| {
+                        id == tunnel.id
+                            && tunnel.enabled == 1
+                            && tunnel.receiver == 0
+                            && &tunnel.inlet_description() == inlet.description()
+                    })
+                })
+                .map(|e| *e.key())
+                .collect();
+
+            // 需要添加的出口（克隆所需字段，避免锁跨 await）
+            let outlets_to_add: Vec<_> = tunnels
+                .iter()
+                .filter(|t| t.enabled == 1 && t.sender == 0 && !self.outlets.contains_key(&t.id))
+                .map(|t| (t.id, t.receiver, t.sender, t.outlet_description()))
+                .collect();
+
+            // 需要添加的入口（克隆所需字段）
+            let inlets_to_add: Vec<_> = tunnels
+                .iter()
+                .filter(|t| t.enabled == 1 && t.receiver == 0 && !self.inlets.contains_key(&t.id))
+                .map(|t| {
+                    (
+                        t.id,
+                        t.receiver,
+                        t.sender,
+                        t.tunnel_type,
+                        t.source.clone(),
+                        t.endpoint.clone(),
+                        t.is_compressed,
+                        t.encryption_method.clone(),
+                        t.username.clone(),
+                        t.password.clone(),
+                        t.inlet_description(),
+                    )
+                })
+                .collect();
+
+            (outlet_removes, inlet_removes, outlets_to_add, inlets_to_add)
+        }; // ← 读锁在此 drop，后续 async 操作不再持锁
+
+        // ── 执行阶段：不持有任何 tunnels 锁 ─────────────────────────────────────
+
+        // 删除过期出口
+        for key in outlet_removes {
+            if let Some((_, outlet)) = self.outlets.remove(&key) {
                 let description = outlet.description().to_owned();
                 debug!("start deleting the outlet({description})");
                 outlet.stop().await;
@@ -53,27 +107,9 @@ impl ProxyManager {
             }
         }
 
-        // 收集无效的入口
-        keys_to_remove = self
-            .inlets
-            .read()
-            .await
-            .iter()
-            .filter(|(id, inlet)| {
-                let retain = tunnels.iter().any(|tunnel| {
-                    **id == tunnel.id
-                        && tunnel.enabled == 1
-                        && tunnel.receiver == 0
-                        && &tunnel.inlet_description() == inlet.description()
-                });
-                !retain
-            })
-            .map(|(key, _)| *key)
-            .collect();
-
-        // 删除无效入口
-        for key in keys_to_remove {
-            if let Some(mut inlet) = self.inlets.write().await.remove(&key) {
+        // 删除过期入口
+        for key in inlet_removes {
+            if let Some((_, mut inlet)) = self.inlets.remove(&key) {
                 let description = inlet.description().to_owned();
                 debug!("start deleting the inlet({description})");
                 inlet.stop().await;
@@ -81,91 +117,87 @@ impl ProxyManager {
             }
         }
 
-        // 添加代理出口
-        for tunnel in tunnels
-            .iter()
-            .filter(|tunnel| tunnel.enabled == 1 && tunnel.sender == 0)
-        {
-            if !self.outlets.read().await.contains_key(&tunnel.id) {
-                let this_machine = tunnel.receiver == tunnel.sender;
-                let inlets = self.inlets.clone();
-                let tunnel_id = tunnel.id;
-                let player_id = tunnel.receiver;
+        // 添加新出口
+        for (tunnel_id, receiver, sender, outlet_desc) in outlets_to_add {
+            let this_machine = receiver == sender;
+            let inlets = self.inlets.clone();
+            let player_id = receiver;
 
-                let outlet_output: OutputFuncType = Arc::new(move |message: ProxyMessage| {
-                    let inlets = inlets.clone();
-                    Box::pin(async move {
-                        if this_machine {
-                            if let Some(inlet) = inlets.read().await.get(&tunnel_id) {
-                                inlet.input(message).await;
-                            } else {
-                                debug!("unknown inlet({tunnel_id})");
-                            }
+            let outlet_output: OutputFuncType = Arc::new(move |message: ProxyMessage| {
+                let inlets = inlets.clone();
+                Box::pin(async move {
+                    if this_machine {
+                        if let Some(inlet) = inlets.get(&tunnel_id) {
+                            inlet.input(message).await;
                         } else {
-                            Self::send_proxy_message(0, player_id as PlayerId, tunnel_id, message)
-                                .await;
+                            debug!("unknown inlet({tunnel_id})");
                         }
-                    })
-                });
-                debug!("start outlet({})", tunnel.outlet_description());
-                self.outlets.write().await.insert(
-                    tunnel_id,
-                    Outlet::new(outlet_output, tunnel.outlet_description()),
-                );
-            }
+                    } else {
+                        Self::send_proxy_message(0, player_id as PlayerId, tunnel_id, message)
+                            .await;
+                    }
+                })
+            });
+            debug!("start outlet({outlet_desc})");
+            self.outlets
+                .insert(tunnel_id, Outlet::new(outlet_output, outlet_desc));
         }
 
-        // 添加代理入口
-        for tunnel in tunnels
-            .iter()
-            .filter(|tunnel| tunnel.enabled == 1 && tunnel.receiver == 0)
+        // 添加新入口
+        for (
+            tunnel_id,
+            receiver,
+            sender,
+            tunnel_type,
+            source,
+            endpoint,
+            is_compressed,
+            encryption_method,
+            username,
+            password,
+            inlet_desc,
+        ) in inlets_to_add
         {
-            if !self.inlets.read().await.contains_key(&tunnel.id) {
-                let tunnel_id = tunnel.id;
-                let this_machine = tunnel.receiver == tunnel.sender;
-                let outlets = self.outlets.clone();
-                let player_id = tunnel.sender;
+            let this_machine = receiver == sender;
+            let outlets = self.outlets.clone();
+            let player_id = sender;
 
-                let inlet_output: OutputFuncType = Arc::new(move |message: ProxyMessage| {
-                    let outlets = outlets.clone();
-                    Box::pin(async move {
-                        if this_machine {
-                            if let Some(outlet) = outlets.read().await.get(&tunnel_id) {
-                                outlet.input(message).await;
-                            } else {
-                                debug!("unknown outlet({tunnel_id})");
-                            }
+            let inlet_output: OutputFuncType = Arc::new(move |message: ProxyMessage| {
+                let outlets = outlets.clone();
+                Box::pin(async move {
+                    if this_machine {
+                        if let Some(outlet) = outlets.get(&tunnel_id) {
+                            outlet.input(message).await;
                         } else {
-                            Self::send_proxy_message(0, player_id as PlayerId, tunnel_id, message)
-                                .await;
+                            debug!("unknown outlet({tunnel_id})");
                         }
-                    })
-                });
-
-                let inlet_proxy_type = InletProxyType::from_u32(tunnel.tunnel_type);
-                if matches!(inlet_proxy_type, InletProxyType::UNKNOWN) {
-                    error!(
-                        "inlet({}) unknown tunnel type: {}",
-                        tunnel.source, tunnel.tunnel_type
-                    );
-                } else {
-                    let mut inlet = Inlet::new(inlet_output, tunnel.inlet_description());
-                    if let Err(err) = inlet
-                        .start(
-                            inlet_proxy_type,
-                            tunnel.source.clone(),
-                            tunnel.endpoint.clone(),
-                            tunnel.is_compressed == 1,
-                            tunnel.encryption_method.clone(),
-                            InletDataEx::new(tunnel.username.clone(), tunnel.password.clone()),
-                        )
-                        .await
-                    {
-                        error!("inlet({}) start error: {}", tunnel.source, err);
                     } else {
-                        debug!("start inlet({})", inlet.description());
-                        self.inlets.write().await.insert(tunnel.id, inlet);
+                        Self::send_proxy_message(0, player_id as PlayerId, tunnel_id, message)
+                            .await;
                     }
+                })
+            });
+
+            let inlet_proxy_type = InletProxyType::from_u32(tunnel_type);
+            if matches!(inlet_proxy_type, InletProxyType::UNKNOWN) {
+                error!("inlet({source}) unknown tunnel type: {tunnel_type}");
+            } else {
+                let mut inlet = Inlet::new(inlet_output, inlet_desc);
+                if let Err(err) = inlet
+                    .start(
+                        inlet_proxy_type,
+                        source.clone(),
+                        endpoint,
+                        is_compressed == 1,
+                        encryption_method,
+                        InletDataEx::new(username, password),
+                    )
+                    .await
+                {
+                    error!("inlet({source}) start error: {err}");
+                } else {
+                    debug!("start inlet({})", inlet.description());
+                    self.inlets.insert(tunnel_id, inlet);
                 }
             }
         }
@@ -186,12 +218,13 @@ impl ProxyManager {
             return;
         }
 
-        if let Some(player) = GLOBAL_MANAGER.player_manager.get_player(to_player_id).await {
-            let is_online = { player.read().await.is_online() };
-            if is_online {
+        if let Some(player) = GLOBAL_MANAGER.player_manager.get_player(to_player_id) {
+            // 合并为单次读锁：同时检查 is_online 与发送，避免两次 read().await
+            let p = player.read().await;
+            if p.is_online() {
                 let message = message_bridge::proxy_message_2_pb(proxy_message, tunnel_id);
                 if !message.is_none() {
-                    let _ = player.read().await.send_push(&message).await;
+                    let _ = p.send_push(&message);
                 }
                 return;
             }
@@ -238,31 +271,19 @@ impl ProxyManager {
 }
 
 async fn push_message_to_player(player_id: PlayerId, message: &MessageType) {
-    if let Some(player) = GLOBAL_MANAGER.player_manager.get_player(player_id).await {
-        let _ = player.read().await.send_push(message).await;
+    if let Some(player) = GLOBAL_MANAGER.player_manager.get_player(player_id) {
+        let _ = player.read().await.send_push(message);
     }
 }
 
 async fn send_input_to_outlet(tunnel_id: &u32, proxy_message: ProxyMessage) {
-    if let Some(outlet) = GLOBAL_MANAGER
-        .proxy_manager
-        .outlets
-        .read()
-        .await
-        .get(tunnel_id)
-    {
+    if let Some(outlet) = GLOBAL_MANAGER.proxy_manager.outlets.get(tunnel_id) {
         outlet.input(proxy_message).await;
     }
 }
 
 async fn send_input_to_inlet(tunnel_id: &u32, proxy_message: ProxyMessage) {
-    if let Some(inlet) = GLOBAL_MANAGER
-        .proxy_manager
-        .inlets
-        .read()
-        .await
-        .get(tunnel_id)
-    {
+    if let Some(inlet) = GLOBAL_MANAGER.proxy_manager.inlets.get(tunnel_id) {
         inlet.input(proxy_message).await;
     }
 }

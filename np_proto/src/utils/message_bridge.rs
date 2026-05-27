@@ -1,5 +1,6 @@
 use crate::generic;
 use crate::message_map::MessageType;
+use bytes::Bytes;
 use np_base::proxy::ProxyMessage;
 
 pub fn proxy_message_2_pb(proxy_message: ProxyMessage, tunnel_id: u32) -> MessageType {
@@ -23,11 +24,15 @@ pub fn proxy_message_2_pb(proxy_message: ProxyMessage, tunnel_id: u32) -> Messag
             success,
             error_info,
         }),
-        ProxyMessage::I2oSendData(session_id, data) => MessageType::GenericI2oSendData(generic::I2oSendData { tunnel_id, session_id, data }),
+        ProxyMessage::I2oSendData(session_id, data) => MessageType::GenericI2oSendData(generic::I2oSendData {
+            tunnel_id,
+            session_id,
+            data: data.to_vec(),
+        }),
         ProxyMessage::I2oSendToData(session_id, data, target_addr) => MessageType::GenericI2oSendToData(generic::I2oSendToData {
             tunnel_id,
             session_id,
-            data,
+            data: data.to_vec(),
             target_addr,
         }),
         ProxyMessage::O2iSendDataResult(session_id, data_len) => MessageType::GenericO2iSendDataResult(generic::O2iSendDataResult {
@@ -35,11 +40,15 @@ pub fn proxy_message_2_pb(proxy_message: ProxyMessage, tunnel_id: u32) -> Messag
             session_id,
             data_len: data_len as u32,
         }),
-        ProxyMessage::O2iRecvData(session_id, data) => MessageType::GenericO2iRecvData(generic::O2iRecvData { tunnel_id, session_id, data }),
+        ProxyMessage::O2iRecvData(session_id, data) => MessageType::GenericO2iRecvData(generic::O2iRecvData {
+            tunnel_id,
+            session_id,
+            data: data.to_vec(),
+        }),
         ProxyMessage::O2iRecvDataFrom(session_id, data, remote_addr) => MessageType::GenericO2iRecvDataFrom(generic::O2iRecvDataFrom {
             tunnel_id,
             session_id,
-            data,
+            data: data.to_vec(),
             remote_addr,
         }),
         ProxyMessage::I2oRecvDataResult(session_id, data_len) => MessageType::GenericI2oRecvDataResult(generic::I2oRecvDataResult {
@@ -136,13 +145,13 @@ impl From<generic::O2iConnect> for ProxyMessage {
 
 impl From<generic::I2oSendData> for ProxyMessage {
     fn from(msg: generic::I2oSendData) -> Self {
-        ProxyMessage::I2oSendData(msg.session_id, msg.data)
+        ProxyMessage::I2oSendData(msg.session_id, Bytes::from(msg.data))
     }
 }
 
 impl From<generic::I2oSendToData> for ProxyMessage {
     fn from(msg: generic::I2oSendToData) -> Self {
-        ProxyMessage::I2oSendToData(msg.session_id, msg.data, msg.target_addr)
+        ProxyMessage::I2oSendToData(msg.session_id, Bytes::from(msg.data), msg.target_addr)
     }
 }
 
@@ -154,13 +163,13 @@ impl From<generic::O2iSendDataResult> for ProxyMessage {
 
 impl From<generic::O2iRecvData> for ProxyMessage {
     fn from(msg: generic::O2iRecvData) -> Self {
-        ProxyMessage::O2iRecvData(msg.session_id, msg.data)
+        ProxyMessage::O2iRecvData(msg.session_id, Bytes::from(msg.data))
     }
 }
 
 impl From<generic::O2iRecvDataFrom> for ProxyMessage {
     fn from(msg: generic::O2iRecvDataFrom) -> Self {
-        ProxyMessage::O2iRecvDataFrom(msg.session_id, msg.data, msg.remote_addr)
+        ProxyMessage::O2iRecvDataFrom(msg.session_id, Bytes::from(msg.data), msg.remote_addr)
     }
 }
 

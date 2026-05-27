@@ -4,9 +4,9 @@ use crate::orm_entity::user;
 use crate::player::{Player, PlayerId};
 use crate::utils::str::{is_valid_password, is_valid_username};
 use chrono::Utc;
+use dashmap::DashMap;
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter};
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::global::manager::GLOBAL_MANAGER;
@@ -19,43 +19,38 @@ pub struct PlayerDbData {
 }
 
 pub struct PlayerManager {
-    players: RwLock<Vec<Arc<RwLock<Player>>>>,
-    player_map: RwLock<HashMap<PlayerId, Arc<RwLock<Player>>>>,
+    player_map: DashMap<PlayerId, Arc<RwLock<Player>>>,
 }
 
 impl PlayerManager {
     pub(crate) fn new() -> PlayerManager {
         PlayerManager {
-            players: RwLock::new(Vec::new()),
-            player_map: RwLock::new(HashMap::new()),
+            player_map: DashMap::new(),
         }
     }
 
     pub async fn load_all_player(&self) -> anyhow::Result<()> {
         let users = User::find().all(GLOBAL_DB_POOL.get().unwrap()).await?;
-
         for user in users {
-            self.create_player(user.id).await;
+            self.create_player(user.id);
         }
-
         Ok(())
     }
 
-    pub async fn contain(&self, player_id: PlayerId) -> bool {
-        self.player_map.read().await.get(&player_id).is_some()
+    /// 纯 DashMap 查询，无需 async。
+    pub fn contain(&self, player_id: PlayerId) -> bool {
+        self.player_map.contains_key(&player_id)
     }
 
-    pub async fn get_player(&self, player_id: PlayerId) -> Option<Arc<RwLock<Player>>> {
-        self.player_map.read().await.get(&player_id).cloned()
+    /// 纯 DashMap 查询，无需 async。
+    pub fn get_player(&self, player_id: PlayerId) -> Option<Arc<RwLock<Player>>> {
+        self.player_map.get(&player_id).map(|r| r.clone())
     }
 
-    pub async fn create_player(&self, player_id: PlayerId) -> Arc<RwLock<Player>> {
+    /// 纯 DashMap 插入，无需 async。
+    pub fn create_player(&self, player_id: PlayerId) -> Arc<RwLock<Player>> {
         let player = Player::new(player_id);
-        self.players.write().await.push(player.clone());
-        self.player_map
-            .write()
-            .await
-            .insert(player.read().await.get_player_id(), player.clone());
+        self.player_map.insert(player_id, player.clone());
         player
     }
 
@@ -91,16 +86,8 @@ impl PlayerManager {
             rows_affected
         );
 
-        let mut index_to_find: Option<usize> = None;
-        for (index, value) in self.players.read().await.iter().enumerate() {
-            if value.read().await.get_player_id() == player_id {
-                index_to_find = Some(index);
-                break;
-            }
-        }
-
-        if let Some(index) = index_to_find {
-            let player = self.players.write().await.remove(index);
+        // DashMap::remove: O(1)，只锁对应 shard，无需遍历
+        if let Some((_, player)) = self.player_map.remove(&player_id) {
             player.write().await.close_session();
         }
 
@@ -113,12 +100,10 @@ impl PlayerManager {
         username: &String,
         password: &String,
     ) -> anyhow::Result<(i32, String)> {
-        // 参数长度越界检查
         if !is_valid_username(username) || !is_valid_password(password) {
             return Ok((-1, "usernames may not exceed 30 characters, and passwords may not exceed 15 characters.".into()));
         }
 
-        // 执行查询以检查用户名是否存在
         if User::find()
             .filter(user::Column::Username.eq(username))
             .one(GLOBAL_DB_POOL.get().unwrap())
@@ -131,14 +116,12 @@ impl PlayerManager {
         let mut count = 0;
         loop {
             count += 1;
-            // 循环次数过多
             if count > 10000 {
                 return Ok((-3, "too many cycles".into()));
             }
 
-            // 随机新的玩家id
             let id: u32 = rand::random_range(10000000..99999999);
-            if self.contain(id).await {
+            if self.contain(id) {
                 continue;
             }
 
@@ -150,7 +133,7 @@ impl PlayerManager {
             };
 
             let _ = new_user.insert(GLOBAL_DB_POOL.get().unwrap()).await?;
-            self.create_player(id).await;
+            self.create_player(id);
             return Ok((0, "".into()));
         }
     }
@@ -163,7 +146,7 @@ impl PlayerManager {
         anyhow::ensure!(user.is_some(), "can't find user: {}", data.id);
 
         let mut user: user::ActiveModel = user.unwrap().into();
-        user.password = Set(data.username.to_owned());
+        user.username = Set(data.username.to_owned());
         user.password = Set(data.password.to_owned());
 
         let _ = user.update(GLOBAL_DB_POOL.get().unwrap()).await?;

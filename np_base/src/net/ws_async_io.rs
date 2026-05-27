@@ -9,7 +9,8 @@ use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 /// 包装 WebSocketStream，使其实现 `AsyncRead` + `AsyncWrite`
 pub struct WebSocketAsyncIo<S> {
     ws_stream: WebSocketStream<S>,
-    read_buf: Vec<u8>, // 用于缓存未读完的数据
+    /// 缓存未读完的 WebSocket 帧数据（Bytes 是引用计数切片，slice 是 O(1)）
+    read_buf: Bytes,
 }
 
 impl<S> WebSocketAsyncIo<S>
@@ -19,21 +20,20 @@ where
     pub fn new(ws_stream: WebSocketStream<S>) -> Self {
         Self {
             ws_stream,
-            read_buf: Vec::new(),
+            read_buf: Bytes::new(),
         }
     }
 
-    /// 处理数据消息：优先直接写入 buf，剩余部分缓存
-    fn process_data(&mut self, data: &[u8], buf: &mut ReadBuf<'_>) {
+    /// 将 data 尽可能写入 buf，多余部分保存在 read_buf
+    fn process_data(&mut self, data: Bytes, buf: &mut ReadBuf<'_>) {
         let remaining = buf.remaining();
-
         if data.len() <= remaining {
             // 整个消息可直接写入
-            buf.put_slice(data);
+            buf.put_slice(&data);
         } else {
-            // 拆分消息：部分写入，剩余缓存
+            // 部分写入 buf，剩余用 Bytes::slice O(1) 保留
             buf.put_slice(&data[..remaining]);
-            self.read_buf = data[remaining..].to_vec();
+            self.read_buf = data.slice(remaining..);
         }
     }
 }
@@ -49,31 +49,32 @@ where
     ) -> Poll<io::Result<()>> {
         let mut is_read_data_tag = false;
         loop {
-            // 优先从缓存读取残留数据
+            // 优先从缓存读取残留数据（read_buf.slice() 是 O(1)）
             if !self.read_buf.is_empty() {
                 is_read_data_tag = true;
                 let n = std::cmp::min(self.read_buf.len(), buf.remaining());
                 buf.put_slice(&self.read_buf[..n]);
-                self.read_buf.drain(..n);
+                // O(1): slice 不拷贝数据，只移动内部指针
+                self.read_buf = self.read_buf.slice(n..);
             }
             if buf.remaining() == 0 {
-                return Poll::Ready(Ok(())); // 缓冲区已满
+                return Poll::Ready(Ok(()));
             }
 
-            // 使用 `futures::Stream::poll_next` 读取 WebSocket 消息
             match Pin::new(&mut self.ws_stream).poll_next(cx) {
                 Poll::Ready(Some(Ok(msg))) => {
                     match msg {
                         Message::Text(text) => {
-                            self.process_data(text.as_bytes(), buf);
+                            // Utf8Bytes → Bytes: Into<Bytes> 实现是零拷贝（共享同一块内存）
+                            self.process_data(Bytes::from(text), buf);
                             is_read_data_tag = true;
                         }
                         Message::Binary(data) => {
-                            self.process_data(&data, buf);
+                            // tungstenite 0.20+ Binary 已是 Bytes，直接传入无需 to_vec()
+                            self.process_data(data, buf);
                             is_read_data_tag = true;
                         }
                         Message::Ping(payload) => {
-                            // 自动回复Pong,确保Sink就绪后再发送Pong
                             match Pin::new(&mut self.ws_stream).poll_ready(cx) {
                                 Poll::Ready(Ok(())) => {
                                     if let Err(e) = Pin::new(&mut self.ws_stream)
@@ -85,11 +86,7 @@ where
                                 Poll::Ready(Err(e)) => {
                                     return Poll::Ready(Err(io::Error::other(e)));
                                 }
-                                Poll::Pending => {
-                                    // 如果没有发送就算忽略本次Ping了,也可以将本次Ping请求缓存下来,那样太复杂了
-                                    // Sink未就绪，返回Pending
-                                    // return Poll::Pending;
-                                }
+                                Poll::Pending => {}
                             }
                         }
                         Message::Close(_) => {
@@ -98,23 +95,23 @@ where
                                 "WebSocket closed",
                             )));
                         }
-                        Message::Frame(_) | Message::Pong(_) => {
-                            // 丢弃 Pong 消息 和 Frame 消息
-                        }
+                        // 丢弃 Pong 消息 和 Frame 消息
+                        Message::Frame(_) | Message::Pong(_) => {}
                     }
                 }
                 Poll::Ready(Some(Err(e))) => {
                     return Poll::Ready(Err(io::Error::other(e.to_string())));
                 }
                 Poll::Ready(None) => {
-                    buf.clear();
+                    // 流已关闭。若本轮已填入部分数据，先返回这些字节；
+                    // 调用方下次再 poll_read 时会再次得到 0 字节（EOF 信号）。
+                    // 不能 buf.clear()，否则会丢弃本轮已填入的数据。
                     return Poll::Ready(Ok(()));
-                } // EOF
+                }
                 Poll::Pending => {
                     if is_read_data_tag {
                         return Poll::Ready(Ok(()));
                     }
-                    // 如果没有数据可读，返回 Pending
                     return Poll::Pending;
                 }
             }

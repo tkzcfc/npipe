@@ -68,15 +68,13 @@ impl Peer {
         let user = user_result.unwrap();
 
         // 用户登录成功，将会话绑定到Player上
-        if let Some(player) = GLOBAL_MANAGER.player_manager.get_player(user.id).await {
+        if let Some(player) = GLOBAL_MANAGER.player_manager.get_player(user.id) {
             self.player = Some(player.clone());
             let mut player = player.write().await;
             if player.is_online() {
-                player.on_terminate_old_session().await;
+                player.on_terminate_old_session();
             }
-            player
-                .on_connect_session(self.session_id, self.tx.clone().unwrap())
-                .await;
+            player.on_connect_session(self.session_id, self.tx.clone().unwrap());
 
             let tunnel_list = GLOBAL_MANAGER
                 .tunnel_manager

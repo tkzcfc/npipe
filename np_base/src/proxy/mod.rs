@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -10,22 +11,25 @@ pub mod outlet;
 mod proxy_context;
 pub(crate) mod socks5;
 
+/// 代理消息枚举
+///
+/// 数据字段使用 `Bytes` 实现零拷贝：克隆时只增加引用计数，不复制底层数据。
 pub enum ProxyMessage {
     // 向输出端请求发起连接(u32:会话id  u8:通道类型 bool 是否TCP bool:是否压缩数据 String:目标地址 String:加密方式 String:加密密码 String:客户端地址)
     I2oConnect(u32, u8, bool, bool, String, String, String, String),
     // 连接结果(u32:会话id  bool:是否是成功 String:错误信息)
     O2iConnect(u32, bool, String),
-    // 向输出端请求发送数据(u32:会话id  Vec<u8>:数据)
-    I2oSendData(u32, Vec<u8>),
-    // 向输出端请求发送数据(u32:会话id  Vec<u8>:数据 String:udp包目标地址)
-    I2oSendToData(u32, Vec<u8>, String),
-    // 发送结果(u32:会话id, u32:完成长度)
+    // 向输出端请求发送数据(u32:会话id  Bytes:数据)
+    I2oSendData(u32, Bytes),
+    // 向输出端请求发送数据(u32:会话id  Bytes:数据 String:udp包目标地址)
+    I2oSendToData(u32, Bytes, String),
+    // 发送结果(u32:会话id, usize:完成长度)
     O2iSendDataResult(u32, usize),
-    // 输出端收到数据返回给输入端(u32:会话id  Vec<u8>:数据 String:udp包远端地址)
-    O2iRecvDataFrom(u32, Vec<u8>, String),
-    // 输出端收到数据返回给输入端(u32:会话id)
-    O2iRecvData(u32, Vec<u8>),
-    // 接收数据处理结果(u32:会话id, u32:完成长度)
+    // 输出端收到数据返回给输入端(u32:会话id  Bytes:数据 String:udp包远端地址)
+    O2iRecvDataFrom(u32, Bytes, String),
+    // 输出端收到数据返回给输入端(u32:会话id  Bytes:数据)
+    O2iRecvData(u32, Bytes),
+    // 接收数据处理结果(u32:会话id, usize:完成长度)
     I2oRecvDataResult(u32, usize),
     // 断开连接
     I2oDisconnect(u32),
@@ -40,18 +44,19 @@ pub type OutputFuncType =
 #[cfg(test)]
 mod tests {
     use crate::proxy::crypto;
+    use std::borrow::Cow;
 
     #[test]
     fn test_crypto() {
         let raw_str = String::from("xxtea-nostd is an implementation of the XXTEA encryption algorithm designed for no-std environments. The code uses native endianess to interpret the byte slices passed to the library as 4-byte words.");
 
-        // Aes128
+        // Xor
         let method = crypto::get_method("Xor");
         let key = crypto::generate_key(&method);
         println!("key:{:?}", key);
 
         let cipher_text =
-            crypto::encrypt(&method, key.as_slice(), raw_str.as_bytes().to_vec()).unwrap();
+            crypto::encrypt(&method, key.as_slice(), Cow::Borrowed(raw_str.as_bytes())).unwrap();
         println!("cipher_text:{:?}", cipher_text);
 
         let compressed_data = crypto::compress_data(cipher_text.as_slice()).unwrap();
@@ -62,12 +67,8 @@ mod tests {
         );
         let decompressed_data = crypto::decompress_data(compressed_data.as_slice()).unwrap();
 
-        let plain_text = crypto::decrypt(
-            &method,
-            key.as_slice(),
-            decompressed_data.as_slice().to_vec(),
-        )
-        .unwrap();
+        let plain_text =
+            crypto::decrypt(&method, key.as_slice(), Cow::Owned(decompressed_data)).unwrap();
         println!(
             "plain_text len:{} data: {}",
             plain_text.len(),
@@ -80,7 +81,7 @@ mod tests {
         println!("key:{:?}", key);
 
         let cipher_text =
-            crypto::encrypt(&method, key.as_slice(), raw_str.as_bytes().to_vec()).unwrap();
+            crypto::encrypt(&method, key.as_slice(), Cow::Borrowed(raw_str.as_bytes())).unwrap();
         println!("cipher_text:{:?}", cipher_text);
 
         let compressed_data = crypto::compress_data(cipher_text.as_slice()).unwrap();
@@ -91,12 +92,8 @@ mod tests {
         );
         let decompressed_data = crypto::decompress_data(compressed_data.as_slice()).unwrap();
 
-        let plain_text = crypto::decrypt(
-            &method,
-            key.as_slice(),
-            decompressed_data.as_slice().to_vec(),
-        )
-        .unwrap();
+        let plain_text =
+            crypto::decrypt(&method, key.as_slice(), Cow::Owned(decompressed_data)).unwrap();
         println!(
             "plain_text len:{} data: {}",
             plain_text.len(),

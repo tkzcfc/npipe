@@ -12,7 +12,19 @@ resolver = "2"
 [profile.release]
 debug = false # 去除调试信息
 panic = "abort"
-lto = true
+lto = "thin"        # thin LTO: 好的优化同时保持合理编译时间
 codegen-units = 1
-strip = true        # Strip symbols from binary*
-opt-level = "z"  # 最小化二进制文件大小
+strip = true        # Strip symbols from binary
+opt-level = 3       # 最大性能优化 (原来的 "z" 是最小体积，严重损害吞吐量)
+
+# 用于性能分析的 profile (保留调试符号供 flamegraph/perf 使用)
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = false
+lto = false
+
+# 用于基准测试
+[profile.bench]
+inherits = "release"
+debug = false

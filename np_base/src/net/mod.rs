@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
@@ -23,11 +24,17 @@ pub mod ws_server;
 pub type SendMessageFuncType =
     Box<dyn Fn() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
+/// 写入消息枚举
+///
+/// 使用 `Bytes` 而非 `Vec<u8>` 实现零拷贝传递:
+/// - `Bytes::clone()` 是 O(1) 引用计数操作，不复制数据
+/// - `Bytes::from(vec)` 是 O(1) 转移所有权操作
 pub enum WriterMessage {
     Close,
     Flush,
     CloseDelayed(Duration),
-    Send(Vec<u8>, bool),
-    SendTo(Vec<u8>, SocketAddr),
-    SendAndThen(Vec<u8>, SendMessageFuncType),
+    /// (data, flush_immediately)
+    Send(Bytes, bool),
+    SendTo(Bytes, SocketAddr),
+    SendAndThen(Bytes, SendMessageFuncType),
 }

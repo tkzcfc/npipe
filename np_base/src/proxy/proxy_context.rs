@@ -5,6 +5,7 @@ use crate::proxy::ProxyMessage;
 use async_trait::async_trait;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use bytes::Bytes;
 use log::error;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -41,12 +42,11 @@ impl ProxyContextData {
     }
 
     pub fn get_session_id(&self) -> u32 {
-        self.session_id.load(std::sync::atomic::Ordering::SeqCst)
+        self.session_id.load(Ordering::Relaxed)
     }
 
     pub fn set_session_id(&self, session_id: u32) {
-        self.session_id
-            .store(session_id, std::sync::atomic::Ordering::SeqCst);
+        self.session_id.store(session_id, Ordering::Relaxed);
     }
 }
 
@@ -65,7 +65,7 @@ where
     async fn on_recv_peer_data(
         &mut self,
         ctx_data: Arc<ProxyContextData>,
-        data: Vec<u8>,
+        data: Bytes,
     ) -> anyhow::Result<()>;
 
     async fn on_recv_proxy_message(&mut self, _proxy_message: ProxyMessage) -> anyhow::Result<()>;
@@ -104,7 +104,7 @@ impl ProxyContext for UniversalProxy {
                 ctx_data.common_data.is_compressed,
                 ctx_data.output_addr.clone(),
                 ctx_data.common_data.encryption_method.to_string(),
-                BASE64_STANDARD.encode(&ctx_data.common_data.encryption_key),
+                BASE64_STANDARD.encode(ctx_data.common_data.encryption_key.as_slice()),
                 peer_addr.to_string(),
             ))
             .await?;
@@ -116,15 +116,23 @@ impl ProxyContext for UniversalProxy {
     async fn on_recv_peer_data(
         &mut self,
         ctx_data: Arc<ProxyContextData>,
-        mut data: Vec<u8>,
+        data: Bytes,
     ) -> anyhow::Result<()> {
-        data = ctx_data.common_data.encode_data_and_limiting(data).await?;
+        // encode_data_and_limiting 返回 Bytes，直接放入 channel，无额外拷贝
+        let encoded = ctx_data
+            .common_data
+            .encode_data_and_limiting(data) // data: Bytes，无需 to_vec()
+            .await?;
         ctx_data
             .output
-            .send(ProxyMessage::I2oSendData(ctx_data.get_session_id(), data))
+            .send(ProxyMessage::I2oSendData(
+                ctx_data.get_session_id(),
+                encoded,
+            ))
             .await?;
         Ok(())
     }
+
     async fn on_recv_proxy_message(&mut self, proxy_message: ProxyMessage) -> anyhow::Result<()> {
         match proxy_message {
             ProxyMessage::O2iConnect(_session_id, success, error_msg) => {
@@ -138,16 +146,15 @@ impl ProxyContext for UniversalProxy {
                         .send(WriterMessage::Close)?;
                 }
             }
-            ProxyMessage::O2iRecvData(session_id, mut data) => {
+            ProxyMessage::O2iRecvData(session_id, data) => {
                 let data_len = data.len();
-                data = self
+                let decoded = self
                     .ctx_data
                     .as_ref()
                     .unwrap()
                     .common_data
                     .decode_data(data)?;
 
-                // 写入完毕回调
                 let output = self.ctx_data.as_ref().unwrap().output.clone();
                 let callback: SendMessageFuncType = Box::new(move || {
                     let output = output.clone();
@@ -161,7 +168,7 @@ impl ProxyContext for UniversalProxy {
                 self.write_to_peer_tx
                     .as_ref()
                     .unwrap()
-                    .send(WriterMessage::SendAndThen(data, callback))?;
+                    .send(WriterMessage::SendAndThen(decoded, callback))?;
             }
             ProxyMessage::O2iDisconnect(_) => {
                 self.write_to_peer_tx

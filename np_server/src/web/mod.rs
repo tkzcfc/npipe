@@ -170,7 +170,7 @@ async fn player_list(
     let mut players: Vec<proto::PlayerListItem> = Vec::new();
 
     for data in users {
-        let online = if let Some(p) = GLOBAL_MANAGER.player_manager.get_player(data.id).await {
+        let online = if let Some(p) = GLOBAL_MANAGER.player_manager.get_player(data.id) {
             p.read().await.is_online()
         } else {
             false
@@ -278,13 +278,12 @@ async fn tunnel_list(
     }
 
     let req = serde_json::from_str::<proto::TunnelListRequest>(&body)?;
-    let tunnel_list = GLOBAL_MANAGER
-        .tunnel_manager
-        .query(req.page_number, req.page_size)
-        .await;
 
-    // 查询总条数
-    let total_count = GLOBAL_MANAGER.tunnel_manager.tunnels.read().await.len();
+    // 一次读锁同时获取分页数据和总条数，避免两次加锁
+    let (tunnel_list, total_count) = GLOBAL_MANAGER
+        .tunnel_manager
+        .query_with_total(req.page_number, req.page_size)
+        .await;
 
     let mut tunnels: Vec<proto::TunnelListItem> = Vec::new();
 

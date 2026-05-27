@@ -8,16 +8,16 @@ use crate::proxy::socks5::Socks5Context;
 use crate::proxy::{common, OutputFuncType, ProxyMessage};
 use anyhow::anyhow;
 use async_trait::async_trait;
+use bytes::Bytes;
+use dashmap::DashMap;
 use log::{error, trace};
-use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::select;
 use tokio::sync::mpsc::{Sender, UnboundedReceiver, UnboundedSender};
-use tokio::sync::{mpsc, RwLock};
-use tokio::task::yield_now;
+use tokio::sync::{mpsc, Mutex, Notify};
 use tokio_util::sync::CancellationToken;
 
 #[derive(Clone)]
@@ -64,7 +64,11 @@ struct SessionInfo {
     common_info: SessionCommonInfo,
 }
 
-type SessionInfoMap = Arc<RwLock<HashMap<u32, SessionInfo>>>;
+/// 使用 DashMap 替代 Arc<RwLock<HashMap>>:
+/// - DashMap 使用分片锁 (shard-based locking)，并发读写不互斥
+/// - 每次消息路由只需获取对应 shard 的锁，而非全局锁
+/// - 读操作不阻塞其他 shard 的读写
+type SessionInfoMap = Arc<DashMap<u32, SessionInfo>>;
 
 pub struct Inlet {
     is_running: Arc<AtomicBool>,
@@ -72,6 +76,8 @@ pub struct Inlet {
     session_info_map: SessionInfoMap,
     description: String,
     on_output_callback: OutputFuncType,
+    /// stop() 等待服务停止时使用的通知, 替代 yield_now() spin loop
+    stopped_notify: Arc<Notify>,
 }
 
 pub struct InletDataEx {
@@ -89,10 +95,11 @@ impl Inlet {
     pub fn new(on_output_callback: OutputFuncType, description: String) -> Self {
         Self {
             is_running: Arc::new(AtomicBool::new(false)),
-            session_info_map: Arc::new(RwLock::new(HashMap::new())),
+            session_info_map: Arc::new(DashMap::new()),
             input: None,
             description,
             on_output_callback,
+            stopped_notify: Arc::new(Notify::new()),
         }
     }
 
@@ -134,6 +141,7 @@ impl Inlet {
         let on_output_callback = self.on_output_callback.clone();
         let session_info_map = self.session_info_map.clone();
         let is_running = self.is_running.clone();
+        let stopped_notify = self.stopped_notify.clone();
         is_running.store(true, Ordering::Relaxed);
 
         match inlet_proxy_type_cloned {
@@ -159,6 +167,7 @@ impl Inlet {
                     }
 
                     is_running.store(false, Ordering::Relaxed);
+                    stopped_notify.notify_waiters();
                 });
             }
             InletProxyType::UDP => {
@@ -177,6 +186,7 @@ impl Inlet {
                     }
 
                     is_running.store(false, Ordering::Relaxed);
+                    stopped_notify.notify_waiters();
                 });
             }
             InletProxyType::UNKNOWN => {
@@ -199,10 +209,17 @@ impl Inlet {
 
     pub async fn stop(&mut self) {
         self.input.take();
-        while self.running() {
-            yield_now().await;
+        // 必须先订阅再检查 running()，否则存在竞态：
+        // 若先 running() → true，再订阅 notified()，而任务恰好在两者之间执行了
+        // is_running.store(false) + notify_waiters()，则通知对尚未订阅的 Notified 无效，
+        // stop() 会等满 30 秒超时才返回。
+        let notified = self.stopped_notify.notified();
+        if self.running() {
+            tokio::time::timeout(std::time::Duration::from_secs(30), notified)
+                .await
+                .ok();
         }
-        self.session_info_map.write().await.clear();
+        self.session_info_map.clear();
     }
 
     pub fn description(&self) -> &String {
@@ -214,13 +231,13 @@ impl Inlet {
         session_info_map: SessionInfoMap,
     ) {
         while let Some(message) = input.recv().await {
-            if let Err(err) = Self::input_internal(message, &session_info_map).await {
+            if let Err(err) = Self::input_internal(message, &session_info_map) {
                 error!("inlet async_receive_input error: {}", err);
             }
         }
     }
 
-    async fn input_internal(
+    fn input_internal(
         message: ProxyMessage,
         session_info_map: &SessionInfoMap,
     ) -> anyhow::Result<()> {
@@ -229,20 +246,18 @@ impl Inlet {
                 trace!(
                     "O2iConnect: session_id:{session_id}, success:{success}, error_msg:{error_msg}"
                 );
-
-                if let Some(session) = session_info_map.read().await.get(session_id) {
+                if let Some(session) = session_info_map.get(session_id) {
                     session.proxy_message_tx.send(message)?;
                 }
             }
             ProxyMessage::O2iDisconnect(session_id) => {
                 trace!("O2iDisconnect: session_id:{session_id}");
-                if let Some(session) = session_info_map.read().await.get(session_id) {
+                if let Some(session) = session_info_map.get(session_id) {
                     session.proxy_message_tx.send(message)?;
                 }
             }
             ProxyMessage::O2iSendDataResult(session_id, data_len) => {
-                // trace!("O2iSendDataResult: session_id:{session_id}, data_len:{data_len}");
-                if let Some(session) = session_info_map.read().await.get(session_id) {
+                if let Some(session) = session_info_map.get(session_id) {
                     session
                         .common_info
                         .flow_controller
@@ -250,13 +265,12 @@ impl Inlet {
                 }
             }
             ProxyMessage::O2iRecvDataFrom(session_id, _data, _remote_addr) => {
-                if let Some(session) = session_info_map.read().await.get(session_id) {
+                if let Some(session) = session_info_map.get(session_id) {
                     session.proxy_message_tx.send(message)?;
                 }
             }
             ProxyMessage::O2iRecvData(session_id, _data) => {
-                // trace!("O2iRecvData: session_id:{session_id}");
-                if let Some(session) = session_info_map.read().await.get(session_id) {
+                if let Some(session) = session_info_map.get(session_id) {
                     session.proxy_message_tx.send(message)?;
                 }
             }
@@ -271,7 +285,10 @@ impl Inlet {
 
 struct InletSession {
     session_info_map: SessionInfoMap,
-    proxy_ctx: Arc<RwLock<dyn ProxyContext + Send + Sync>>,
+    /// Mutex 替代 RwLock: 两个访问点（poll_read task 和 proxy message task）
+    /// 都持有**写锁**，RwLock 的"读共享"优势在此完全无法体现，反而因读写锁
+    /// 内部状态更复杂而增加开销。Mutex 在 write-only 场景下更高效。
+    proxy_ctx: Arc<Mutex<dyn ProxyContext + Send + Sync>>,
     proxy_ctx_data: Arc<ProxyContextData>,
     proxy_message_recv_task_cancel_token: Option<CancellationToken>,
 }
@@ -286,10 +303,10 @@ impl InletSession {
         output: Sender<ProxyMessage>,
         data_ex: Arc<InletDataEx>,
     ) -> Self {
-        let proxy_ctx: Arc<RwLock<dyn ProxyContext + Send + Sync>> = match inlet_proxy_type {
-            InletProxyType::SOCKS5 => Arc::new(RwLock::new(Socks5Context::new())),
-            InletProxyType::HTTP => Arc::new(RwLock::new(HttpContext::new())),
-            _ => Arc::new(RwLock::new(UniversalProxy::new())),
+        let proxy_ctx: Arc<Mutex<dyn ProxyContext + Send + Sync>> = match inlet_proxy_type {
+            InletProxyType::SOCKS5 => Arc::new(Mutex::new(Socks5Context::new())),
+            InletProxyType::HTTP => Arc::new(Mutex::new(HttpContext::new())),
+            _ => Arc::new(Mutex::new(UniversalProxy::new())),
         };
 
         Self {
@@ -323,30 +340,25 @@ impl SessionDelegate for InletSession {
 
         let token = CancellationToken::new();
         let cloned_token = token.clone();
-
         let context_cloned = self.proxy_ctx.clone();
 
         tokio::spawn(async move {
             loop {
-                // 检查是否取消
                 select! {
-                    _ = cloned_token.cancelled() => {
-                        // println!("Task cancelled, cleaning up...");
-                        break;
-                    }
+                    _ = cloned_token.cancelled() => { break; }
                     message = proxy_msg_rx.recv() => {
-                        if let Some(message) = message {
-                            // 处理消息...
-                            if let Err(err) = context_cloned
-                            .write()
-                            .await
-                            .on_recv_proxy_message(message)
-                            .await
-                            {
-                                error!("on_recv_proxy_message: {err}")
+                        match message {
+                            Some(message) => {
+                                if let Err(err) = context_cloned
+                                    .lock()
+                                    .await
+                                    .on_recv_proxy_message(message)
+                                    .await
+                                {
+                                    error!("on_recv_proxy_message: {err}")
+                                }
                             }
-                        } else {
-                            break; // 通道关闭
+                            None => break,
                         }
                     }
                 }
@@ -355,7 +367,8 @@ impl SessionDelegate for InletSession {
 
         self.proxy_message_recv_task_cancel_token = Some(token);
 
-        self.session_info_map.write().await.insert(
+        // DashMap::insert 只锁对应 shard，不阻塞其他会话
+        self.session_info_map.insert(
             session_id,
             SessionInfo {
                 proxy_message_tx: proxy_msg_tx,
@@ -364,7 +377,7 @@ impl SessionDelegate for InletSession {
         );
 
         self.proxy_ctx
-            .write()
+            .lock()
             .await
             .on_start(self.proxy_ctx_data.clone(), *addr, write_msg_tx)
             .await?;
@@ -380,24 +393,24 @@ impl SessionDelegate for InletSession {
             token.cancel();
         }
 
-        self.session_info_map.write().await.remove(&session_id);
+        self.session_info_map.remove(&session_id);
         self.proxy_ctx
-            .write()
+            .lock()
             .await
             .on_stop(self.proxy_ctx_data.clone())
             .await?;
         Ok(())
     }
 
-    async fn on_recv_frame(&mut self, frame: Vec<u8>) -> anyhow::Result<()> {
+    async fn on_recv_frame(&mut self, frame: Bytes) -> anyhow::Result<()> {
         self.proxy_ctx
-            .write()
+            .lock()
             .await
             .on_recv_peer_data(self.proxy_ctx_data.clone(), frame)
             .await
     }
 
     async fn is_ready_for_read(&self) -> bool {
-        self.proxy_ctx.read().await.is_ready_for_read()
+        self.proxy_ctx.lock().await.is_ready_for_read()
     }
 }

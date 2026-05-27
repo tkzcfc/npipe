@@ -78,13 +78,14 @@ impl TunnelManager {
             rows_affected
         );
 
+        // 一次读锁找 index，立即 drop，再写锁 remove
         let position = {
             self.tunnels
                 .read()
                 .await
                 .iter()
                 .position(|it| it.id == tunnel_id)
-        };
+        }; // ← 读锁 drop
         if let Some(index) = position {
             let tunnel = self.tunnels.write().await.remove(index);
             Self::broadcast_tunnel_info(tunnel.sender, &tunnel, true).await;
@@ -101,15 +102,19 @@ impl TunnelManager {
     pub async fn update_tunnel(&self, tunnel: tunnel::Model) -> anyhow::Result<()> {
         self.tunnel_detection(&tunnel).await?;
 
-        let position = {
-            self.tunnels
-                .read()
-                .await
-                .iter()
-                .position(|it| it.id == tunnel.id)
-        };
+        // 一次读锁找 position 和旧值，立即 drop
+        let found = {
+            let guard = self.tunnels.read().await;
+            guard.iter().enumerate().find_map(|(i, t)| {
+                if t.id == tunnel.id {
+                    Some((i, t.sender, t.receiver))
+                } else {
+                    None
+                }
+            })
+        }; // ← 读锁在此 drop
 
-        if let Some(index) = position {
+        if let Some((index, old_sender, old_receiver)) = found {
             let db_tunnel = Tunnel::find_by_id(tunnel.id)
                 .one(GLOBAL_DB_POOL.get().unwrap())
                 .await?;
@@ -129,9 +134,6 @@ impl TunnelManager {
             db_tunnel.custom_mapping = Set(tunnel.custom_mapping.to_owned());
             db_tunnel.encryption_method = Set(tunnel.encryption_method.to_owned());
             db_tunnel.update(GLOBAL_DB_POOL.get().unwrap()).await?;
-
-            let old_sender = self.tunnels.read().await[index].sender;
-            let old_receiver = self.tunnels.read().await[index].receiver;
 
             if old_sender != tunnel.sender {
                 Self::broadcast_tunnel_info(old_sender, &tunnel, true).await;
@@ -154,7 +156,7 @@ impl TunnelManager {
     /// 广播通道修改通知
     async fn broadcast_tunnel_info(player_id: PlayerId, tunnel: &tunnel::Model, is_delete: bool) {
         if player_id != 0 {
-            if let Some(player) = GLOBAL_MANAGER.player_manager.get_player(player_id).await {
+            if let Some(player) = GLOBAL_MANAGER.player_manager.get_player(player_id) {
                 let _ = player
                     .read()
                     .await
@@ -163,8 +165,7 @@ impl TunnelManager {
                             is_delete,
                             tunnel: Some(tunnel.into()),
                         },
-                    ))
-                    .await;
+                    ));
             }
         }
     }
@@ -207,7 +208,7 @@ impl TunnelManager {
 
     /// 检测玩家id是否合法
     async fn player_id_detection(&self, player_id: PlayerId) -> anyhow::Result<()> {
-        if player_id != 0 && !GLOBAL_MANAGER.player_manager.contain(player_id).await {
+        if player_id != 0 && !GLOBAL_MANAGER.player_manager.contain(player_id) {
             Err(anyhow!("player id {} does not exist", player_id))
         } else {
             Ok(())
@@ -230,25 +231,28 @@ impl TunnelManager {
         })
     }
 
-    /// 查询通道
-    pub async fn query(&self, page_number: usize, page_size: usize) -> Vec<tunnel::Model> {
+    /// 查询通道，同时返回总条数
+    /// 只加一次读锁，避免调用方再次加锁获取总数。
+    pub async fn query_with_total(
+        &self,
+        page_number: usize,
+        page_size: usize,
+    ) -> (Vec<tunnel::Model>, usize) {
         let page_size = if page_size == 0 || page_size > 100 {
             10
         } else {
             page_size
         };
+        let guard = self.tunnels.read().await;
+        let total_count = guard.len();
         let start = page_number * page_size;
-        let mut end = start + page_size;
-        let tunnel_num = self.tunnels.read().await.len();
-        if end > tunnel_num {
-            end = tunnel_num;
-        }
-
-        if start <= end && end <= tunnel_num {
-            self.tunnels.read().await[start..end].to_vec()
+        let end = (start + page_size).min(total_count);
+        let page = if start <= end {
+            guard[start..end].to_vec()
         } else {
             vec![]
-        }
+        };
+        (page, total_count)
     }
 }
 

@@ -7,7 +7,7 @@ use crate::player::Player;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use byteorder::{BigEndian, ByteOrder};
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use log::{debug, error, trace};
 use np_base::net::session_delegate::SessionDelegate;
 use np_base::net::WriterMessage;
@@ -47,7 +47,7 @@ impl Peer {
         message: &MessageType,
     ) -> anyhow::Result<()> {
         assert!(serial < 0);
-        package_and_send_message(&self.tx, -serial, message, true).await
+        package_and_send_message(&self.tx, -serial, message, true)
     }
 
     // #[inline]
@@ -58,7 +58,7 @@ impl Peer {
     #[inline]
     #[allow(dead_code)]
     pub(crate) async fn send_push(&self, message: &MessageType) -> anyhow::Result<()> {
-        package_and_send_message(&self.tx, 0, message, true).await
+        package_and_send_message(&self.tx, 0, message, true)
     }
 
     pub async fn handle_message(
@@ -134,7 +134,7 @@ impl Peer {
                     if size == 0 {
                         break;
                     }
-                    let frame = buffer.split().to_vec();
+                    let frame = buffer.split().freeze();
                     let _ = tx.send(WriterMessage::Send(frame, true));
                 }
 
@@ -164,10 +164,11 @@ impl SessionDelegate for Peer {
     // 会话关闭回调
     async fn on_session_close(&mut self) -> anyhow::Result<()> {
         self.tx.take();
-        // 清退对应玩家
+        // 合并为单次写锁，避免 read-check → write-act 的 TOCTOU 窗口
         if let Some(player) = self.player.take() {
-            if player.read().await.get_session_id() == self.session_id {
-                player.write().await.on_disconnect_session().await;
+            let mut p = player.write().await;
+            if p.get_session_id() == self.session_id {
+                p.on_disconnect_session();
             }
         }
         // 关闭流量转发通道
@@ -184,7 +185,7 @@ impl SessionDelegate for Peer {
     async fn on_try_extract_frame(
         &mut self,
         buffer: &mut BytesMut,
-    ) -> anyhow::Result<Option<Vec<u8>>> {
+    ) -> anyhow::Result<Option<Bytes>> {
         if !buffer.is_empty()
             && buffer[0] != 33u8
             && self.traffic_forward_writer.is_none()
@@ -196,7 +197,7 @@ impl SessionDelegate for Peer {
         }
 
         if let Some(ref mut writer) = self.traffic_forward_writer {
-            let frame = buffer.split().to_vec();
+            let frame = buffer.split().freeze();
             writer.write_all(&frame).await?;
             return Ok(None);
         }
@@ -223,13 +224,13 @@ impl SessionDelegate for Peer {
         }
 
         // 拆出这个包的数据
-        let frame = buffer.split_to(5 + len).split_off(5).to_vec();
+        let frame = buffer.split_to(5 + len).split_off(5).freeze();
 
         Ok(Some(frame))
     }
 
     // 收到一个完整的消息包
-    async fn on_recv_frame(&mut self, frame: Vec<u8>) -> anyhow::Result<()> {
+    async fn on_recv_frame(&mut self, frame: Bytes) -> anyhow::Result<()> {
         if frame.len() < 8 {
             debug!("message length is too small");
             self.send_http_404_response().await?;
@@ -308,7 +309,7 @@ impl SessionDelegate for Peer {
 }
 
 #[inline]
-pub(crate) async fn package_and_send_message(
+pub(crate) fn package_and_send_message(
     tx: &Option<UnboundedSender<WriterMessage>>,
     serial: i32,
     message: &MessageType,
@@ -325,7 +326,7 @@ pub(crate) async fn package_and_send_message(
             byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, message_id)?;
             encode_raw_message(message, &mut buf);
 
-            if let Err(error) = tx.send(WriterMessage::Send(buf, flush)) {
+            if let Err(error) = tx.send(WriterMessage::Send(Bytes::from(buf), flush)) {
                 error!("Send message error: {}", error);
             }
         }

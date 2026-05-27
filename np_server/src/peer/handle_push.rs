@@ -8,22 +8,23 @@ impl Peer {
     // 收到玩家向服务器推送消息
     pub(crate) async fn handle_push(&self, message: MessageType) -> anyhow::Result<()> {
         if let Some((msg, tunnel_id)) = message_bridge::pb_2_proxy_message(message) {
-            if let Some(tunnel) = GLOBAL_MANAGER
-                .tunnel_manager
-                .tunnels
-                .read()
-                .await
-                .iter()
-                .find(|x| x.id == tunnel_id)
-            {
-                let (from_player_id, to_player_id) = if message_bridge::is_i2o_message(&msg) {
-                    (tunnel.receiver, tunnel.sender)
-                } else {
-                    (tunnel.sender, tunnel.receiver)
-                };
+            // 先提取需要的数据，立即 drop 读锁，再调用 send_proxy_message
+            // 原代码在持有 tunnels.read() Guard 时调用 send_proxy_message，该函数内部
+            // 有 player_manager 查找和 await，导致读锁被跨 await 持有。
+            let found = {
+                let guard = GLOBAL_MANAGER.tunnel_manager.tunnels.read().await;
+                guard.iter().find(|x| x.id == tunnel_id).map(|tunnel| {
+                    let (from, to) = if message_bridge::is_i2o_message(&msg) {
+                        (tunnel.receiver, tunnel.sender)
+                    } else {
+                        (tunnel.sender, tunnel.receiver)
+                    };
+                    (from, to, tunnel.id)
+                })
+            }; // ← 读锁在此 drop
 
-                ProxyManager::send_proxy_message(from_player_id, to_player_id, tunnel.id, msg)
-                    .await;
+            if let Some((from_player_id, to_player_id, id)) = found {
+                ProxyManager::send_proxy_message(from_player_id, to_player_id, id, msg).await;
             }
         }
         Ok(())

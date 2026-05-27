@@ -2,7 +2,8 @@ use crate::{tls_danger, CommonArgs};
 use anyhow::anyhow;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
+use dashmap::DashMap;
 use http::Uri;
 use log::{debug, error, info};
 #[cfg(feature = "ws")]
@@ -25,14 +26,15 @@ use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 #[cfg(feature = "ws")]
 use std::str::FromStr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
 #[cfg(feature = "tcp")]
 use tokio::net::TcpStream;
 use tokio::select;
-use tokio::sync::{Mutex, RwLock};
-use tokio::time::{sleep, timeout, Instant};
+use tokio::sync::Mutex;
+use tokio::time::{sleep, timeout};
 #[cfg(feature = "kcp")]
 use tokio_kcp::{KcpConfig, KcpNoDelayConfig, KcpStream};
 use tokio_rustls::rustls::pki_types::pem::PemObject;
@@ -51,8 +53,8 @@ where
     username: String,
     password: String,
     player_id: u32,
-    outlets: Arc<RwLock<HashMap<u32, Arc<Outlet>>>>,
-    inlets: Arc<RwLock<HashMap<u32, Inlet>>>,
+    outlets: Arc<DashMap<u32, Arc<Outlet>>>,
+    inlets: Arc<DashMap<u32, Inlet>>,
     tunnels: HashMap<u32, Tunnel>,
 }
 #[cfg(feature = "tcp")]
@@ -294,52 +296,58 @@ where
         username: common_args.username.clone(),
         password: common_args.password.clone(),
         player_id: 0u32,
-        outlets: Arc::new(RwLock::new(HashMap::new())),
-        inlets: Arc::new(RwLock::new(HashMap::new())),
+        outlets: Arc::new(DashMap::new()),
+        inlets: Arc::new(DashMap::new()),
         tunnels: HashMap::new(),
     };
 
     client.send_login().await?;
 
-    let last_active_time = Arc::new(RwLock::new(Instant::now()));
+    let last_active_secs = Arc::new(AtomicU64::new(now_secs()));
 
     let result;
     select! {
-        r1= client.run(reader, last_active_time.clone()) => { result = r1 },
-        r2= ping_forever(writer, last_active_time.clone()) => { result = r2 },
+        r1 = client.run(reader, last_active_secs.clone()) => { result = r1 },
+        r2 = ping_forever(writer, last_active_secs) => { result = r2 },
     }
     client.sync_tunnels(&Vec::new()).await;
     result
 }
 
+/// 返回当前 Unix 时间戳（秒）
+#[inline(always)]
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
 async fn ping_forever<S>(
     writer: Arc<Mutex<WriteHalf<S>>>,
-    last_active_time: Arc<RwLock<Instant>>,
+    last_active_secs: Arc<AtomicU64>,
 ) -> anyhow::Result<()>
 where
     S: AsyncRead + AsyncWrite + Send + 'static,
 {
-    const PING_INTERVAL: Duration = Duration::from_secs(5);
-    const PING_TIMEOUT: Duration = Duration::from_secs(15);
+    const PING_INTERVAL_SECS: u64 = 5;
+    const PING_TIMEOUT_SECS: u64 = 15;
     loop {
         sleep(Duration::from_secs(1)).await;
 
-        if last_active_time.read().await.elapsed() < PING_INTERVAL {
+        let elapsed = now_secs().saturating_sub(last_active_secs.load(Ordering::Relaxed));
+
+        if elapsed < PING_INTERVAL_SECS {
             continue;
         }
-
-        if last_active_time.read().await.elapsed() > PING_TIMEOUT {
+        if elapsed > PING_TIMEOUT_SECS {
             return Err(anyhow!("ping timeout"));
         }
 
-        // 获取当前时间
-        let now = SystemTime::now();
-
-        // 计算自UNIX_EPOCH以来的持续时间
-        let since_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
-
-        // 将时间转换为毫秒
-        let nanos = since_epoch.as_millis();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
 
         package_and_send_message(
             writer.clone(),
@@ -359,23 +367,22 @@ where
     async fn run(
         &mut self,
         mut reader: ReadHalf<S>,
-        last_active_time: Arc<RwLock<Instant>>,
+        last_active_secs: Arc<AtomicU64>,
     ) -> anyhow::Result<()> {
-        const WRITE_TIMEOUT: Duration = Duration::from_secs(1);
+        const WRITE_TIMEOUT_SECS: u64 = 1;
         let mut buffer = BytesMut::with_capacity(65536);
         loop {
             let len = reader.read_buf(&mut buffer).await?;
-            // len为0表示对端已经关闭连接。
             if len == 0 {
                 info!("Disconnect from the server");
                 break;
             } else {
-                if last_active_time.read().await.elapsed() >= WRITE_TIMEOUT {
-                    let mut instant_write = last_active_time.write().await;
-                    *instant_write = Instant::now();
+                // 原子更新活跃时间（秒级精度，对 ping 检测已足够）
+                let elapsed = now_secs().saturating_sub(last_active_secs.load(Ordering::Relaxed));
+                if elapsed >= WRITE_TIMEOUT_SECS {
+                    last_active_secs.store(now_secs(), Ordering::Relaxed);
                 }
 
-                // 循环解包
                 loop {
                     if buffer.is_empty() {
                         break;
@@ -383,10 +390,8 @@ where
 
                     let result = try_extract_frame(&mut buffer)?;
                     if let Some(frame) = result {
-                        // 收到完整消息
                         self.on_recv_frame(frame).await?;
                     } else {
-                        // 消息包接收还未完成
                         break;
                     }
                 }
@@ -410,13 +415,11 @@ where
         .await
     }
 
-    async fn on_recv_frame(&mut self, frame: Vec<u8>) -> anyhow::Result<()> {
+    async fn on_recv_frame(&mut self, frame: Bytes) -> anyhow::Result<()> {
         if frame.len() < 8 {
             return Err(anyhow!("message length is too small"));
         }
-        // 消息序号
         let serial: i32 = BigEndian::read_i32(&frame[0..4]);
-        // 消息类型id
         let msg_id: u32 = BigEndian::read_u32(&frame[4..8]);
 
         let message = message_map::decode_message(msg_id, &frame[8..])?;
@@ -454,27 +457,25 @@ where
     }
 
     async fn sync_tunnels(&mut self, tunnels: &[Tunnel]) {
-        // 收集无效的出口
-        let mut keys_to_remove: Vec<_> = self
+        // 收集无效的出口 (DashMap 替代 RwLock<HashMap>)
+        let keys_to_remove: Vec<u32> = self
             .outlets
-            .read()
-            .await
             .iter()
-            .filter(|(id, outlet)| {
-                let retain = tunnels.iter().any(|tunnel| {
-                    **id == tunnel.id
+            .filter(|entry| {
+                let id = *entry.key();
+                let outlet = entry.value();
+                !tunnels.iter().any(|tunnel| {
+                    id == tunnel.id
                         && tunnel.enabled
                         && tunnel.sender == self.player_id
                         && &outlet_description(tunnel) == outlet.description()
-                });
-                !retain
+                })
             })
-            .map(|(key, _)| *key)
+            .map(|entry| *entry.key())
             .collect();
 
-        // 删除无效的出口
         for key in keys_to_remove {
-            if let Some(outlet) = self.outlets.write().await.remove(&key) {
+            if let Some((_, outlet)) = self.outlets.remove(&key) {
                 let description = outlet.description().to_owned();
                 debug!("start deleting the outlet({description})");
                 outlet.stop().await;
@@ -483,26 +484,24 @@ where
         }
 
         // 收集无效的入口
-        keys_to_remove = self
+        let keys_to_remove: Vec<u32> = self
             .inlets
-            .read()
-            .await
             .iter()
-            .filter(|(id, inlet)| {
-                let retain = tunnels.iter().any(|tunnel| {
-                    **id == tunnel.id
+            .filter(|entry| {
+                let id = *entry.key();
+                let inlet = entry.value();
+                !tunnels.iter().any(|tunnel| {
+                    id == tunnel.id
                         && tunnel.enabled
                         && tunnel.receiver == self.player_id
                         && &inlet_description(tunnel) == inlet.description()
-                });
-                !retain
+                })
             })
-            .map(|(key, _)| *key)
+            .map(|entry| *entry.key())
             .collect();
 
-        // 删除无效入口
         for key in keys_to_remove {
-            if let Some(mut inlet) = self.inlets.write().await.remove(&key) {
+            if let Some((_, mut inlet)) = self.inlets.remove(&key) {
                 let description = inlet.description().to_owned();
                 debug!("start deleting the inlet({description})");
                 inlet.stop().await;
@@ -515,7 +514,7 @@ where
             .iter()
             .filter(|tunnel| tunnel.enabled && tunnel.sender == self.player_id)
         {
-            if !self.outlets.read().await.contains_key(&tunnel.id) {
+            if !self.outlets.contains_key(&tunnel.id) {
                 let this_machine = tunnel.receiver == tunnel.sender;
                 let inlets = self.inlets.clone();
                 let outlets = self.outlets.clone();
@@ -530,7 +529,7 @@ where
                     let writer = writer.clone();
                     Box::pin(async move {
                         if this_machine {
-                            if let Some(inlet) = inlets.read().await.get(&tunnel_id) {
+                            if let Some(inlet) = inlets.get(&tunnel_id) {
                                 inlet.input(message).await;
                             } else {
                                 debug!("unknown inlet({tunnel_id})");
@@ -550,7 +549,7 @@ where
                     })
                 });
                 debug!("start outlet({})", outlet_description(tunnel));
-                self.outlets.write().await.insert(
+                self.outlets.insert(
                     tunnel_id,
                     Outlet::new(outlet_output, outlet_description(tunnel)),
                 );
@@ -562,7 +561,7 @@ where
             .iter()
             .filter(|tunnel| tunnel.enabled && tunnel.receiver == self.player_id)
         {
-            if !self.inlets.read().await.contains_key(&tunnel.id) {
+            if !self.inlets.contains_key(&tunnel.id) {
                 let this_machine = tunnel.receiver == tunnel.sender;
                 let tunnel_id = tunnel.id;
                 let inlets = self.inlets.clone();
@@ -571,14 +570,14 @@ where
                 let self_player_id = self.player_id;
                 let player_id = tunnel.sender;
 
-                let source = match tunnel.source {
-                    Some(ref x) => x.addr.clone(),
-                    None => "".to_string(),
-                };
-                let endpoint = match tunnel.endpoint {
-                    Some(ref x) => x.addr.clone(),
-                    None => "".to_string(),
-                };
+                let source = tunnel
+                    .source
+                    .as_ref()
+                    .map_or("".to_string(), |x| x.addr.clone());
+                let endpoint = tunnel
+                    .endpoint
+                    .as_ref()
+                    .map_or("".to_string(), |x| x.addr.clone());
 
                 let inlet_output: OutputFuncType = Arc::new(move |message: ProxyMessage| {
                     let inlets = inlets.clone();
@@ -586,7 +585,7 @@ where
                     let writer = writer.clone();
                     Box::pin(async move {
                         if this_machine {
-                            if let Some(outlet) = outlets.read().await.get(&tunnel_id) {
+                            if let Some(outlet) = outlets.get(&tunnel_id) {
                                 outlet.input(message).await;
                             } else {
                                 debug!("unknown outlet({tunnel_id})");
@@ -628,7 +627,7 @@ where
                         error!("inlet({}) start error: {}", source, err);
                     } else {
                         debug!("start inlet({})", inlet.description());
-                        self.inlets.write().await.insert(tunnel.id, inlet);
+                        self.inlets.insert(tunnel.id, inlet);
                     }
                 }
             }
@@ -636,8 +635,8 @@ where
     }
 
     async fn send_proxy_message(
-        outlets: Arc<RwLock<HashMap<u32, Arc<Outlet>>>>,
-        inlets: Arc<RwLock<HashMap<u32, Inlet>>>,
+        outlets: Arc<DashMap<u32, Arc<Outlet>>>,
+        inlets: Arc<DashMap<u32, Inlet>>,
         writer: Arc<Mutex<WriteHalf<S>>>,
         self_player_id: u32,
         player_id: u32,
@@ -646,10 +645,10 @@ where
     ) {
         if self_player_id == player_id {
             if message_bridge::is_i2o_message(&proxy_message) {
-                if let Some(outlet) = outlets.read().await.get(&tunnel_id) {
+                if let Some(outlet) = outlets.get(&tunnel_id) {
                     outlet.input(proxy_message).await;
                 }
-            } else if let Some(inlet) = inlets.read().await.get(&tunnel_id) {
+            } else if let Some(inlet) = inlets.get(&tunnel_id) {
                 inlet.input(proxy_message).await;
             }
         } else {
@@ -681,7 +680,7 @@ where
                             self.writer.clone(),
                             self.player_id,
                             player_id,
-                            tunnel.id,
+                            tunnel_id,
                             msg,
                         )
                         .await;
@@ -697,10 +696,15 @@ where
         if let Some(tunnel) = msg.tunnel {
             self.tunnels.remove(&tunnel.id);
             if msg.is_delete {
+                // sync_tunnels 会处理删除已不存在 tunnel 对应的 inlet/outlet
+                let tunnel_list: Vec<&Tunnel> = self.tunnels.values().collect();
+                let tunnel_list: Vec<Tunnel> = tunnel_list.into_iter().cloned().collect();
+                self.sync_tunnels(&tunnel_list).await;
                 return;
             }
             self.tunnels.insert(tunnel.id, tunnel);
-            let tunnel_list: Vec<Tunnel> = self.tunnels.clone().into_values().collect();
+            // 注意: 不需要 clone 整个 map，只需要收集 values 的引用再 sync
+            let tunnel_list: Vec<Tunnel> = self.tunnels.values().cloned().collect();
             self.sync_tunnels(&tunnel_list).await;
         }
     }
@@ -725,43 +729,38 @@ where
         byteorder::WriteBytesExt::write_u32::<BigEndian>(&mut buf, message_id)?;
         encode_raw_message(message, &mut buf);
 
-        writer.lock().await.write_all(&buf).await?;
-        writer.lock().await.flush().await?;
+        // 单次加锁完成 write_all + flush，避免双重加锁的竞争窗口
+        let mut w = writer.lock().await;
+        w.write_all(&buf).await?;
+        w.flush().await?;
         Ok(())
     } else {
         Err(anyhow!("Message id not found"))
     }
 }
 
-/// 数据粘包处理
-///
-/// 注意：这个函数只能使用消耗 buffer 数据的函数，否则框架会一直循环调用本函数来驱动处理消息
-///
-fn try_extract_frame(buffer: &mut BytesMut) -> anyhow::Result<Option<Vec<u8>>> {
+/// 数据粘包处理，返回 `Bytes`（零拷贝）替代 `Vec<u8>`
+fn try_extract_frame(buffer: &mut BytesMut) -> anyhow::Result<Option<Bytes>> {
     if !buffer.is_empty() && buffer[0] != 33u8 {
         return Err(anyhow!("Bad flag"));
     }
-    // 数据小于5字节,继续读取数据
     if buffer.len() < 5 {
         return Ok(None);
     }
 
-    // 读取包长度
     let buf = buffer.get(1..5).unwrap();
     let len = BigEndian::read_u32(buf) as usize;
 
-    // 超出最大限制
     if len >= 1024 * 1024 * 5 {
         return Err(anyhow!("Message too long"));
     }
 
-    // 数据不够,继续读取数据
     if buffer.len() < 5 + len {
         return Ok(None);
     }
 
-    // 拆出这个包的数据
-    let frame = buffer.split_to(5 + len).split_off(5).to_vec();
+    // split_to + split_off + freeze: 全程零拷贝
+    let frame = buffer.split_to(5 + len).split_off(5).freeze();
 
     Ok(Some(frame))
 }

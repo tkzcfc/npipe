@@ -10,6 +10,7 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use bytes::Bytes;
 use log::{error, warn};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -90,7 +91,7 @@ impl ProxyContext for Socks5Context {
     async fn on_recv_peer_data(
         &mut self,
         ctx_data: Arc<ProxyContextData>,
-        mut data: Vec<u8>,
+        data: Bytes,
     ) -> anyhow::Result<()> {
         match &self.status {
             Status::Init => {
@@ -109,10 +110,16 @@ impl ProxyContext for Socks5Context {
                 warn!("Status::Connecting should not receive other data");
             }
             Status::RunWithTcp => {
-                data = ctx_data.common_data.encode_data_and_limiting(data).await?;
+                let encoded = ctx_data
+                    .common_data
+                    .encode_data_and_limiting(data) // data: Bytes，无需 to_vec()
+                    .await?;
                 ctx_data
                     .output
-                    .send(ProxyMessage::I2oSendData(ctx_data.get_session_id(), data))
+                    .send(ProxyMessage::I2oSendData(
+                        ctx_data.get_session_id(),
+                        encoded,
+                    ))
                     .await?;
             }
             Status::RunWithUdp(_) => {
@@ -223,7 +230,7 @@ impl Socks5Context {
                 self.write_to_peer_tx
                     .as_ref()
                     .unwrap()
-                    .send(WriterMessage::Send(response, true))?;
+                    .send(WriterMessage::Send(Bytes::from(response), true))?;
 
                 self.buffer.drain(0..num_of_package);
                 self.status = if method == SOCKS5_AUTH_METHOD_NONE {
@@ -240,7 +247,7 @@ impl Socks5Context {
         self.write_to_peer_tx
             .as_ref()
             .unwrap()
-            .send(WriterMessage::Send(response, true))?;
+            .send(WriterMessage::Send(Bytes::from(response), true))?;
         self.write_to_peer_tx
             .as_ref()
             .unwrap()
@@ -280,7 +287,7 @@ impl Socks5Context {
             self.write_to_peer_tx
                 .as_ref()
                 .unwrap()
-                .send(WriterMessage::Send(response, true))?;
+                .send(WriterMessage::Send(Bytes::from(response), true))?;
 
             self.buffer.drain(0..num_of_package);
             self.status = Status::Connect;
@@ -289,7 +296,7 @@ impl Socks5Context {
             self.write_to_peer_tx
                 .as_ref()
                 .unwrap()
-                .send(WriterMessage::Send(response, true))?;
+                .send(WriterMessage::Send(Bytes::from(response), true))?;
             self.write_to_peer_tx
                 .as_ref()
                 .unwrap()
@@ -308,12 +315,13 @@ impl Socks5Context {
         if self.buffer.len() < 8 {
             return Ok(());
         }
-        let head_data: Vec<_> = self.buffer.drain(0..4).collect();
 
-        let ver = head_data[0];
-        let cmd = head_data[1];
-        let rsv = head_data[2];
-        let address_type = head_data[3];
+        // 直接按下标读取头部 4 字节，不 drain 也不分配 Vec；
+        // 失败/不支持时无需 splice 还原，成功时 buffer.clear() 清空即可。
+        let ver          = self.buffer[0];
+        let cmd          = self.buffer[1];
+        let rsv          = self.buffer[2];
+        let address_type = self.buffer[3];
 
         let mut support = true;
         if ver != SOCKS5_VERSION || rsv != 0x00 {
@@ -323,7 +331,8 @@ impl Socks5Context {
         if support {
             match cmd {
                 SOCKS5_CMD_TCP_CONNECT | SOCKS5_CMD_UDP_ASSOCIATE => {
-                    let addr_result = target_addr::read_address(&self.buffer, address_type)?;
+                    // 头部已跳过 4 字节（不 drain）→ 传 &self.buffer[4..]
+                    let addr_result = target_addr::read_address(&self.buffer[4..], address_type)?;
 
                     if let Some((mut target_addr, addr_data_len)) = addr_result {
                         let is_tcp = match cmd {
@@ -356,23 +365,28 @@ impl Socks5Context {
                                     .encryption_method
                                     .to_string(),
                                 BASE64_STANDARD.encode(
-                                    &self.ctx_data.as_ref().unwrap().common_data.encryption_key,
+                                    self.ctx_data
+                                        .as_ref()
+                                        .unwrap()
+                                        .common_data
+                                        .encryption_key
+                                        .as_slice(),
                                 ),
                                 self.peer_addr.as_ref().unwrap().to_string(),
                             ))
                             .await?;
 
                         self.target_addr = Some(target_addr);
-                        if addr_data_len != self.buffer.len() {
-                            warn!("Address data length error, address data length: {}, actual length: {}", addr_data_len, self.buffer.len());
+                        // addr_data_len 是相对于 buffer[4..] 的长度
+                        let body_len = self.buffer.len() - 4;
+                        if addr_data_len != body_len {
+                            warn!("Address data length error, address data length: {}, actual length: {}", addr_data_len, body_len);
                         }
 
                         self.buffer.clear();
                         self.status = Status::Connecting(is_tcp);
-                    } else {
-                        // 还原数据
-                        self.buffer.splice(0..0, head_data);
                     }
+                    // addr_result 为 None（数据不足）时 buffer 保持不变，等待下一次数据到来
                     return Ok(());
                 }
                 // not support
@@ -396,7 +410,7 @@ impl Socks5Context {
         self.write_to_peer_tx
             .as_ref()
             .unwrap()
-            .send(WriterMessage::Send(response, true))?;
+            .send(WriterMessage::Send(Bytes::from(response), true))?;
         self.write_to_peer_tx
             .as_ref()
             .unwrap()
@@ -404,15 +418,11 @@ impl Socks5Context {
         Ok(())
     }
 
-    async fn on_recv_o2i_recv_data(
-        &self,
-        session_id: u32,
-        mut data: Vec<u8>,
-    ) -> anyhow::Result<()> {
+    async fn on_recv_o2i_recv_data(&self, session_id: u32, data: Bytes) -> anyhow::Result<()> {
         match self.status {
             Status::RunWithTcp => {
                 let data_len = data.len();
-                data = self
+                let decoded = self
                     .ctx_data
                     .as_ref()
                     .unwrap()
@@ -433,7 +443,7 @@ impl Socks5Context {
                 self.write_to_peer_tx
                     .as_ref()
                     .unwrap()
-                    .send(WriterMessage::SendAndThen(data, callback))?;
+                    .send(WriterMessage::SendAndThen(decoded, callback))?;
             }
             _ => {
                 warn!(
@@ -447,13 +457,13 @@ impl Socks5Context {
     async fn on_recv_o2i_recv_data_from(
         &self,
         session_id: u32,
-        mut data: Vec<u8>,
+        data: Bytes,
         peer_addr: String,
     ) -> anyhow::Result<()> {
         match &self.status {
             Status::RunWithUdp(udp_socket) => {
                 let data_len = data.len();
-                data = self
+                let decoded = self
                     .ctx_data
                     .as_ref()
                     .unwrap()
@@ -470,10 +480,11 @@ impl Socks5Context {
                 | 2  |  1   |  1   | Variable |    2     | Variable |
                 +----+------+------+----------+----------+----------+
                 */
-                let mut response: Vec<u8> = Vec::with_capacity(addr_bytes.len() + data.len() + 5);
+                let mut response: Vec<u8> =
+                    Vec::with_capacity(3 + addr_bytes.len() + decoded.len());
                 response.extend_from_slice(&[0x0u8, 0x0u8, 0x0u8]);
                 response.extend(addr_bytes);
-                response.extend(data);
+                response.extend_from_slice(&decoded);
 
                 udp_socket.send(&response).await?;
 
@@ -547,7 +558,7 @@ impl Socks5Context {
                     .write_to_peer_tx
                     .as_ref()
                     .unwrap()
-                    .send(WriterMessage::Send(response, true));
+                    .send(WriterMessage::Send(Bytes::from(response), true));
             }
             _ => {}
         }
@@ -638,13 +649,12 @@ async fn recv_udp_data(
         return Err(anyhow!("received data of illegal length"));
     }
 
-    let received_data = Vec::from(&buf[..amt]);
-    let address_type = received_data[3];
-    match target_addr::read_address(&received_data[4..], address_type) {
+    let address_type = buf[3];
+    match target_addr::read_address(&buf[4..amt], address_type) {
         Ok(Some((addr, addr_data_len))) => {
             let start = 4 + addr_data_len;
             let data = common_data
-                .encode_data_and_limiting(buf[start..amt].to_vec())
+                .encode_data_and_limiting(Bytes::copy_from_slice(&buf[start..amt]))
                 .await?;
 
             output

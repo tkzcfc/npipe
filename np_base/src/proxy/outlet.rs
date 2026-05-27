@@ -8,24 +8,25 @@ use crate::proxy::{common, OutputFuncType};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use base64::prelude::*;
+use bytes::Bytes;
+use dashmap::DashMap;
 use log::{debug, error, info, trace};
 use socket2::{SockRef, TcpKeepalive};
-use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::{TcpStream, UdpSocket};
 use tokio::select;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tokio::sync::{broadcast, mpsc, RwLock};
-use tokio::task::yield_now;
+use tokio::sync::{broadcast, mpsc, Notify, RwLock};
 
 struct SessionInfo {
     sender: InputSenderType,
     common_info: SessionCommonInfo,
 }
 
-type SessionInfoMap = Arc<RwLock<HashMap<u32, SessionInfo>>>;
+type SessionInfoMap = Arc<DashMap<u32, SessionInfo>>;
 
 pub struct Outlet {
     session_info_map: SessionInfoMap,
@@ -34,6 +35,10 @@ pub struct Outlet {
     receiver_shutdown: broadcast::Receiver<()>,
     output: mpsc::Sender<ProxyMessage>,
     input: UnboundedSender<ProxyMessage>,
+    /// 当前活跃会话数，用于 stop() 等待所有会话关闭时避免 spin loop
+    session_count: Arc<AtomicUsize>,
+    /// 每当 session_count 降为 0 时通知 stop()
+    all_sessions_closed: Arc<Notify>,
 }
 
 impl Outlet {
@@ -43,12 +48,14 @@ impl Outlet {
         let (output_tx, output_rx) = mpsc::channel::<ProxyMessage>(1000);
 
         let outlet = Arc::new(Self {
-            session_info_map: Arc::new(RwLock::new(HashMap::new())),
+            session_info_map: Arc::new(DashMap::new()),
             description,
             notify_shutdown: RwLock::new(Some(notify_shutdown)),
             receiver_shutdown: receiver_shutdown.resubscribe(),
             output: output_tx,
             input: input_tx,
+            session_count: Arc::new(AtomicUsize::new(0)),
+            all_sessions_closed: Arc::new(Notify::new()),
         });
 
         let outlet_cloned = outlet.clone();
@@ -57,8 +64,8 @@ impl Outlet {
         tokio::spawn(async move {
             select! {
                 _= common::async_receive_output(output_rx, on_output_callback) => {}
-                _= receiver_shutdown.recv() =>{}
-                _= outlet.async_receive_input(input_rx) =>{}
+                _= receiver_shutdown.recv() => {}
+                _= outlet.async_receive_input(input_rx) => {}
             }
             trace!("outlet async_receive_output finish");
         });
@@ -75,13 +82,20 @@ impl Outlet {
         if let Some(notify_shutdown) = notify_shutdown {
             drop(notify_shutdown);
 
-            let condition = async {
-                while !self.session_info_map.read().await.is_empty() {
-                    yield_now().await;
+            // 先订阅再检查计数，避免竞态：
+            // 若先 load() 得到 > 0，再调用 notified()，恰好在两者之间最后一个会话
+            // 关闭并发出 notify_waiters()，通知会被丢失，导致等满 10s 超时。
+            let wait = async {
+                loop {
+                    let notified = self.all_sessions_closed.notified(); // 先订阅
+                    if self.session_count.load(Ordering::Acquire) == 0 {
+                        break; // 已经全部关闭
+                    }
+                    notified.await; // 等通知，收到后重新检查
                 }
             };
-            // 等待所有会话全部关闭
-            if tokio::time::timeout(Duration::from_secs(10), condition)
+
+            if tokio::time::timeout(Duration::from_secs(10), wait)
                 .await
                 .is_err()
             {
@@ -97,7 +111,7 @@ impl Outlet {
     async fn async_receive_input(&self, mut input: UnboundedReceiver<ProxyMessage>) {
         while let Some(message) = input.recv().await {
             if let Err(err) = self.input_internal(message).await {
-                error!("inlet async_receive_input error: {}", err);
+                error!("outlet async_receive_input error: {}", err);
             }
         }
     }
@@ -121,6 +135,8 @@ impl Outlet {
                 let session_info_map = self.session_info_map.clone();
                 let shutdown_receiver = self.receiver_shutdown.resubscribe();
                 let output = self.output.clone();
+                let session_count = self.session_count.clone();
+                let all_sessions_closed = self.all_sessions_closed.clone();
                 tokio::spawn(async move {
                     if let Err(err) = Self::on_i2o_connect(
                         session_info_map,
@@ -133,6 +149,8 @@ impl Outlet {
                         encryption_key,
                         shutdown_receiver,
                         output.clone(),
+                        session_count,
+                        all_sessions_closed,
                     )
                     .await
                     {
@@ -159,7 +177,6 @@ impl Outlet {
                 });
             }
             ProxyMessage::I2oSendData(session_id, data) => {
-                // trace!("I2oSendData: session_id:{session_id}");
                 self.on_i2o_send_data(session_id, data).await?;
             }
             ProxyMessage::I2oSendToData(session_id, data, target_addr) => {
@@ -171,7 +188,6 @@ impl Outlet {
                 self.on_i2o_disconnect(session_id).await?;
             }
             ProxyMessage::I2oRecvDataResult(session_id, data_len) => {
-                // trace!("I2oRecvDataResult: session_id:{session_id}, data_len:{data_len}");
                 self.on_i2o_recv_data_result(session_id, data_len).await?;
             }
             _ => {
@@ -181,59 +197,64 @@ impl Outlet {
         Ok(())
     }
 
-    async fn on_i2o_send_data(&self, session_id: u32, mut data: Vec<u8>) -> anyhow::Result<()> {
-        if let Some(session) = self.session_info_map.read().await.get(&session_id) {
-            let data_len = data.len();
+    async fn on_i2o_send_data(&self, session_id: u32, data: Bytes) -> anyhow::Result<()> {
+        // 从 DashMap 取出需要的字段后立即 drop ref，避免跨 await 持有 shard 锁
+        let (decoded, data_len, sender) = {
+            if let Some(session) = self.session_info_map.get(&session_id) {
+                let data_len = data.len();
+                let decoded = session.common_info.decode_data(data)?;
+                let sender = session.sender.clone();
+                (decoded, data_len, sender)
+            } else {
+                return Ok(());
+            }
+            // DashMap Ref 在这里自动 drop
+        };
 
-            data = session.common_info.decode_data(data)?;
+        let output = self.output.clone();
+        let callback: SendMessageFuncType = Box::new(move || {
+            let output = output.clone();
+            Box::pin(async move {
+                let _ = output
+                    .send(ProxyMessage::O2iSendDataResult(session_id, data_len))
+                    .await;
+            })
+        });
 
-            // 写入完毕回调
-            let output = self.output.clone();
-            let callback: SendMessageFuncType = Box::new(move || {
-                let output = output.clone();
-                Box::pin(async move {
-                    let _ = output
-                        .send(ProxyMessage::O2iSendDataResult(session_id, data_len))
-                        .await;
-                })
-            });
-
-            session
-                .sender
-                .send(WriterMessage::SendAndThen(data, callback))?;
-        }
+        sender.send(WriterMessage::SendAndThen(decoded, callback))?;
         Ok(())
     }
 
     async fn on_i2o_send_to_data(
         &self,
         session_id: u32,
-        mut data: Vec<u8>,
+        data: Bytes,
         target_addr: String,
     ) -> anyhow::Result<()> {
-        if let Some(session) = self.session_info_map.read().await.get(&session_id) {
-            let data_len = data.len();
+        let (decoded, data_len, sender) = {
+            if let Some(session) = self.session_info_map.get(&session_id) {
+                let data_len = data.len();
+                let decoded = session.common_info.decode_data(data)?;
+                let sender = session.sender.clone();
+                (decoded, data_len, sender)
+            } else {
+                return Ok(());
+            }
+        };
 
-            data = session.common_info.decode_data(data)?;
+        let target_addr = common::parse_addr(&target_addr).await?;
+        sender.send(WriterMessage::SendTo(decoded, target_addr))?;
 
-            let target_addr = common::parse_addr(&target_addr).await?;
-            session
-                .sender
-                .send(WriterMessage::SendTo(data, target_addr))?;
-
-            // 写入完毕回调
-            let _ = self
-                .output
-                .send(ProxyMessage::O2iSendDataResult(session_id, data_len))
-                .await;
-        }
+        let _ = self
+            .output
+            .send(ProxyMessage::O2iSendDataResult(session_id, data_len))
+            .await;
         Ok(())
     }
 
     async fn on_i2o_disconnect(&self, session_id: u32) -> anyhow::Result<()> {
         info!("disconnect session: {session_id}");
-
-        if let Some(client) = self.session_info_map.write().await.remove(&session_id) {
+        if let Some((_, client)) = self.session_info_map.remove(&session_id) {
             client.sender.send(WriterMessage::Close)?;
         }
         Ok(())
@@ -244,7 +265,7 @@ impl Outlet {
         session_id: u32,
         data_len: usize,
     ) -> anyhow::Result<()> {
-        if let Some(client) = self.session_info_map.read().await.get(&session_id) {
+        if let Some(client) = self.session_info_map.get(&session_id) {
             client
                 .common_info
                 .flow_controller
@@ -265,18 +286,18 @@ impl Outlet {
         encryption_key: String,
         shutdown_receiver: broadcast::Receiver<()>,
         output: mpsc::Sender<ProxyMessage>,
+        session_count: Arc<AtomicUsize>,
+        all_sessions_closed: Arc<Notify>,
     ) -> anyhow::Result<()> {
-        if session_info_map.read().await.contains_key(&session_id) {
+        if session_info_map.contains_key(&session_id) {
             return Err(anyhow!("repeated connection: session_id:{session_id}"));
         }
 
-        // 获取加密方式和密码
         let encryption_method = get_method(&encryption_method);
         let encryption_key = BASE64_STANDARD.decode(encryption_key.as_bytes())?;
         let common_info =
             SessionCommonInfo::new(false, is_compressed, encryption_method, encryption_key);
 
-        // 是否使用TCP连接
         let connect_with_tcp = match tunnel_type {
             InletProxyType::UDP => false,
             InletProxyType::SOCKS5 => {
@@ -292,7 +313,6 @@ impl Outlet {
             debug!("tcp_connect: {}", addr);
             let stream = TcpStream::connect(&addr).await?;
 
-            // set tcp keepalive
             let ka = TcpKeepalive::new().with_time(Duration::from_secs(30));
             let sf = SockRef::from(&stream);
             sf.set_tcp_keepalive(&ka)?;
@@ -308,6 +328,8 @@ impl Outlet {
                         common_info,
                         output,
                         tunnel_type,
+                        session_count,
+                        all_sessions_closed,
                     )),
                     shutdown_receiver,
                     stream,
@@ -336,6 +358,8 @@ impl Outlet {
                         common_info,
                         output,
                         tunnel_type,
+                        session_count,
+                        all_sessions_closed,
                     )),
                     None,
                     shutdown_receiver,
@@ -357,6 +381,8 @@ struct OutletSession {
     common_data: SessionCommonInfo,
     output: mpsc::Sender<ProxyMessage>,
     tunnel_type: InletProxyType,
+    session_count: Arc<AtomicUsize>,
+    all_sessions_closed: Arc<Notify>,
 }
 
 impl OutletSession {
@@ -365,6 +391,8 @@ impl OutletSession {
         common_data: SessionCommonInfo,
         output: mpsc::Sender<ProxyMessage>,
         tunnel_type: InletProxyType,
+        session_count: Arc<AtomicUsize>,
+        all_sessions_closed: Arc<Notify>,
     ) -> Self {
         Self {
             session_info_map,
@@ -372,6 +400,8 @@ impl OutletSession {
             common_data,
             output,
             tunnel_type,
+            session_count,
+            all_sessions_closed,
         }
     }
 }
@@ -386,7 +416,7 @@ impl SessionDelegate for OutletSession {
     ) -> anyhow::Result<()> {
         trace!("outlet on session({session_id}) start {addr}");
         self.session_id = session_id;
-        self.session_info_map.write().await.insert(
+        self.session_info_map.insert(
             session_id,
             SessionInfo {
                 sender: tx,
@@ -394,47 +424,63 @@ impl SessionDelegate for OutletSession {
             },
         );
 
+        // 先发送成功通知再计数；若发送失败则 net_session::run 不会调用 on_session_close，
+        // 提前计数会导致 session_count 永久偏高，使 stop() 等满超时。
         if let Err(err) = self
             .output
             .send(ProxyMessage::O2iConnect(session_id, true, "".to_string()))
             .await
         {
+            self.session_info_map.remove(&session_id);
             tokio::time::sleep(Duration::from_secs(5)).await;
             Err(anyhow!("on_session_start: {}", err))
         } else {
+            // 只有成功时才增加计数，与 on_session_close 的 fetch_sub 对称
+            self.session_count.fetch_add(1, Ordering::AcqRel);
             Ok(())
         }
     }
 
     async fn on_session_close(&mut self) -> anyhow::Result<()> {
         trace!("outlet on session({}) close", self.session_id);
-        self.session_info_map.write().await.remove(&self.session_id);
+        self.session_info_map.remove(&self.session_id);
         let _ = self
             .output
             .send(ProxyMessage::O2iDisconnect(self.session_id))
             .await;
+        // 原子减少计数，为 0 时通知 stop() 等待者
+        let prev = self.session_count.fetch_sub(1, Ordering::AcqRel);
+        if prev == 1 {
+            self.all_sessions_closed.notify_waiters();
+        }
         Ok(())
     }
 
-    async fn on_recv_frame(&mut self, mut frame: Vec<u8>) -> anyhow::Result<()> {
-        frame = self.common_data.encode_data_and_limiting(frame).await?;
+    async fn on_recv_frame(&mut self, frame: Bytes) -> anyhow::Result<()> {
+        let encoded = self
+            .common_data
+            .encode_data_and_limiting(frame) // Bytes 直接传入，无需 to_vec()
+            .await?;
         self.output
-            .send(ProxyMessage::O2iRecvData(self.session_id, frame))
+            .send(ProxyMessage::O2iRecvData(self.session_id, encoded))
             .await?;
         Ok(())
     }
 
     async fn on_recv_frame_from(
         &mut self,
-        mut frame: Vec<u8>,
+        frame: Bytes,
         peer_addr: SocketAddr,
     ) -> anyhow::Result<()> {
         if self.tunnel_type.is_socks5() {
-            frame = self.common_data.encode_data_and_limiting(frame).await?;
+            let encoded = self
+                .common_data
+                .encode_data_and_limiting(frame) // Bytes 直接传入，无需 to_vec()
+                .await?;
             self.output
                 .send(ProxyMessage::O2iRecvDataFrom(
                     self.session_id,
-                    frame,
+                    encoded,
                     peer_addr.to_string(),
                 ))
                 .await?;

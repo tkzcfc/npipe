@@ -1,6 +1,7 @@
 use anyhow::anyhow;
 use lz4_flex::block::{compress_prepend_size, decompress_size_prepended};
 use rand::Rng;
+use std::borrow::Cow;
 use std::{fmt, io};
 
 // Function to compress data using Brotli
@@ -9,10 +10,10 @@ pub fn compress_data(input: &[u8]) -> Result<Vec<u8>, io::Error> {
     Ok(compressed)
 }
 
-// Function to decompress data using Brotli
+// Function to decompress data
 pub fn decompress_data(compressed: &[u8]) -> Result<Vec<u8>, io::Error> {
-    let uncompressed = decompress_size_prepended(compressed).unwrap();
-    Ok(uncompressed)
+    decompress_size_prepended(compressed)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
 }
 
 #[derive(Clone)]
@@ -78,40 +79,45 @@ pub fn generate_key(method: &EncryptionMethod) -> Vec<u8> {
     }
 }
 
-pub fn encrypt(method: &EncryptionMethod, key: &[u8], data: Vec<u8>) -> anyhow::Result<Vec<u8>> {
+pub fn encrypt(
+    method: &EncryptionMethod,
+    key: &[u8],
+    data: Cow<'_, [u8]>,
+) -> anyhow::Result<Vec<u8>> {
     match method {
-        EncryptionMethod::None => Ok(data),
+        EncryptionMethod::None => Ok(data.into_owned()),
         EncryptionMethod::Aes128 => {
-            let ciphertext = simplestcrypt::encrypt_and_serialize(key, data.as_slice());
-            match ciphertext {
-                Ok(data) => Ok(data),
-                Err(err) => Err(anyhow!("encrypt_and_serialize error: {:?}", err)),
-            }
+            // &*data = &[u8]，Cow::Borrowed 时零拷贝直接借用，Cow::Owned 时借用 Vec 内容
+            simplestcrypt::encrypt_and_serialize(key, &*data)
+                .map_err(|err| anyhow!("encrypt_and_serialize error: {:?}", err))
         }
         EncryptionMethod::Xor => {
             if key.is_empty() {
-                return Ok(data.to_vec());
+                return Ok(data.into_owned());
             }
-            Ok(xor_encrypt_decrypt(data, key))
+            // into_owned(): Cow::Owned → O(0) 直接取出 Vec；Cow::Borrowed → O(n) 复制一次
+            Ok(xor_encrypt_decrypt(data.into_owned(), key))
         }
     }
 }
 
-pub fn decrypt(method: &EncryptionMethod, key: &[u8], data: Vec<u8>) -> anyhow::Result<Vec<u8>> {
+pub fn decrypt(
+    method: &EncryptionMethod,
+    key: &[u8],
+    data: Cow<'_, [u8]>,
+) -> anyhow::Result<Vec<u8>> {
     match method {
-        EncryptionMethod::None => Ok(data.to_vec()),
+        EncryptionMethod::None => Ok(data.into_owned()),
         EncryptionMethod::Aes128 => {
-            let plaintext = simplestcrypt::deserialize_and_decrypt(key, data.as_slice());
-            match plaintext {
-                Ok(data) => Ok(data),
-                Err(err) => Err(anyhow!("deserialize_and_decrypt error: {:?}", err)),
-            }
+            // 同 encrypt，直接借用，不需要调用方先 to_vec()
+            simplestcrypt::deserialize_and_decrypt(key, &*data)
+                .map_err(|err| anyhow!("deserialize_and_decrypt error: {:?}", err))
         }
         EncryptionMethod::Xor => {
             if key.is_empty() {
-                return Ok(data.to_vec());
+                return Ok(data.into_owned());
             }
-            Ok(xor_encrypt_decrypt(data, key))
+            Ok(xor_encrypt_decrypt(data.into_owned(), key))
         }
     }
 }
