@@ -16,6 +16,8 @@ export interface Player {
   username: string
   password: string
   online: boolean
+  ip_addr: string
+  online_time: number
 }
 
 export interface PlayerListRequest {
@@ -41,6 +43,10 @@ export interface PlayerUpdateRequest {
 }
 
 export interface PlayerRemoveRequest {
+  id: number
+}
+
+export interface KickPlayerRequest {
   id: number
 }
 

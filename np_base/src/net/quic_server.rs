@@ -22,21 +22,18 @@ impl Server {
         on_create_session_delegate_callback: CreateSessionDelegateCallback,
         tls_configuration: Option<tls::TlsConfiguration>,
     ) -> anyhow::Result<()> {
-        let mut server = if let Some(tls_config) = &tls_configuration {
-            QUICServer::builder()
-                .with_tls((
-                    Path::new(&tls_config.certificate),
-                    Path::new(&tls_config.key),
-                ))?
-                .with_io(io)?
-                .with_congestion_controller(s2n_quic_core::recovery::bbr::Endpoint::default())?
-                .start()?
-        } else {
-            QUICServer::builder()
-                .with_io(io)?
-                .with_congestion_controller(s2n_quic_core::recovery::bbr::Endpoint::default())?
-                .start()?
-        };
+        let tls_config = tls_configuration.ok_or_else(|| {
+            anyhow::anyhow!("QUIC requires TLS, but TLS is not enabled in config")
+        })?;
+
+        let mut server = QUICServer::builder()
+            .with_tls((
+                Path::new(&tls_config.certificate),
+                Path::new(&tls_config.key),
+            ))?
+            .with_io(io)?
+            .with_congestion_controller(s2n_quic_core::recovery::bbr::Endpoint::default())?
+            .start()?;
 
         let on_create_session_delegate_callback = Arc::new(on_create_session_delegate_callback);
 

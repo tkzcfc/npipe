@@ -74,7 +74,7 @@ impl Peer {
             if player.is_online() {
                 player.on_terminate_old_session();
             }
-            player.on_connect_session(self.session_id, self.tx.clone().unwrap());
+            player.on_connect_session(self.session_id, self.tx.clone().unwrap(), &self.addr);
 
             let tunnel_list = GLOBAL_MANAGER
                 .tunnel_manager

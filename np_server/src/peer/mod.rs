@@ -28,6 +28,7 @@ pub struct Peer {
     player: Option<Arc<RwLock<Player>>>,
     session_id: u32,
     traffic_forward_writer: Option<WriteHalf<TcpStream>>,
+    addr: SocketAddr,
 }
 
 impl Peer {
@@ -37,6 +38,7 @@ impl Peer {
             player: None,
             session_id: 0,
             traffic_forward_writer: None,
+            addr: SocketAddr::from(([0, 0, 0, 0], 0)),
         }
     }
 
@@ -153,11 +155,12 @@ impl SessionDelegate for Peer {
     async fn on_session_start(
         &mut self,
         session_id: u32,
-        _addr: &SocketAddr,
+        addr: &SocketAddr,
         tx: UnboundedSender<WriterMessage>,
     ) -> anyhow::Result<()> {
         self.tx = Some(tx);
         self.session_id = session_id;
+        self.addr = *addr;
         Ok(())
     }
 

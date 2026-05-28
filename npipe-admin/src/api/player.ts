@@ -6,6 +6,7 @@ import type {
   PlayerAddRequest,
   PlayerUpdateRequest,
   PlayerRemoveRequest,
+  KickPlayerRequest,
 } from '@/types'
 
 export const playerApi = {
@@ -20,6 +21,9 @@ export const playerApi = {
   },
   remove(data: PlayerRemoveRequest) {
     return request.post<GeneralResponse>('/api/remove_player', data)
+  },
+  kick(data: KickPlayerRequest) {
+    return request.post<GeneralResponse>('/api/kick_player', data)
   },
 }
 

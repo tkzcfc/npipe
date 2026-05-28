@@ -63,13 +63,27 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column prop="ip_addr" label="IP 地址" min-width="140">
+          <template #default="{ row }">
+            <span class="font-mono">{{ row.online ? row.ip_addr : '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="上线时间" min-width="170">
+          <template #default="{ row }">
+            <span>{{ row.online && row.online_time ? formatTime(row.online_time) : '-' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="190" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" text @click="openEditDialog(row)">
               <el-icon><Edit /></el-icon> 编辑
             </el-button>
-            <el-button size="small" type="warning" text @click="openChangePasswordDialog(row)">
-              <el-icon><Key /></el-icon> 改密
+            <el-button
+              size="small" type="danger" text
+              :disabled="!row.online"
+              @click="handleKick(row)"
+            >
+              <el-icon><SwitchButton /></el-icon> 踢下线
             </el-button>
             <el-button size="small" type="danger" text @click="handleRemove(row)">
               <el-icon><Delete /></el-icon> 删除
@@ -153,7 +167,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { Plus, Refresh, Search, Edit, Delete, View, Hide, Key } from '@element-plus/icons-vue'
+import { Plus, Refresh, Search, Edit, Delete, View, Hide, SwitchButton } from '@element-plus/icons-vue'
 import { playerApi } from '@/api'
 import type { Player } from '@/types'
 
@@ -255,10 +269,6 @@ function openEditDialog(player: Player) {
   editDialog.visible = true
 }
 
-function openChangePasswordDialog(player: Player) {
-  openEditDialog(player)
-}
-
 async function handleEdit() {
   const valid = await editFormRef.value?.validate().catch(() => false)
   if (!valid) return
@@ -290,6 +300,28 @@ async function handleRemove(player: Player) {
   } else {
     ElMessage.error(res.data.msg || '删除失败')
   }
+}
+
+// ── Kick ──────────────────────────────────────────────────────────────────────
+async function handleKick(player: Player) {
+  await ElMessageBox.confirm(
+    `确定要将用户 "${player.username}" 踢下线吗？`,
+    '踢下线确认', { type: 'warning', confirmButtonText: '确定', cancelButtonText: '取消' }
+  )
+  const res = await playerApi.kick({ id: player.id })
+  if (res.data.code === 0) {
+    ElMessage.success('已踢下线')
+    loadData(pagination.currentPage)
+  } else {
+    ElMessage.error(res.data.msg || '操作失败')
+  }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function formatTime(ts: number): string {
+  const d = new Date(ts * 1000)
+  const pad = (n: number) => n.toString().padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
 onMounted(() => loadData(1))

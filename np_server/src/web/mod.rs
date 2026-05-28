@@ -39,6 +39,7 @@ pub async fn run_http_server(addr: &str, web_base_dir: &str) -> anyhow::Result<(
             .service(web::resource("/api/remove_player").route(web::post().to(remove_player)))
             .service(web::resource("/api/add_player").route(web::post().to(add_player)))
             .service(web::resource("/api/update_player").route(web::post().to(update_player)))
+            .service(web::resource("/api/kick_player").route(web::post().to(kick_player)))
             .service(web::resource("/api/tunnel_list").route(web::post().to(tunnel_list)))
             .service(web::resource("/api/remove_tunnel").route(web::post().to(remove_tunnel)))
             .service(web::resource("/api/add_tunnel").route(web::post().to(add_tunnel)))
@@ -170,17 +171,25 @@ async fn player_list(
     let mut players: Vec<proto::PlayerListItem> = Vec::new();
 
     for data in users {
-        let online = if let Some(p) = GLOBAL_MANAGER.player_manager.get_player(data.id) {
-            p.read().await.is_online()
-        } else {
-            false
-        };
+        let (online, ip_addr, online_time) =
+            if let Some(p) = GLOBAL_MANAGER.player_manager.get_player(data.id) {
+                let player = p.read().await;
+                (
+                    player.is_online(),
+                    player.get_addr().to_string(),
+                    player.get_online_time(),
+                )
+            } else {
+                (false, String::new(), 0)
+            };
 
         players.push(proto::PlayerListItem {
             id: data.id,
             username: data.username,
             password: data.password,
             online,
+            ip_addr,
+            online_time,
         })
     }
 
@@ -258,14 +267,55 @@ async fn update_player(
         })
         .await
     {
-        Ok(()) => Ok(HttpResponse::Ok().json(proto::GeneralResponse {
-            code: 0,
-            msg: "Success".into(),
-        })),
+        Ok(()) => {
+            // 修改密码后将玩家踢下线
+            if let Some(p) = GLOBAL_MANAGER.player_manager.get_player(req.id) {
+                let mut player = p.write().await;
+                if player.is_online() {
+                    player.kick_offline();
+                }
+            }
+            Ok(HttpResponse::Ok().json(proto::GeneralResponse {
+                code: 0,
+                msg: "Success".into(),
+            }))
+        }
         Err(err) => Ok(HttpResponse::Ok().json(proto::GeneralResponse {
             code: -2,
             msg: err.to_string(),
         })),
+    }
+}
+
+async fn kick_player(
+    identity: Option<Identity>,
+    body: String,
+) -> actix_web::Result<impl Responder> {
+    if let Some(result) = authentication(identity) {
+        return result;
+    }
+
+    let req = serde_json::from_str::<proto::KickPlayerReq>(&body)?;
+
+    if let Some(p) = GLOBAL_MANAGER.player_manager.get_player(req.id) {
+        let mut player = p.write().await;
+        if player.is_online() {
+            player.kick_offline();
+            Ok(HttpResponse::Ok().json(proto::GeneralResponse {
+                code: 0,
+                msg: "Player kicked offline".into(),
+            }))
+        } else {
+            Ok(HttpResponse::Ok().json(proto::GeneralResponse {
+                code: -1,
+                msg: "Player is not online".into(),
+            }))
+        }
+    } else {
+        Ok(HttpResponse::Ok().json(proto::GeneralResponse {
+            code: -2,
+            msg: "Player not found".into(),
+        }))
     }
 }
 

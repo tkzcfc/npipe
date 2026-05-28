@@ -30,6 +30,8 @@ pub struct PlayerListItem {
     pub username: String,
     pub password: String,
     pub online: bool,
+    pub ip_addr: String,
+    pub online_time: i64,
 }
 
 /// 玩家列表回复
@@ -59,6 +61,12 @@ pub struct PlayerUpdateReq {
     pub id: u32,
     pub username: String,
     pub password: String,
+}
+
+/// 踢玩家下线
+#[derive(Serialize, Deserialize)]
+pub struct KickPlayerReq {
+    pub id: u32,
 }
 
 /// 玩家列表请求
