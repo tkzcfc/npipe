@@ -1,0 +1,20 @@
+import request from './request'
+import type { GeneralResponse } from '@/types'
+
+export interface LoginRequest {
+  username: string
+  password: string
+}
+
+export const authApi = {
+  login(data: LoginRequest) {
+    return request.post<GeneralResponse>('/api/login', data)
+  },
+  logout() {
+    return request.post<GeneralResponse>('/api/logout', {})
+  },
+  testAuth() {
+    return request.post<GeneralResponse>('/api/test_auth', {})
+  },
+}
+

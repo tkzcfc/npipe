@@ -1,0 +1,129 @@
+{
+  "comment": "npipe 代理工具测试配置文件",
+
+  "admin": {
+    "url": "http://127.0.0.1:8120",
+    "username": "admin",
+    "password": "admin@1234"
+  },
+
+  "players": {
+    "comment": "sender/receiver 是在 npipe-admin 中创建的用户ID，需提前在管理界面创建并让客户端登录上线",
+    "sender_id": 93810524,
+    "receiver_id": 65896029
+  },
+
+  "echo_server": {
+    "comment": "测试用基础回显服务器绑定地址，UDP 和 TCP 都会启动",
+    "tcp_host": "127.0.0.1",
+    "tcp_port": 19001,
+    "udp_host": "127.0.0.1",
+    "udp_port": 19002
+  },
+
+  "framed_echo_server": {
+    "comment": "大数据量测试专用的长度前缀帧回显服务器，供 bulk 测试使用",
+    "host": "127.0.0.1",
+    "port": 19003
+  },
+
+  "tunnels": {
+    "tcp": {
+      "enabled": true,
+      "inlet_host": "127.0.0.1",
+      "inlet_port": 19101,
+      "comment": "TCP隧道入口监听地址"
+    },
+    "udp": {
+      "enabled": true,
+      "inlet_host": "127.0.0.1",
+      "inlet_port": 19102,
+      "comment": "UDP隧道入口监听地址"
+    },
+    "socks5": {
+      "enabled": true,
+      "inlet_host": "127.0.0.1",
+      "inlet_port": 19103,
+      "username": "",
+      "password": "",
+      "comment": "SOCKS5代理（无认证），对应隧道的 username/password 均为空"
+    },
+    "socks5_auth": {
+      "enabled": true,
+      "inlet_host": "127.0.0.1",
+      "inlet_port": 19105,
+      "username": "testuser",
+      "password": "testpass",
+      "comment": "SOCKS5代理（含认证），对应隧道需配置相同的 username/password"
+    },
+    "http": {
+      "enabled": true,
+      "inlet_host": "127.0.0.1",
+      "inlet_port": 19104,
+      "username": "",
+      "password": "",
+      "comment": "HTTP代理（无认证）"
+    },
+    "http_auth": {
+      "enabled": true,
+      "inlet_host": "127.0.0.1",
+      "inlet_port": 19106,
+      "username": "httpuser",
+      "password": "httppass",
+      "comment": "HTTP代理（含认证），对应隧道需配置相同的 username/password"
+    },
+    "tcp_bulk": {
+      "enabled": true,
+      "inlet_host": "127.0.0.1",
+      "inlet_port": 19201,
+      "comment": "TCP大数据量测试隧道入口，目标指向 framed_echo_server"
+    },
+    "socks5_bulk": {
+      "enabled": true,
+      "inlet_host": "127.0.0.1",
+      "inlet_port": 19202,
+      "username": "",
+      "password": "",
+      "comment": "SOCKS5大数据量测试隧道入口"
+    },
+    "http_bulk": {
+      "enabled": true,
+      "inlet_host": "127.0.0.1",
+      "inlet_port": 19203,
+      "username": "",
+      "password": "",
+      "comment": "HTTP代理大数据量测试隧道入口"
+    }
+  },
+
+  "test": {
+    "timeout": 10,
+    "create_tunnels": true,
+    "comment": "create_tunnels=true 时会自动通过 API 创建测试隧道，false 时使用已有隧道",
+    "cleanup_after_test": true,
+
+    "socks5_test_target": {
+      "host": "127.0.0.1",
+      "port": 19001,
+      "comment": "SOCKS5/HTTP 代理时连接的目标地址（基础 echo server）"
+    },
+    "http_test_target": {
+      "host": "127.0.0.1",
+      "port": 19001,
+      "comment": "HTTP 代理 CONNECT 的目标地址（基础 echo server）"
+    },
+
+    "bulk": {
+      "comment": "大数据量测试参数",
+      "total_size_mb": 4,
+      "chunk_size_kb": 64,
+      "rounds": 3,
+      "timeout": 120,
+      "framed_target": {
+        "host": "127.0.0.1",
+        "port": 19003,
+        "comment": "bulk 测试的目标地址（framed_echo_server 地址）"
+      }
+    }
+  }
+}

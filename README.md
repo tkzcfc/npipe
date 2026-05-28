@@ -1,172 +1,240 @@
 # npipe
 
-npipe is  is cross platform (Windows, Linux, OSX) 
+**npipe** 是一个用 Rust 编写的跨平台（Windows / Linux / macOS）安全隧道与代理工具。它通过单条加密隧道将多路 TCP/UDP 流量安全地转发到远端主机，并提供丰富的代理协议支持和 Web 管理后台。
 
-It provides simple and efficient ways to forward data from multiple sockets (TCP or UDP) through a single secure TLS tunnel to a remote computer.
+---
 
-Features:
-* Local and remote TCP port forwarding
-* Local and remote UDP port forwarding
-* Local and remote SOCKS server
-* Local and remote HTTP Proxy server
-* TLS connection with the strongest cipher-suites
-* **Multiple transport protocols**:
-  - TCP
-  - KCP (low-latency)
-  - WebSocket (bypass restrictions)
-  - QUIC (HTTP/3, fast handshake)
+## ✨ 功能特性
 
-## How to use
+- **多协议代理**
+  - TCP / UDP 端口转发（本地 & 远端）
+  - SOCKS5 代理服务器（本地 & 远端）
+  - HTTP 代理服务器（本地 & 远端）
+- **多传输协议**（可按需编译）
+  - `tcp`  — 标准 TCP
+  - `kcp`  — 低延迟 KCP
+  - `ws`   — WebSocket（穿透限制）
+  - `quic` — QUIC / HTTP3（快速握手）
+- **安全**
+  - TLS 加密传输（可选）
+  - 代理通道独立加密（Xor 等）+ LZ4 压缩
+- **Web 管理后台**（actix-web + Vue.js）
+  - 用户/隧道管理
+  - 实时在线状态监控
+- **Windows 服务**：客户端可注册为系统服务，开机自启
+- **非法流量转发**：将非 npipe 流量透明转发至其他程序（如 Nginx）
+- **多数据库**：SQLite（默认）/ MySQL
 
-### Command line
+---
 
-#### Client
-
-```
-Usage: np_client.exe run [OPTIONS] --server <SERVER> --username <USERNAME> --password <PASSWORD>
-
-Options:
-      --backtrace <BACKTRACE>
-          print backtracking information [default: false] [possible values: true, false]
-  -s, --server <SERVER>
-          server address
-  -u, --username <USERNAME>
-          username
-  -p, --password <PASSWORD>
-          password
-      --enable-tls
-          enable tls
-      --insecure
-          if true, the validity of the SSL certificate is not verified
-      --quiet
-          Quiet mode. Do not print logs
-      --ca-cert <CA_CERT>
-          ca file path (optional), if not provided, the client’s certificate will not be verified [default: ]
-      --log-level <LOG_LEVEL>
-          set log level [default: info]
-      --base-log-level <BASE_LOG_LEVEL>
-          set log level [default: error]
-      --log-dir <LOG_DIR>
-          set log directory [default: logs]
-  -h, --help
-          Print help (see more with '--help')
-```
-
-Register the client as a service on Windows (must be executed in a console with administrator privileges)
+## 📦 项目结构
 
 ```
-Usage: np_client.exe install [OPTIONS] --server <SERVER> --username <USERNAME> --password <PASSWORD>
-
-Options:
-      --backtrace <BACKTRACE>
-          print backtracking information [default: false] [possible values: true, false]
-  -s, --server <SERVER>
-          server address
-  -u, --username <USERNAME>
-          username
-  -p, --password <PASSWORD>
-          password
-      --enable-tls
-          enable tls
-      --insecure
-          if true, the validity of the SSL certificate is not verified
-      --quiet
-          Quiet mode. Do not print logs
-      --ca-cert <CA_CERT>
-          ca file path (optional), if not provided, the client’s certificate will not be verified [default: ]
-      --log-level <LOG_LEVEL>
-          set log level [default: info]
-      --base-log-level <BASE_LOG_LEVEL>
-          set log level [default: error]
-      --log-dir <LOG_DIR>
-          set log directory [default: logs]
-  -h, --help
-          Print help (see more with '--help')
+npipe/
+├── np_base/      # 核心基础库（网络、代理、加密）
+├── np_proto/     # 协议定义（Protobuf）
+├── np_server/    # 服务端
+├── np_client/    # 客户端
+└── npipe-admin/  # Web 管理前端（Vue 3）
 ```
 
-Then start the service and typing: 
+---
 
-```
-sc.exe start "np_client"
-```
+## 🚀 快速开始
 
-Example usage：
+### 编译
 
-```
-```
+确保已安装 [Rust 工具链](https://rustup.rs/)（推荐 stable 版本）。
 
+```bash
+# 编译所有组件（含 KCP / WebSocket / QUIC）
+cargo build --release
 
-
-#### Server
-
-```
-Usage: np_server.exe [OPTIONS]
-
-Options:
-  -b, --backtrace <BACKTRACE>
-          Print backtracking information [default: false] [possible values: true, false]
-  -c, --config-file <CONFIG_FILE>
-          Config file [default: config.json]
-      --log-level <LOG_LEVEL>
-          Set log level  warn [default: info]
-      --base-log-level <BASE_LOG_LEVEL>
-          Set log level [default: error]
-  -h, --help
-          Print help
-  -V, --version
-          Print version
+# 仅编译 TCP 支持（最小体积）
+cargo build --release --no-default-features --features tcp
 ```
 
+> **跨平台编译**：项目提供了 `Cross.toml`，可使用 [cross](https://github.com/cross-rs/cross) 进行跨架构编译。
 
+---
 
-### Configuration file
+## ⚙️ 服务端
+
+### 配置文件
+
+默认读取同目录下的 `config.json`，可使用 `-c` 指定其他路径。
 
 ```json
 {
-	"database_url": "sqlite://data.db?mode=rwc",
-	"listen_addr": "tcp://0.0.0.0:8118,kcp://0.0.0.0:8118,ws://0.0.0.0:8119,quic://0.0.0.0:8119",
-	"illegal_traffic_forward": "",
-	"enable_tls": false,
-	"tls_cert": "./cert.pem",
-	"tls_key": "./server.key.pem",
-	"web_base_dir": "./dist",
-	"web_addr": "0.0.0.0:8120",
-	"web_username": "admin",
-	"web_password": "admin@1234"
+    "database_url": "sqlite://data.db?mode=rwc",
+    "listen_addr": "tcp://0.0.0.0:8118,kcp://0.0.0.0:8118,ws://0.0.0.0:8119,quic://0.0.0.0:8119",
+    "illegal_traffic_forward": "",
+    "enable_tls": false,
+    "tls_cert": "./cert.pem",
+    "tls_key": "./server.key.pem",
+    "web_base_dir": "./dist",
+    "web_addr": "0.0.0.0:8120",
+    "web_username": "admin",
+    "web_password": "admin@1234",
+    "quiet": false,
+    "log_dir": "logs"
 }
 ```
 
-#### Arguments
+#### 配置项说明
 
-### 
+| 配置项                    | 说明                                                                 | 示例                                                                |
+|---------------------------|----------------------------------------------------------------------|---------------------------------------------------------------------|
+| `database_url`            | 数据库连接地址                                                       | `sqlite://data.db?mode=rwc`<br>`mysql://user:pass@host:3306/dbname` |
+| `listen_addr`             | 服务监听地址，多个地址用逗号分隔                                     | `tcp://0.0.0.0:8118,kcp://0.0.0.0:8118,ws://0.0.0.0:8119`         |
+| `enable_tls`              | 是否启用 TLS                                                         | `true` / `false`                                                    |
+| `tls_cert`                | TLS 证书文件路径                                                     | `./cert.pem`                                                        |
+| `tls_key`                 | TLS 私钥文件路径                                                     | `./server.key.pem`                                                  |
+| `web_base_dir`            | Web 管理前端静态文件目录（留空则禁用 Web 管理）                      | `./dist`                                                            |
+| `web_addr`                | Web 管理后台监听地址                                                 | `0.0.0.0:8120`                                                      |
+| `web_username`            | Web 管理员账号（留空则禁用 Web 管理）                                | `admin`                                                             |
+| `web_password`            | Web 管理员密码（留空则禁用 Web 管理）                                | `admin@1234`                                                        |
+| `illegal_traffic_forward` | 非 npipe 流量转发地址，可对接 Nginx 等（留空则丢弃）                 | `127.0.0.1:80`                                                      |
+| `quiet`                   | 安静模式，不输出日志                                                 | `true` / `false`                                                    |
+| `log_dir`                 | 日志保存目录                                                         | `logs`                                                              |
 
-| Configuration key       | Description                                                  | Example                                                      |
-| ----------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| database_url            | database address                                             | sqlite://data.db?mode=rwc<br> mysql://username:password@server:port/dbname, |
-| listen_addr             | Server listening address(Multiple addresses should be separated by commas) | tcp://0.0.0.0:8118,kcp://0.0.0.0:8118,ws://0.0.0.0:8119,quic://0.0.0.0:8119      |
-| enable_tls              | Enable TLS connection                                        | true/false                                                   |
-| tls_cert                | Cert file path                                               | ./cert.pem                                                   |
-| tls_key                 | Key file path                                                | ./server.key.pem                                             |
-| web_base_dir            | Web backend management path (if empty, close web management) | ./dist                                                       |
-| web_addr                | Web management listening address                             | 0.0.0.0:8120                                                 |
-| web_username            | Web interface management account (if left blank, close web management) | admin                                                        |
-| web_password            | Web interface management password (if left blank, turn off web management) | admin@1234                                                   |
-| illegal_traffic_forward | Illegal traffic request forwarding address                   | You can forward traffic that is not npipe to other programs, such as nginx. Configuration format example: 127.0.0.1:80. If it is empty, do not forward the request |
-| quiet                   | Quiet mode. Do not print logs                                | true/false                                                   |
-| log_dir                 | Log saving directory                                         | logs                                                         |
+#### ⚠️ 注意事项
 
+- **QUIC 协议必须启用 TLS**：QUIC 协议在设计上强制要求加密，若 `listen_addr` 中包含 `quic://` 地址，必须同时将 `enable_tls` 设为 `true` 并提供有效的 `tls_cert` 和 `tls_key`，否则服务端将无法正常启动 QUIC 监听。
+- **多协议混用**：TCP / KCP / WebSocket 可以在不启用 TLS 的情况下运行，但建议生产环境统一开启 TLS 以保障传输安全。
+- **Web 管理禁用**：`web_username`、`web_password`、`web_addr` 三者任意一项为空，Web 管理后台将自动关闭。
 
+### 启动服务端
 
-## How to generate certificates for TLS connections
+```bash
+# 使用默认配置文件
+np_server
+
+# 指定配置文件
+np_server -c /etc/npipe/config.json
+
+# 查看帮助
+np_server --help
+```
+
+```
+Usage: np_server [OPTIONS]
+
+Options:
+  -b, --backtrace <BACKTRACE>              打印回溯信息 [default: false]
+  -c, --config-file <CONFIG_FILE>          配置文件路径 [default: config.json]
+      --log-level <LOG_LEVEL>              日志级别 [default: info]
+      --base-log-level <BASE_LOG_LEVEL>    基础库日志级别 [default: error]
+  -h, --help                               打印帮助
+  -V, --version                            打印版本
+```
+
+---
+
+## 🖥️ 客户端
+
+### 运行客户端
+
+```bash
+np_client run --server tcp://your-server:8118 --username user1 --password pass123
+```
+
+支持同时指定多个服务端地址，客户端将循环尝试连接：
+
+```bash
+np_client run \
+  --server "tcp://server1:8118,kcp://server2:8118" \
+  --username user1 \
+  --password pass123 \
+  --enable-tls \
+  --ca-cert ./root-ca.pem
+```
+
+```
+Usage: np_client run [OPTIONS] --server <SERVER> --username <USERNAME> --password <PASSWORD>
+
+Options:
+  -s, --server <SERVER>                    服务器地址（多个地址用逗号分隔，循环重连）
+  -u, --username <USERNAME>                用户名
+  -p, --password <PASSWORD>                密码
+      --enable-tls                         启用 TLS
+      --tls-server-name <NAME>             TLS SNI 服务器名（可选）
+      --insecure                           不验证服务器证书（不推荐生产使用）
+      --ca-cert <CA_CERT>                  CA 证书文件路径
+      --log-level <LOG_LEVEL>              日志级别 [default: info]
+      --base-log-level <BASE_LOG_LEVEL>    基础库日志级别 [default: error]
+      --log-dir <LOG_DIR>                  日志目录 [default: logs]
+      --quiet                              安静模式，不输出日志
+      --backtrace <BACKTRACE>              打印回溯信息 [default: false]
+  -h, --help                               打印帮助
+```
+
+### Windows 服务（仅 Windows）
+
+以管理员权限在命令提示符中执行以下命令可将客户端注册为 Windows 系统服务：
+
+```bat
+:: 安装服务
+np_client.exe install --server tcp://your-server:8118 --username user1 --password pass123
+
+:: 启动服务
+sc.exe start "np_client"
+
+:: 停止服务
+sc.exe stop "np_client"
+
+:: 卸载服务
+np_client.exe uninstall
+```
+
+---
+
+## 🔐 TLS 证书生成
+
+项目内置了证书生成脚本，一键生成自签名 CA 证书及服务端证书：
 
 ```bash
 ./generate-certificate.sh
 ```
 
-------
+生成后会在当前目录产生以下文件：
 
-[benchmark](./benchmark.md)
+| 文件               | 用途                      |
+|--------------------|---------------------------|
+| `root-ca.pem`      | 根 CA 证书（客户端信任）   |
+| `root-ca.key.pem`  | 根 CA 私钥                |
+| `cert.pem`         | 服务端证书                |
+| `server.key.pem`   | 服务端私钥                |
 
-------
+---
 
-Thanks to [pizixi](https://github.com/pizixi) for developing the [ admin interface](https://github.com/pizixi/npipe-webui)
+## 🌐 Web 管理后台
+
+Web 管理后台基于 **Vue 3 + Vite** 构建，源码位于 `npipe-admin/`。
+
+```bash
+# 安装依赖
+cd npipe-admin
+npm install
+
+# 开发模式
+npm run dev
+
+# 构建生产版本（产物输出至 dist/）
+npm run build
+```
+
+将构建产物目录配置到服务端 `web_base_dir` 后，访问 `http://<server-ip>:<web_port>` 即可打开管理界面。
+
+---
+
+
+## 📄 许可证
+
+本项目基于 [LICENSE](./LICENSE) 协议开源。
+
+---
+
+## 🔗 相关链接
+
+- 项目主页：[https://github.com/tkzcfc/npipe](https://github.com/tkzcfc/npipe)

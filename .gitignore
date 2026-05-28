@@ -2,3 +2,4 @@ target/
 logs/
 config.json
 *.env
+dist/

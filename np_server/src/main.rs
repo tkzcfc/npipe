@@ -146,16 +146,20 @@ pub async fn main() -> anyhow::Result<()> {
             _ => error!("Unsupported URL scheme: {}", request),
         });
 
-    if let Some(res) = set.join_next().await {
-        set.abort_all();
-        if let Err(err) = res? {
-            error!("The server unexpectedly shutdown, error: {}", err);
-        } else {
-            info!("Server gracefully shutdown");
-        }
-    } else {
+    if set.is_empty() {
         error!("No listening address configured");
+        return Ok(());
     }
+
+    while let Some(res) = set.join_next().await {
+        match res {
+            Ok(Ok(_)) => info!("A server service has finished"),
+            Ok(Err(err)) => error!("A server service encountered an error: {}", err),
+            Err(err) => error!("A service task panicked or was cancelled: {}", err),
+        }
+    }
+
+    info!("All server services have exited.");
 
     Ok(())
 }

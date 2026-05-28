@@ -1,0 +1,232 @@
+// ── CSS Custom Properties ─────────────────────────────────────────────────────
+:root {
+  // ── Light palette ──
+  --bg-primary:     #f5f7fa;
+  --bg-card:        #ffffff;
+  --bg-sidebar:     #1b2540;
+  --bg-header:      #ffffff;
+  --text-primary:   #1a1d2e;
+  --text-secondary: #5a607a;
+  --text-muted:     #9399af;
+  --border-color:   #e2e6f0;
+  --accent:         #4f7df4;
+  --accent-hover:   #6d94f7;
+  --accent-bg:      #eef3fe;
+  --success:        #27ae72;
+  --warning:        #d99d2a;
+  --danger:         #e84c4c;
+  --shadow-sm:      0 1px 6px rgba(30,40,80,.07);
+  --shadow-md:      0 4px 18px rgba(30,40,80,.12);
+  --radius:         10px;
+}
+
+// ── Dark palette ──────────────────────────────────────────────────────────────
+.dark {
+  --bg-primary:     #10131c;
+  --bg-card:        #181d2e;
+  --bg-sidebar:     #0d1020;
+  --bg-header:      #181d2e;
+  --text-primary:   #dde3f4;
+  --text-secondary: #8b93b0;
+  --text-muted:     #5c6380;
+  --border-color:   #272d44;
+  --accent:         #5b8ff9;
+  --accent-hover:   #7aa5fb;
+  --accent-bg:      #1a2448;
+  --success:        #35c87c;
+  --warning:        #e8b84b;
+  --danger:         #f06060;
+  --shadow-sm:      0 1px 8px rgba(0,0,0,.35);
+  --shadow-md:      0 4px 20px rgba(0,0,0,.55);
+}
+
+// ── Reset ─────────────────────────────────────────────────────────────────────
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0; height: 100%;
+  font-family: 'SF Pro Display','PingFang SC','Helvetica Neue','Microsoft YaHei',sans-serif;
+  font-size: 14px; line-height: 1.6;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background .25s, color .25s;
+}
+
+#app { height: 100%; }
+
+// ── Scrollbar ─────────────────────────────────────────────────────────────────
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+// ── Element Plus dark custom overrides (after importing base CSS and dark vars) ────
+// Only override what the official dark CSS doesn't cover or differs from our palette
+.dark {
+  // Map our palette to El Plus variables
+  --el-bg-color:              #181d2e;
+  --el-bg-color-page:         #10131c;
+  --el-bg-color-overlay:      #1f253a;
+  --el-fill-color-blank:      #181d2e;
+  --el-fill-color:            #1f253a;
+  --el-fill-color-light:      #1f253a;
+  --el-fill-color-lighter:    #252c42;
+  --el-fill-color-extra-light:#252c42;
+  --el-text-color-primary:    #dde3f4;
+  --el-text-color-regular:    #8b93b0;
+  --el-text-color-secondary:  #6d7590;
+  --el-text-color-placeholder:#4e5472;
+  --el-border-color:          #272d44;
+  --el-border-color-light:    #2a3050;
+  --el-border-color-lighter:  #222840;
+  --el-border-color-extra-light: #1e2438;
+  --el-color-primary:         #5b8ff9;
+  --el-color-primary-light-3: #2a3f7a;
+  --el-color-primary-light-5: #1e2e60;
+  --el-color-primary-light-7: #162248;
+  --el-color-primary-light-9: #0f1730;
+  --el-mask-color:            rgba(0,0,0,.72);
+  --el-box-shadow:            0 4px 20px rgba(0,0,0,.55);
+  --el-box-shadow-light:      0 2px 10px rgba(0,0,0,.4);
+
+  // Table
+  --el-table-bg-color:              #181d2e;
+  --el-table-tr-bg-color:           #181d2e;
+  --el-table-header-bg-color:       #1f253a;
+  --el-table-row-hover-bg-color:    #232a40;
+  --el-table-border-color:          #272d44;
+
+  // Card
+  .el-card {
+    background-color: #181d2e;
+    border-color: #272d44;
+    --el-card-bg-color: #181d2e;
+  }
+
+  // Input
+  .el-input__wrapper {
+    background-color: #12162a !important;
+    box-shadow: 0 0 0 1px #272d44 inset !important;
+    &:hover  { box-shadow: 0 0 0 1px #5b8ff9 inset !important; }
+    &.is-focus { box-shadow: 0 0 0 1px #5b8ff9 inset !important; }
+  }
+  .el-textarea__inner {
+    background-color: #12162a;
+    box-shadow: 0 0 0 1px #272d44 inset;
+    color: #dde3f4;
+    &:focus { box-shadow: 0 0 0 1px #5b8ff9 inset; }
+  }
+
+  // Select dropdown panel
+  .el-select-dropdown { background: #1f253a; border-color: #272d44; }
+  .el-select-dropdown__item.hover,
+  .el-select-dropdown__item:hover { background: #252c42; }
+  .el-select-dropdown__item.selected { color: #5b8ff9; }
+
+  // Dialog & message-box — center alignment fix (no display override!)
+  .el-dialog   { background: #1f253a; border: 1px solid #272d44; }
+  .el-dialog__header { border-bottom: 1px solid #272d44; }
+  .el-message-box { background: #1f253a; border: 1px solid #272d44; }
+  .el-message-box__header { border-bottom: 1px solid #272d44; }
+
+  // Overlay — guarantee centering WITHOUT overriding display:none
+  .el-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    // DO NOT set display here — El Plus uses display:none to hide; overriding breaks close
+    align-items: center;
+    justify-content: center;
+  }
+  .el-overlay-dialog {
+    align-items: center;
+    justify-content: center;
+  }
+  // Menu
+  .el-menu {
+    --el-menu-bg-color:       #0d1020;
+    --el-menu-hover-bg-color: #1f253a;
+    --el-menu-active-color:   #5b8ff9;
+    --el-menu-text-color:     #8b93b0;
+    border-right: none;
+  }
+
+  // Pagination
+  --el-pagination-bg-color:        #181d2e;
+  --el-pagination-button-bg-color: #1f253a;
+
+  // Tags with custom colors
+  .el-tag.el-tag--success { --el-tag-bg-color: #0e2e20; --el-tag-border-color: #1a5035; --el-tag-text-color: #35c87c; }
+  .el-tag.el-tag--danger  { --el-tag-bg-color: #2e1010; --el-tag-border-color: #5a2020; --el-tag-text-color: #f06060; }
+  .el-tag.el-tag--info    { --el-tag-bg-color: #1a1f30; --el-tag-border-color: #272d44; --el-tag-text-color: #8b93b0; }
+  .el-tag.el-tag--warning { --el-tag-bg-color: #2e2208; --el-tag-border-color: #594500; --el-tag-text-color: #e8b84b; }
+  .el-tag.el-tag--primary { --el-tag-bg-color: #1a2448; --el-tag-border-color: #2a3f7a; --el-tag-text-color: #5b8ff9; }
+
+  // Message-box buttons
+  .el-message-box__btns .el-button--primary {
+    background-color: #5b8ff9;
+    border-color: #5b8ff9;
+  }
+  .el-button--default {
+    background: #252c42;
+    border-color: #272d44;
+    color: #dde3f4;
+    &:hover { border-color: #5b8ff9; color: #5b8ff9; background: #1a2448; }
+  }
+}
+
+// ── Overlays & Popups ────────────────────────────────────────────────────────
+// Center the message-box and dialog inside their overlays
+// We target the specific wrapper classes to avoid breaking display:none on .el-overlay
+.el-overlay-message-box,
+.el-overlay-dialog {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  position: fixed !important;
+  inset: 0 !important;
+}
+
+.el-overlay {
+  background-color: rgba(0, 0, 0, 0.6) !important;
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+.page-container { padding: 20px; min-height: 100%; }
+.flex-center  { display: flex; align-items: center; justify-content: center; }
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+.text-muted      { color: var(--text-muted); }
+.text-secondary  { color: var(--text-secondary); }
+.font-mono {
+  font-family: 'JetBrains Mono','Fira Code','Cascadia Code',Consolas,monospace;
+  font-size: 13px;
+}
+
+// ── Stat card ─────────────────────────────────────────────────────────────────
+.stat-card {
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow .2s, transform .2s;
+  cursor: default;
+  // no transform here — keep fixed portals working
+  &:hover { box-shadow: var(--shadow-md); }
+
+  .stat-icon {
+    width: 44px; height: 44px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; margin-bottom: 12px;
+  }
+  .stat-value { font-size: 32px; font-weight: 700; line-height: 1; color: var(--text-primary); }
+  .stat-label { font-size: 13px; color: var(--text-muted); margin-top: 6px; }
+}
+
+// ── Animations ────────────────────────────────────────────────────────────────
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-in-up { animation: fadeInUp .3s ease both; }

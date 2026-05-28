@@ -1,0 +1,32 @@
+{
+  "name": "npipe-admin",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "^3.4.21",
+    "vue-router": "^4.3.0",
+    "pinia": "^2.1.7",
+    "axios": "^1.6.8",
+    "element-plus": "^2.6.3",
+    "@element-plus/icons-vue": "^2.3.1",
+    "echarts": "^5.5.0",
+    "vue-echarts": "^6.7.3",
+    "@vueuse/core": "^10.9.0",
+    "dayjs": "^1.11.10"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.4",
+    "typescript": "^5.4.2",
+    "vite": "^5.2.0",
+    "vue-tsc": "^2.0.6",
+    "sass": "^1.72.0",
+    "unplugin-auto-import": "^0.17.5",
+    "unplugin-vue-components": "^0.26.0"
+  }
+}
+
