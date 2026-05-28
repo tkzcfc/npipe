@@ -25,7 +25,7 @@
       </el-menu>
 
       <div class="sidebar-footer">
-        <el-tooltip :content="appStore.sidebarCollapsed ? '展开' : '收起'" placement="right">
+        <el-tooltip :content="appStore.sidebarCollapsed ? $t('layout.expand') : $t('layout.collapse')" placement="right">
           <button class="collapse-btn" @click="appStore.toggleSidebar">
             <el-icon>
               <Expand v-if="appStore.sidebarCollapsed" />
@@ -42,14 +42,14 @@
       <header class="header">
         <div class="header-left">
           <el-breadcrumb separator="/">
-            <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
+            <el-breadcrumb-item :to="{ path: '/' }">{{ $t('layout.home') }}</el-breadcrumb-item>
             <el-breadcrumb-item v-if="route.meta.title">
               {{ route.meta.title }}
             </el-breadcrumb-item>
           </el-breadcrumb>
         </div>
         <div class="header-right">
-          <el-tooltip :content="appStore.theme === 'dark' ? '切换浅色' : '切换深色'">
+          <el-tooltip :content="appStore.theme === 'dark' ? $t('layout.themeLight') : $t('layout.themeDark')">
             <button class="icon-btn" @click="appStore.toggleTheme">
               <el-icon>
                 <Sunny v-if="appStore.theme === 'dark'" />
@@ -57,6 +57,23 @@
               </el-icon>
             </button>
           </el-tooltip>
+
+          <!-- Language Switcher -->
+          <el-dropdown @command="onSwitchLang">
+            <button class="icon-btn">
+              <el-icon><Flag /></el-icon>
+            </button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="zh-CN" :class="{ 'is-active': currentLang === 'zh-CN' }">
+                  🇨🇳 中文
+                </el-dropdown-item>
+                <el-dropdown-item command="en-US" :class="{ 'is-active': currentLang === 'en-US' }">
+                  🇺🇸 English
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
 
           <el-dropdown @command="onCommand">
             <div class="user-avatar">
@@ -67,7 +84,7 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="logout">
-                  <el-icon><SwitchButton /></el-icon> 退出登录
+                  <el-icon><SwitchButton /></el-icon> {{ $t('layout.logout') }}
                 </el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -88,31 +105,41 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
+import { setLanguage } from '@/locales'
 import { ElMessageBox, ElMessage } from 'element-plus'
 
+const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 
-const menuItems = [
-  { path: '/dashboard', title: 'Dashboard',  icon: 'Odometer' },
-  { path: '/players',   title: '用户管理',   icon: 'User' },
-  { path: '/tunnels',   title: '隧道管理',   icon: 'Connection' },
-]
+const currentLang = computed(() => locale.value)
+
+const menuItems = computed(() => [
+  { path: '/dashboard', title: t('dashboard.title'),  icon: 'Odometer' },
+  { path: '/players',   title: t('player.title'),     icon: 'User' },
+  { path: '/tunnels',   title: t('tunnel.title'),     icon: 'Connection' },
+])
+
+function onSwitchLang(lang: 'zh-CN' | 'en-US') {
+  setLanguage(lang)
+}
 
 async function onCommand(cmd: string) {
   if (cmd === 'logout') {
-    await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
+    await ElMessageBox.confirm(t('layout.logoutConfirm'), t('layout.logoutTitle'), {
+      confirmButtonText: t('common.ok'),
+      cancelButtonText: t('common.cancel'),
       type: 'warning',
     })
     await authStore.logout()
-    ElMessage.success('已退出登录')
+    ElMessage.success(t('layout.logoutSuccess'))
     router.push('/login')
   }
 }

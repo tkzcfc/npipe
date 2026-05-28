@@ -2,8 +2,8 @@
   <div class="page-container">
     <div class="flex-between" style="margin-bottom: 20px;">
       <div>
-        <h2 style="margin: 0 0 2px; font-size: 20px; font-weight: 700;">用户管理</h2>
-        <span style="font-size: 13px; color: var(--text-muted);">管理所有注册用户</span>
+        <h2 style="margin: 0 0 2px; font-size: 20px; font-weight: 700;">{{ $t('player.title') }}</h2>
+        <span style="font-size: 13px; color: var(--text-muted);">{{ $t('player.subtitle') }}</span>
       </div>
     </div>
 
@@ -11,12 +11,12 @@
       <!-- Toolbar -->
       <div class="table-toolbar">
         <div style="display: flex; gap: 8px;">
-          <el-button type="primary" :icon="Plus" @click="openAddDialog">添加用户</el-button>
-          <el-button :icon="Refresh" @click="loadData(pagination.currentPage)">刷新</el-button>
+          <el-button type="primary" :icon="Plus" @click="openAddDialog">{{ $t('player.add') }}</el-button>
+          <el-button :icon="Refresh" @click="loadData(pagination.currentPage)">{{ $t('common.refresh') }}</el-button>
         </div>
         <el-input
           v-model="searchText"
-          placeholder="搜索用户名..."
+          :placeholder="$t('player.searchPlaceholder')"
           clearable
           style="width: 220px;"
           :prefix-icon="Search"
@@ -33,8 +33,8 @@
         row-key="id"
         style="width: 100%; margin-top: 16px;"
       >
-        <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="username" label="用户名" min-width="160">
+        <el-table-column prop="id" :label="$t('player.table.id')" width="80" />
+        <el-table-column prop="username" :label="$t('player.table.username')" min-width="160">
           <template #default="{ row }">
             <div style="display:flex; align-items:center; gap:8px;">
               <el-avatar :size="28" style="background: var(--accent); font-size: 13px; flex-shrink:0;">
@@ -44,7 +44,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="password" label="密码" min-width="140">
+        <el-table-column prop="password" :label="$t('player.table.password')" min-width="140">
           <template #default="{ row }">
             <div style="display:flex; align-items:center; gap:6px;">
               <span class="font-mono">{{ showPasswords.has(row.id) ? row.password : '••••••••' }}</span>
@@ -56,37 +56,37 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="在线状态" width="110">
+        <el-table-column :label="$t('player.table.status')" width="110">
           <template #default="{ row }">
             <el-tag :type="row.online ? 'success' : 'info'" size="small">
-              {{ row.online ? '在线' : '离线' }}
+              {{ row.online ? $t('common.online') : $t('common.offline') }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="ip_addr" label="IP 地址" min-width="140">
+        <el-table-column prop="ip_addr" :label="$t('player.table.ip')" min-width="140">
           <template #default="{ row }">
             <span class="font-mono">{{ row.online ? row.ip_addr : '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="上线时间" min-width="170">
+        <el-table-column :label="$t('player.table.onlineTime')" min-width="170">
           <template #default="{ row }">
             <span>{{ row.online && row.online_time ? formatTime(row.online_time) : '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="190" fixed="right">
+        <el-table-column :label="$t('player.table.actions')" width="190" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" text @click="openEditDialog(row)">
-              <el-icon><Edit /></el-icon> 编辑
+              <el-icon><Edit /></el-icon> {{ $t('player.edit') }}
             </el-button>
             <el-button
               size="small" type="danger" text
               :disabled="!row.online"
               @click="handleKick(row)"
             >
-              <el-icon><SwitchButton /></el-icon> 踢下线
+              <el-icon><SwitchButton /></el-icon> {{ $t('player.kick') }}
             </el-button>
             <el-button size="small" type="danger" text @click="handleRemove(row)">
-              <el-icon><Delete /></el-icon> 删除
+              <el-icon><Delete /></el-icon> {{ $t('player.delete') }}
             </el-button>
           </template>
         </el-table-column>
@@ -108,7 +108,7 @@
     <!-- Add Dialog -->
     <el-dialog
       v-model="addDialog.visible"
-      title="添加用户"
+      :title="$t('player.addTitle')"
       width="440px"
       destroy-on-close
     >
@@ -119,23 +119,23 @@
         label-width="80px"
         @submit.prevent
       >
-        <el-form-item label="用户名" prop="username">
-          <el-input v-model="addDialog.form.username" placeholder="请输入用户名" />
+        <el-form-item :label="$t('player.username')" prop="username">
+          <el-input v-model="addDialog.form.username" :placeholder="$t('login.usernamePlaceholder')" />
         </el-form-item>
-        <el-form-item label="密码" prop="password">
-          <el-input v-model="addDialog.form.password" type="password" show-password placeholder="请输入密码" />
+        <el-form-item :label="$t('player.password')" prop="password">
+          <el-input v-model="addDialog.form.password" type="password" show-password :placeholder="$t('login.passwordPlaceholder')" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="addDialog.visible = false">取消</el-button>
-        <el-button type="primary" :loading="addDialog.loading" @click="handleAdd">确定添加</el-button>
+        <el-button @click="addDialog.visible = false">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="addDialog.loading" @click="handleAdd">{{ $t('common.ok') }}</el-button>
       </template>
     </el-dialog>
 
     <!-- Edit Dialog -->
     <el-dialog
       v-model="editDialog.visible"
-      title="编辑用户"
+      :title="$t('player.editTitle')"
       width="440px"
       destroy-on-close
     >
@@ -146,19 +146,19 @@
         label-width="80px"
         @submit.prevent
       >
-        <el-form-item label="ID">
+        <el-form-item :label="$t('common.id')">
           <el-input :value="editDialog.form.id" readonly />
         </el-form-item>
-        <el-form-item label="用户名" prop="username">
-          <el-input v-model="editDialog.form.username" placeholder="请输入用户名" />
+        <el-form-item :label="$t('player.username')" prop="username">
+          <el-input v-model="editDialog.form.username" :placeholder="$t('login.usernamePlaceholder')" />
         </el-form-item>
-        <el-form-item label="新密码" prop="password">
-          <el-input v-model="editDialog.form.password" type="password" show-password placeholder="请输入新密码" />
+        <el-form-item :label="$t('player.newPassword')" prop="password">
+          <el-input v-model="editDialog.form.password" type="password" show-password :placeholder="$t('login.passwordPlaceholder')" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="editDialog.visible = false">取消</el-button>
-        <el-button type="primary" :loading="editDialog.loading" @click="handleEdit">保存</el-button>
+        <el-button @click="editDialog.visible = false">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="editDialog.loading" @click="handleEdit">{{ $t('common.save') }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -166,10 +166,13 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Refresh, Search, Edit, Delete, View, Hide, SwitchButton } from '@element-plus/icons-vue'
 import { playerApi } from '@/api'
 import type { Player } from '@/types'
+
+const { t } = useI18n()
 
 // ── State ───────────────────────────────────────────────────────────────────
 const loading = ref(false)
@@ -221,10 +224,10 @@ const addDialog = reactive({
   form: { username: '', password: '' },
 })
 const addRules: FormRules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' },
-             { min: 1, max: 30, message: '用户名 1-30 个字符', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入密码', trigger: 'blur' },
-             { min: 1, max: 15, message: '密码 1-15 个字符', trigger: 'blur' }],
+  username: [{ required: true, message: () => t('player.validation.usernameRequired'), trigger: 'blur' },
+             { min: 1, max: 30, message: () => t('player.validation.username'), trigger: 'blur' }],
+  password: [{ required: true, message: () => t('player.validation.passwordRequired'), trigger: 'blur' },
+             { min: 1, max: 15, message: () => t('player.validation.password'), trigger: 'blur' }],
 }
 
 function openAddDialog() {
@@ -239,11 +242,11 @@ async function handleAdd() {
   try {
     const res = await playerApi.add(addDialog.form)
     if (res.data.code === 0) {
-      ElMessage.success('添加成功')
+      ElMessage.success(t('player.addSuccess'))
       addDialog.visible = false
       loadData(1)
     } else {
-      ElMessage.error(res.data.msg || '添加失败')
+      ElMessage.error(res.data.msg || t('common.failed'))
     }
   } finally {
     addDialog.loading = false
@@ -258,10 +261,10 @@ const editDialog = reactive({
   form: { id: 0, username: '', password: '' },
 })
 const editRules: FormRules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' },
-             { min: 1, max: 30, message: '用户名 1-30 个字符', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入新密码', trigger: 'blur' },
-             { min: 1, max: 15, message: '密码 1-15 个字符', trigger: 'blur' }],
+  username: [{ required: true, message: () => t('player.validation.usernameRequired'), trigger: 'blur' },
+             { min: 1, max: 30, message: () => t('player.validation.username'), trigger: 'blur' }],
+  password: [{ required: true, message: () => t('player.validation.passwordRequired'), trigger: 'blur' },
+             { min: 1, max: 15, message: () => t('player.validation.password'), trigger: 'blur' }],
 }
 
 function openEditDialog(player: Player) {
@@ -276,11 +279,11 @@ async function handleEdit() {
   try {
     const res = await playerApi.update(editDialog.form)
     if (res.data.code === 0) {
-      ElMessage.success('保存成功')
+      ElMessage.success(t('player.saveSuccess'))
       editDialog.visible = false
       loadData(pagination.currentPage)
     } else {
-      ElMessage.error(res.data.msg || '保存失败')
+      ElMessage.error(res.data.msg || t('common.failed'))
     }
   } finally {
     editDialog.loading = false
@@ -290,30 +293,30 @@ async function handleEdit() {
 // ── Remove ────────────────────────────────────────────────────────────────────
 async function handleRemove(player: Player) {
   await ElMessageBox.confirm(
-    `确定要删除用户 "${player.username}" 吗？此操作不可恢复。`,
-    '删除确认', { type: 'warning', confirmButtonText: '确定删除', cancelButtonText: '取消' }
+    t('player.deleteConfirm', { name: player.username }),
+    t('player.deleteTitle'), { type: 'warning', confirmButtonText: t('player.deleteBtn'), cancelButtonText: t('common.cancel') }
   )
   const res = await playerApi.remove({ id: player.id })
   if (res.data.code === 0) {
-    ElMessage.success('删除成功')
+    ElMessage.success(t('player.deleteSuccess'))
     loadData(pagination.currentPage)
   } else {
-    ElMessage.error(res.data.msg || '删除失败')
+    ElMessage.error(res.data.msg || t('common.failed'))
   }
 }
 
 // ── Kick ──────────────────────────────────────────────────────────────────────
 async function handleKick(player: Player) {
   await ElMessageBox.confirm(
-    `确定要将用户 "${player.username}" 踢下线吗？`,
-    '踢下线确认', { type: 'warning', confirmButtonText: '确定', cancelButtonText: '取消' }
+    t('player.kickConfirm', { name: player.username }),
+    t('player.kickTitle'), { type: 'warning', confirmButtonText: t('common.confirm'), cancelButtonText: t('common.cancel') }
   )
   const res = await playerApi.kick({ id: player.id })
   if (res.data.code === 0) {
-    ElMessage.success('已踢下线')
+    ElMessage.success(t('player.kickSuccess'))
     loadData(pagination.currentPage)
   } else {
-    ElMessage.error(res.data.msg || '操作失败')
+    ElMessage.error(res.data.msg || t('common.failed'))
   }
 }
 

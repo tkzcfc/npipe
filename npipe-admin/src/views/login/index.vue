@@ -8,8 +8,8 @@
     <div class="login-card fade-in-up">
       <div class="login-header">
         <div class="brand-icon">⚡</div>
-        <h1 class="brand-name">npipe Console</h1>
-        <p class="brand-sub">内网穿透管理平台</p>
+        <h1 class="brand-name">{{ $t('login.title') }}</h1>
+        <p class="brand-sub">{{ $t('login.subtitle') }}</p>
       </div>
 
       <el-form
@@ -23,7 +23,7 @@
         <el-form-item prop="username">
           <el-input
             v-model="form.username"
-            placeholder="请输入用户名"
+            :placeholder="$t('login.usernamePlaceholder')"
             :prefix-icon="User"
             autofocus
             @keyup.enter="onSubmit"
@@ -34,7 +34,7 @@
           <el-input
             v-model="form.password"
             type="password"
-            placeholder="请输入密码"
+            :placeholder="$t('login.passwordPlaceholder')"
             :prefix-icon="Lock"
             show-password
             @keyup.enter="onSubmit"
@@ -42,7 +42,7 @@
         </el-form-item>
 
         <div class="remember-row">
-          <el-checkbox v-model="autoLogin">自动登录</el-checkbox>
+          <el-checkbox v-model="autoLogin">{{ $t('login.autoLogin') }}</el-checkbox>
         </div>
 
         <el-button
@@ -52,7 +52,7 @@
           native-type="submit"
           @click="onSubmit"
         >
-          {{ loading ? '登录中...' : '登 录' }}
+          {{ loading ? $t('login.submitting') : $t('login.submit') }}
         </el-button>
 
         <!-- Inline error message -->
@@ -72,10 +72,12 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { User, Lock, WarningFilled } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 
+const { t } = useI18n()
 const router = useRouter()
 const route  = useRoute()
 const authStore = useAuthStore()
@@ -91,8 +93,8 @@ const form = reactive({
 })
 
 const rules: FormRules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入密码',   trigger: 'blur' }],
+  username: [{ required: true, message: () => t('login.validationUsername'), trigger: 'blur' }],
+  password: [{ required: true, message: () => t('login.validationPassword'), trigger: 'blur' }],
 }
 
 async function onSubmit() {
@@ -111,11 +113,11 @@ async function onSubmit() {
         localStorage.removeItem('autoLogin')
         localStorage.removeItem('savedUser')
       }
-      ElMessage.success('登录成功')
+      ElMessage.success(t('login.success'))
       const redirect = (route.query.redirect as string) ?? '/dashboard'
       router.push(redirect)
     } else {
-      errorMsg.value = msg || '用户名或密码错误'
+      errorMsg.value = msg || t('login.error')
     }
   } catch {
     // errors handled by interceptor

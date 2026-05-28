@@ -2,8 +2,8 @@
   <div class="page-container">
     <div class="flex-between" style="margin-bottom: 20px;">
       <div>
-        <h2 style="margin: 0 0 2px; font-size: 20px; font-weight: 700;">隧道管理</h2>
-        <span style="font-size: 13px; color: var(--text-muted);">管理所有内网穿透隧道</span>
+        <h2 style="margin: 0 0 2px; font-size: 20px; font-weight: 700;">{{ $t('tunnel.title') }}</h2>
+        <span style="font-size: 13px; color: var(--text-muted);">{{ $t('tunnel.subtitle') }}</span>
       </div>
     </div>
 
@@ -11,13 +11,13 @@
       <!-- Toolbar -->
       <div class="table-toolbar">
         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-          <el-button type="primary" :icon="Plus" @click="openAddDialog">添加隧道</el-button>
-          <el-button :icon="Refresh" @click="loadData(pagination.currentPage)">刷新</el-button>
-          <el-button text @click="clearSearch">全部</el-button>
+          <el-button type="primary" :icon="Plus" @click="openAddDialog">{{ $t('tunnel.add') }}</el-button>
+          <el-button :icon="Refresh" @click="loadData(pagination.currentPage)">{{ $t('common.refresh') }}</el-button>
+          <el-button text @click="clearSearch">{{ $t('common.all') }}</el-button>
         </div>
         <el-input
           v-model="searchText"
-          placeholder="搜索地址/描述..."
+          :placeholder="$t('tunnel.searchPlaceholder')"
           clearable
           style="width: 240px;"
           :prefix-icon="Search"
@@ -35,22 +35,22 @@
         style="width: 100%; margin-top: 16px;"
         :default-sort="{ prop: 'id', order: 'ascending' }"
       >
-        <el-table-column prop="id" label="ID" width="70" sortable />
+        <el-table-column prop="id" :label="$t('tunnel.table.id')" width="70" sortable />
 
-        <el-table-column label="监听地址" min-width="150">
+        <el-table-column :label="$t('tunnel.table.source')" min-width="150">
           <template #default="{ row }">
             <code class="addr-code">{{ row.source }}</code>
           </template>
         </el-table-column>
 
-        <el-table-column label="目标地址" min-width="150">
+        <el-table-column :label="$t('tunnel.table.endpoint')" min-width="150">
           <template #default="{ row }">
             <code v-if="row.endpoint" class="addr-code">{{ row.endpoint }}</code>
             <span v-else class="text-muted">—</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="类型" width="90">
+        <el-table-column :label="$t('tunnel.table.type')" width="90">
           <template #default="{ row }">
             <el-tag :type="tunnelTypeColor(row.tunnel_type)" size="small">
               {{ TUNNEL_TYPE_NAMES[row.tunnel_type] ?? row.tunnel_type }}
@@ -58,21 +58,21 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="出口ID" width="80">
+        <el-table-column :label="$t('tunnel.table.sender')" width="80">
           <template #default="{ row }">
-            <span v-if="row.sender === 0" class="text-muted" style="font-size:12px;">服务器</span>
+            <span v-if="row.sender === 0" class="text-muted" style="font-size:12px;">{{ $t('common.server') }}</span>
             <span v-else class="font-mono">{{ row.sender }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="入口ID" width="80">
+        <el-table-column :label="$t('tunnel.table.receiver')" width="80">
           <template #default="{ row }">
-            <span v-if="row.receiver === 0" class="text-muted" style="font-size:12px;">服务器</span>
+            <span v-if="row.receiver === 0" class="text-muted" style="font-size:12px;">{{ $t('common.server') }}</span>
             <span v-else class="font-mono">{{ row.receiver }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="加密" width="110">
+        <el-table-column :label="$t('tunnel.table.encryption')" width="110">
           <template #default="{ row }">
             <el-tag
               v-if="row.encryption_method && row.encryption_method !== 'None'"
@@ -80,31 +80,31 @@
             >
               {{ row.encryption_method }}
             </el-tag>
-            <span v-else class="text-muted" style="font-size:12px;">无</span>
+            <span v-else class="text-muted" style="font-size:12px;">{{ $t('common.none') }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="压缩" width="75">
+        <el-table-column :label="$t('tunnel.table.compression')" width="75">
           <template #default="{ row }">
             <el-icon v-if="row.is_compressed" color="#3fb950"><SuccessFilled /></el-icon>
             <el-icon v-else style="color: var(--border-color)"><CircleClose /></el-icon>
           </template>
         </el-table-column>
 
-        <el-table-column label="状态" width="90">
+        <el-table-column :label="$t('tunnel.table.status')" width="90">
           <template #default="{ row }">
             <el-tag :type="row.enabled ? 'success' : 'danger'" size="small">
-              {{ row.enabled ? '启用' : '禁用' }}
+              {{ row.enabled ? $t('common.enable') : $t('common.disable') }}
             </el-tag>
           </template>
         </el-table-column>
 
-        <el-table-column prop="description" label="描述" min-width="120" show-overflow-tooltip />
+        <el-table-column prop="description" :label="$t('tunnel.table.description')" min-width="120" show-overflow-tooltip />
 
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column :label="$t('tunnel.table.actions')" width="220" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" text @click="openEditDialog(row)">
-              <el-icon><Edit /></el-icon> 编辑
+              <el-icon><Edit /></el-icon> {{ $t('tunnel.edit') }}
             </el-button>
             <el-button
               size="small"
@@ -113,10 +113,10 @@
               :loading="toggling.has(row.id)"
               @click="handleToggle(row)"
             >
-              {{ row.enabled ? '禁用' : '启用' }}
+              {{ row.enabled ? $t('common.disable') : $t('common.enable') }}
             </el-button>
             <el-button size="small" type="danger" text @click="handleRemove(row)">
-              <el-icon><Delete /></el-icon> 删除
+              <el-icon><Delete /></el-icon> {{ $t('common.delete') }}
             </el-button>
           </template>
         </el-table-column>
@@ -138,7 +138,7 @@
     <!-- Add / Edit Dialog -->
     <el-dialog
       v-model="formDialog.visible"
-      :title="formDialog.isEdit ? '修改隧道' : '添加隧道'"
+      :title="formDialog.isEdit ? $t('tunnel.editTitle') : $t('tunnel.addTitle')"
       width="520px"
       destroy-on-close
     >
@@ -149,7 +149,7 @@
         label-width="100px"
         @submit.prevent
       >
-        <el-form-item label="类型" prop="tunnel_type">
+        <el-form-item :label="$t('common.type')" prop="tunnel_type">
           <el-select v-model="formDialog.form.tunnel_type" style="width:100%;" @change="onTypeChange">
             <el-option label="TCP"    :value="0" />
             <el-option label="UDP"    :value="1" />
@@ -158,34 +158,34 @@
           </el-select>
         </el-form-item>
 
-        <el-form-item label="监听地址" prop="source">
-          <el-input v-model="formDialog.form.source" placeholder="例: 0.0.0.0:8080" />
+        <el-form-item :label="$t('tunnel.source')" prop="source">
+          <el-input v-model="formDialog.form.source" :placeholder="$t('tunnel.sourcePlaceholder')" />
         </el-form-item>
 
-        <el-form-item v-if="!isProxyType" label="目标地址" prop="endpoint">
-          <el-input v-model="formDialog.form.endpoint" placeholder="例: 192.168.1.1:80" />
+        <el-form-item v-if="!isProxyType" :label="$t('tunnel.endpoint')" prop="endpoint">
+          <el-input v-model="formDialog.form.endpoint" :placeholder="$t('tunnel.endpointPlaceholder')" />
         </el-form-item>
 
-        <el-form-item label="出口玩家ID">
+        <el-form-item :label="$t('tunnel.senderId')">
           <el-input-number v-model="formDialog.form.sender" :min="0" style="width:100%;" />
-          <div class="form-hint">0 = 服务器</div>
+          <div class="form-hint">{{ $t('tunnel.hintServer') }}</div>
         </el-form-item>
 
-        <el-form-item label="入口玩家ID">
+        <el-form-item :label="$t('tunnel.receiverId')">
           <el-input-number v-model="formDialog.form.receiver" :min="0" style="width:100%;" />
-          <div class="form-hint">0 = 服务器</div>
+          <div class="form-hint">{{ $t('tunnel.hintServer') }}</div>
         </el-form-item>
 
         <template v-if="isProxyType">
-          <el-form-item label="认证用户名">
-            <el-input v-model="formDialog.form.username" placeholder="可选" />
+          <el-form-item :label="$t('tunnel.authUser')">
+            <el-input v-model="formDialog.form.username" :placeholder="$t('common.optional')" />
           </el-form-item>
-          <el-form-item label="认证密码">
-            <el-input v-model="formDialog.form.password" placeholder="可选" />
+          <el-form-item :label="$t('tunnel.authPass')">
+            <el-input v-model="formDialog.form.password" :placeholder="$t('common.optional')" />
           </el-form-item>
         </template>
 
-        <el-form-item label="加密方式">
+        <el-form-item :label="$t('tunnel.encryption')">
           <el-select v-model="formDialog.form.encryption_method" style="width:100%;">
             <el-option label="None（不加密）"   value="None" />
             <el-option label="Xor（轻量混淆）"  value="Xor" />
@@ -193,22 +193,22 @@
           </el-select>
         </el-form-item>
 
-        <el-form-item label="LZ4 压缩">
+        <el-form-item :label="$t('tunnel.compression')">
           <el-switch v-model="formDialog.form.is_compressed" />
         </el-form-item>
 
-        <el-form-item v-if="formDialog.isEdit" label="启用状态">
+        <el-form-item v-if="formDialog.isEdit" :label="$t('tunnel.enabled')">
           <el-switch v-model="formDialog.form.enabled" />
         </el-form-item>
 
-        <el-form-item label="描述">
-          <el-input v-model="formDialog.form.description" placeholder="可选备注" />
+        <el-form-item :label="$t('common.description')">
+          <el-input v-model="formDialog.form.description" :placeholder="$t('common.optional')" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="formDialog.visible = false">取消</el-button>
+        <el-button @click="formDialog.visible = false">{{ $t('common.cancel') }}</el-button>
         <el-button type="primary" :loading="formDialog.loading" @click="handleSubmit">
-          {{ formDialog.isEdit ? '保存' : '添加' }}
+          {{ formDialog.isEdit ? $t('common.save') : $t('common.add') }}
         </el-button>
       </template>
     </el-dialog>
@@ -217,10 +217,13 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Refresh, Search, Edit, Delete } from '@element-plus/icons-vue'
 import { tunnelApi } from '@/api'
 import type { Tunnel, TunnelMutateRequest } from '@/types'
+
+const { t } = useI18n()
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const TUNNEL_TYPE_NAMES: Record<number, string> = { 0: 'TCP', 1: 'UDP', 2: 'SOCKS5', 3: 'HTTP' }
@@ -304,12 +307,12 @@ const isProxyType = computed(() =>
 )
 
 const tunnelRules: FormRules = {
-  source: [{ required: true, message: '请输入监听地址', trigger: 'blur' }],
+  source: [{ required: true, message: () => t('tunnel.validation.sourceRequired'), trigger: 'blur' }],
   endpoint: [
     {
       validator: (_rule, _val, cb) => {
         if (!isProxyType.value && !formDialog.form.endpoint) {
-          cb(new Error('请输入目标地址'))
+          cb(new Error(t('tunnel.validation.endpointRequired')))
         } else {
           cb()
         }
@@ -381,11 +384,11 @@ async function handleSubmit() {
       ? await tunnelApi.update(req)
       : await tunnelApi.add({ ...req, enabled: 1 })
     if (res.data.code === 0) {
-      ElMessage.success(formDialog.isEdit ? '保存成功' : '添加成功')
+      ElMessage.success(formDialog.isEdit ? t('tunnel.saveSuccess') : t('tunnel.addSuccess'))
       formDialog.visible = false
       loadData(pagination.currentPage)
     } else {
-      ElMessage.error(res.data.msg || '操作失败')
+      ElMessage.error(res.data.msg || t('common.failed'))
     }
   } finally {
     formDialog.loading = false
@@ -416,10 +419,10 @@ async function handleToggle(tunnel: Tunnel) {
     }
     const res = await tunnelApi.update(req)
     if (res.data.code === 0) {
-      ElMessage.success('状态已更新')
+      ElMessage.success(t('tunnel.toggleSuccess'))
       loadData(pagination.currentPage)
     } else {
-      ElMessage.error(res.data.msg || '操作失败')
+      ElMessage.error(res.data.msg || t('common.failed'))
     }
   } finally {
     const s2 = new Set(toggling.value)
@@ -431,15 +434,15 @@ async function handleToggle(tunnel: Tunnel) {
 // ── Remove ────────────────────────────────────────────────────────────────────
 async function handleRemove(tunnel: Tunnel) {
   await ElMessageBox.confirm(
-    `确定要删除隧道 "${tunnel.source}" 吗？此操作不可恢复。`,
-    '删除确认', { type: 'warning', confirmButtonText: '确定删除', cancelButtonText: '取消' }
+    t('tunnel.deleteConfirm', { desc: tunnel.source }),
+    t('tunnel.deleteTitle'), { type: 'warning', confirmButtonText: t('common.delete'), cancelButtonText: t('common.cancel') }
   )
   const res = await tunnelApi.remove({ id: tunnel.id })
   if (res.data.code === 0) {
-    ElMessage.success('删除成功')
+    ElMessage.success(t('tunnel.deleteSuccess'))
     loadData(pagination.currentPage)
   } else {
-    ElMessage.error(res.data.msg || '删除失败')
+    ElMessage.error(res.data.msg || t('common.failed'))
   }
 }
 

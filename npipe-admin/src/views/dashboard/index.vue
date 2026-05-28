@@ -1,8 +1,8 @@
 <template>
   <div class="page-container">
     <div class="page-title">
-      <h2>Dashboard</h2>
-      <span class="page-subtitle">系统运行概览</span>
+      <h2>{{ $t('dashboard.title') }}</h2>
+      <span class="page-subtitle">{{ $t('dashboard.subtitle') }}</span>
     </div>
 
     <!-- Stat Cards -->
@@ -24,13 +24,13 @@
     <el-row :gutter="16" style="margin-top: 16px;">
       <el-col :md="12" :sm="24">
         <el-card>
-          <template #header><span class="card-title">用户状态分布</span></template>
+          <template #header><span class="card-title">{{ $t('dashboard.userStatus') }}</span></template>
           <div ref="playerChartRef" class="chart-box" />
         </el-card>
       </el-col>
       <el-col :md="12" :sm="24">
         <el-card>
-          <template #header><span class="card-title">隧道状态分布</span></template>
+          <template #header><span class="card-title">{{ $t('dashboard.tunnelStatus') }}</span></template>
           <div ref="tunnelChartRef" class="chart-box" />
         </el-card>
       </el-col>
@@ -42,17 +42,17 @@
         <el-card>
           <template #header>
             <div class="flex-between">
-              <span class="card-title">最近用户列表</span>
-              <el-button size="small" text @click="$router.push('/players')">查看全部 →</el-button>
+              <span class="card-title">{{ $t('dashboard.recentUsers') }}</span>
+              <el-button size="small" text @click="$router.push('/players')">{{ $t('common.viewAll') }}</el-button>
             </div>
           </template>
           <el-table :data="recentPlayers" size="small" v-loading="loadingStats">
-            <el-table-column prop="id"       label="ID"   width="70" />
-            <el-table-column prop="username" label="用户名" />
-            <el-table-column label="在线状态" width="100">
+            <el-table-column prop="id"       :label="$t('dashboard.table.id')"   width="70" />
+            <el-table-column prop="username" :label="$t('dashboard.table.username')" />
+            <el-table-column :label="$t('dashboard.table.status')" width="100">
               <template #default="{ row }">
                 <el-tag :type="row.online ? 'success' : 'info'" size="small">
-                  {{ row.online ? '在线' : '离线' }}
+                  {{ row.online ? $t('common.online') : $t('common.offline') }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -65,11 +65,13 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import * as echarts from 'echarts'
 import { playerApi, tunnelApi } from '@/api'
 import { useAppStore } from '@/stores/app'
 import type { Player, Tunnel } from '@/types'
 
+const { t } = useI18n()
 const appStore = useAppStore()
 
 const loadingStats  = ref(false)
@@ -78,10 +80,10 @@ const allTunnels    = ref<Tunnel[]>([])
 const stats = ref({ onlinePlayers: 0, totalPlayers: 0, enabledTunnels: 0, totalTunnels: 0 })
 
 const statCards = computed(() => [
-  { key: 'onlinePlayers',  label: '在线用户', value: stats.value.onlinePlayers,  icon: 'Connection', iconBg: 'rgba(63,185,80,.12)',  iconColor: '#3fb950' },
-  { key: 'totalPlayers',   label: '用户总数', value: stats.value.totalPlayers,   icon: 'User',       iconBg: 'rgba(88,166,255,.12)', iconColor: '#58a6ff' },
-  { key: 'enabledTunnels', label: '启用隧道', value: stats.value.enabledTunnels, icon: 'Share',      iconBg: 'rgba(210,153,34,.12)', iconColor: '#d29922' },
-  { key: 'totalTunnels',   label: '隧道总数', value: stats.value.totalTunnels,   icon: 'Link',       iconBg: 'rgba(248,81,73,.12)',  iconColor: '#f85149' },
+  { key: 'onlinePlayers',  label: t('dashboard.onlineUsers'), value: stats.value.onlinePlayers,  icon: 'Connection', iconBg: 'rgba(63,185,80,.12)',  iconColor: '#3fb950' },
+  { key: 'totalPlayers',   label: t('dashboard.totalUsers'),  value: stats.value.totalPlayers,   icon: 'User',       iconBg: 'rgba(88,166,255,.12)', iconColor: '#58a6ff' },
+  { key: 'enabledTunnels', label: t('dashboard.enabledTunnels'), value: stats.value.enabledTunnels, icon: 'Share',      iconBg: 'rgba(210,153,34,.12)', iconColor: '#d29922' },
+  { key: 'totalTunnels',   label: t('dashboard.totalTunnels'),  value: stats.value.totalTunnels,   icon: 'Link',       iconBg: 'rgba(248,81,73,.12)',  iconColor: '#f85149' },
 ])
 
 // ── Charts ────────────────────────────────────────────────────────────────────
@@ -118,8 +120,8 @@ function renderPlayerChart(players: Player[]) {
   if (!playerChartRef.value) return
   if (!playerChart || playerChart.isDisposed()) playerChart = echarts.init(playerChartRef.value)
   playerChart.setOption(buildPieOption([
-    { value: players.filter(p => p.online).length,  name: '在线', color: '#3fb950' },
-    { value: players.filter(p => !p.online).length, name: '离线', color: isDark.value ? '#30363d' : '#ddd' },
+    { value: players.filter(p => p.online).length,  name: t('common.online'), color: '#3fb950' },
+    { value: players.filter(p => !p.online).length, name: t('common.offline'), color: isDark.value ? '#30363d' : '#ddd' },
   ]))
 }
 
@@ -127,8 +129,8 @@ function renderTunnelChart(tunnels: Tunnel[]) {
   if (!tunnelChartRef.value) return
   if (!tunnelChart || tunnelChart.isDisposed()) tunnelChart = echarts.init(tunnelChartRef.value)
   tunnelChart.setOption(buildPieOption([
-    { value: tunnels.filter(t => t.enabled).length,  name: '启用', color: '#58a6ff' },
-    { value: tunnels.filter(t => !t.enabled).length, name: '禁用', color: '#f85149' },
+    { value: tunnels.filter(t => t.enabled).length,  name: t('common.enable'), color: '#58a6ff' },
+    { value: tunnels.filter(t => !t.enabled).length, name: t('common.disable'), color: '#f85149' },
   ]))
 }
 
