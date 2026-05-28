@@ -12,7 +12,41 @@ on:
 #   CARGO_TERM_COLOR: always
 
 jobs:
+  # ─────────────────────────────────────────────
+  # 构建 npipe-admin 管理面板（只构建一次，供所有平台共用）
+  # ─────────────────────────────────────────────
+  build-admin:
+    name: Build Admin Panel
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: npipe-admin
+        run: npm install
+
+      - name: Build admin panel
+        working-directory: npipe-admin
+        run: npm run build
+        # vite.config.ts 中 outDir 为 '../dist'，即仓库根目录下的 dist/
+
+      - name: Upload admin dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-dist
+          path: dist/
+          retention-days: 1
+
   build:
+    needs: build-admin
     name: ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -219,21 +253,20 @@ jobs:
         $CARGO build --bin np_client $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
         $CARGO build --bin np_server $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
       
+    - name: Download admin dist
+      uses: actions/download-artifact@v4
+      with:
+        name: admin-dist
+        path: dist/
+
     - name: Setup archive
       shell: bash
       run: |
         staging="np-v${{ env.BIN_VERSION }}-${{ matrix.target }}"
         mkdir -p "$staging"
 
-        git clone https://github.com/tkzcfc/npipe-webui.git
         mkdir -p "$staging/dist"
-        cp -R npipe-webui/dist/* "$staging/dist"
-
-        # cd "$staging"
-        # curl -LO "https://github.com/tkzcfc/npipe_web/releases/download/v1.0.0/dist.zip"
-        # unzip dist.zip
-        # rm ./dist.zip
-        # cd ../
+        cp -R dist/* "$staging/dist"
 
         cp config_template.json "$staging/config.json"
         cp generate-certificate.sh "$staging/generate-certificate.sh"
