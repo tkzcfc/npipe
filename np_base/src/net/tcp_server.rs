@@ -94,7 +94,7 @@ impl Server {
 pub struct Builder {
     create_session_delegate_callback: CreateSessionDelegateCallback,
     tls_configuration: Option<tls::TlsConfiguration>,
-    steam_init_callback: Option<StreamInitCallbackType>,
+    stream_init_callback: Option<StreamInitCallbackType>,
 }
 
 impl Builder {
@@ -102,15 +102,15 @@ impl Builder {
         Self {
             create_session_delegate_callback,
             tls_configuration: None,
-            steam_init_callback: None,
+            stream_init_callback: None,
         }
     }
 
-    pub fn set_on_steam_init_callback(
+    pub fn set_on_stream_init_callback(
         mut self,
-        steam_init_callback: StreamInitCallbackType,
+        stream_init_callback: StreamInitCallbackType,
     ) -> Self {
-        self.steam_init_callback = Some(steam_init_callback);
+        self.stream_init_callback = Some(stream_init_callback);
         self
     }
 
@@ -136,7 +136,7 @@ impl Builder {
         };
 
         select! {
-            res = server.start_server(listener, self.create_session_delegate_callback, self.steam_init_callback, self.tls_configuration) => {
+            res = server.start_server(listener, self.create_session_delegate_callback, self.stream_init_callback, self.tls_configuration) => {
                 if let Err(err) = res {
                     error!("TCP Server error: {}", err);
                 }

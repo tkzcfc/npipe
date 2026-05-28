@@ -45,23 +45,28 @@ impl LastActiveTime {
     }
 }
 
+/// 背压等待：若 delegate 暂时无法处理数据，使用指数退避等待直到就绪。
+async fn wait_until_ready(delegate: &Box<dyn SessionDelegate>) {
+    if delegate.is_ready_for_read().await {
+        return;
+    }
+    let mut backoff_ms = 1u64;
+    loop {
+        tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+        if delegate.is_ready_for_read().await {
+            break;
+        }
+        backoff_ms = (backoff_ms * 2).min(32);
+    }
+}
+
 async fn poll_read_from_bounded_receiver(
     addr: SocketAddr,
     delegate: &mut Box<dyn SessionDelegate>,
     mut udp_recv_receiver: mpsc::Receiver<Bytes>,
     last_active: LastActiveTime,
 ) {
-    // 初始背压检查：指数退避替代 yield_now spin loop
-    if !delegate.is_ready_for_read().await {
-        let mut backoff_ms = 1u64;
-        loop {
-            tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
-            if delegate.is_ready_for_read().await {
-                break;
-            }
-            backoff_ms = (backoff_ms * 2).min(32);
-        }
-    }
+    wait_until_ready(delegate).await;
 
     while let Some(data) = udp_recv_receiver.recv().await {
         last_active.touch(); // O(1) 原子写，无锁
@@ -81,17 +86,7 @@ async fn poll_read(
 ) {
     let mut buf = [0; 65535];
     loop {
-        // 背压检查：指数退避
-        if !delegate.is_ready_for_read().await {
-            let mut backoff_ms = 1u64;
-            loop {
-                tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
-                if delegate.is_ready_for_read().await {
-                    break;
-                }
-                backoff_ms = (backoff_ms * 2).min(32);
-            }
-        }
+        wait_until_ready(delegate).await;
 
         match socket.recv_from(&mut buf).await {
             Err(_) => continue,

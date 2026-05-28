@@ -150,7 +150,7 @@ impl Inlet {
 
                 tokio::spawn(async move {
                     let server_task = tcp_server::Builder::new(create_session_delegate_func)
-                        .set_on_steam_init_callback(Arc::new(|stream: TcpStream| {
+                        .set_on_stream_init_callback(Arc::new(|stream: TcpStream| {
                             Box::pin(async move {
                                 stream.set_nodelay(true)?;
                                 Ok(stream)

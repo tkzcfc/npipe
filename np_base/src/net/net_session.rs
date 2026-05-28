@@ -91,18 +91,18 @@ async fn poll_write<S>(
                 break;
             }
             WriterMessage::Send(data, flush) => {
-                if data.is_empty() {
-                    continue;
-                }
+                if !data.is_empty() {
+                    if let Err(error) = writer.write_all(&data).await {
+                        error!("[{addr}] error when write_all {}", error);
+                        break;
+                    }
 
-                if let Err(error) = writer.write_all(&data).await {
-                    error!("[{addr}] error when write_all {}", error);
-                    break;
-                }
-
-                if flush {
-                    if let Err(error) = writer.flush().await {
-                        error!("[{addr}] error when flushing {}", error);
+                    if flush {
+                        if let Err(error) = writer.flush().await {
+                            // flush 失败说明 socket 已损坏，后续写入也会失败，直接退出
+                            error!("[{addr}] error when flushing {}", error);
+                            break;
+                        }
                     }
                 }
             }
@@ -117,6 +117,7 @@ async fn poll_write<S>(
                     }
                     if let Err(error) = writer.flush().await {
                         error!("[{addr}] error when flushing {}", error);
+                        break;
                     }
                 }
                 callback().await;
@@ -124,6 +125,7 @@ async fn poll_write<S>(
             WriterMessage::Flush => {
                 if let Err(error) = writer.flush().await {
                     error!("[{addr}] error when flushing {}", error);
+                    break;
                 }
             }
         }
@@ -175,9 +177,7 @@ where
 
             // Detect delegates that forget to consume buffer data.
             if buffer.len() > 10 * 1024 * 1024 {
-                error!(
-                    "[{addr}] buffer.len() is abnormal – on_try_extract_frame must consume data"
-                );
+                return Err(anyhow!("[{addr}] buffer.len() is abnormal – on_try_extract_frame must consume data"));
             }
         }
     }
