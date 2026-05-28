@@ -135,10 +135,6 @@ jobs:
         rustup install nightly
         rustup toolchain install nightly
         rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
-        curl -L https://crates.io/api/v1/crates/windows_x86_64_msvc/0.48.5/download -o windows_x86_64_msvc-0.48.5.tar.gz
-        7z x windows_x86_64_msvc-0.48.5.tar.gz
-        7z x windows_x86_64_msvc-0.48.5.crate
-        cp windows_x86_64_msvc-0.48.5/lib/windows.0.48.5.lib windows.0.48.5.lib
         cargo install --force --locked bindgen-cli
 
     - name: Install Rust
