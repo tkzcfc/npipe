@@ -12,14 +12,8 @@ use std::sync::Arc;
 use crate::global::manager::GLOBAL_MANAGER;
 use tokio::sync::RwLock;
 
-pub struct PlayerDbData {
-    pub id: u32,
-    pub username: String,
-    pub password: String,
-}
-
 pub struct PlayerManager {
-    player_map: DashMap<PlayerId, Arc<RwLock<Player>>>,
+    pub(crate) player_map: DashMap<PlayerId, Arc<RwLock<Player>>>,
 }
 
 impl PlayerManager {
@@ -138,16 +132,45 @@ impl PlayerManager {
         }
     }
 
-    /// 更新玩家数据
-    pub async fn update_player(&self, data: PlayerDbData) -> anyhow::Result<()> {
-        let user = User::find_by_id(data.id)
+    /// 修改玩家用户名
+    pub async fn rename_player(&self, player_id: u32, username: &String) -> anyhow::Result<()> {
+        anyhow::ensure!(is_valid_username(username), "username format error");
+
+        if let Some(existing_user) = User::find()
+            .filter(user::Column::Username.eq(username))
+            .one(GLOBAL_DB_POOL.get().unwrap())
+            .await?
+        {
+            anyhow::ensure!(existing_user.id == player_id, "user already exists");
+        }
+
+        let user = User::find_by_id(player_id)
             .one(GLOBAL_DB_POOL.get().unwrap())
             .await?;
-        anyhow::ensure!(user.is_some(), "can't find user: {}", data.id);
+        anyhow::ensure!(user.is_some(), "can't find user: {}", player_id);
 
         let mut user: user::ActiveModel = user.unwrap().into();
-        user.username = Set(data.username.to_owned());
-        user.password = Set(data.password.to_owned());
+        user.username = Set(username.to_owned());
+
+        let _ = user.update(GLOBAL_DB_POOL.get().unwrap()).await?;
+        Ok(())
+    }
+
+    /// 重置玩家密码
+    pub async fn reset_player_password(
+        &self,
+        player_id: u32,
+        password: &String,
+    ) -> anyhow::Result<()> {
+        anyhow::ensure!(is_valid_password(password), "password format error");
+
+        let user = User::find_by_id(player_id)
+            .one(GLOBAL_DB_POOL.get().unwrap())
+            .await?;
+        anyhow::ensure!(user.is_some(), "can't find user: {}", player_id);
+
+        let mut user: user::ActiveModel = user.unwrap().into();
+        user.password = Set(password.to_owned());
 
         let _ = user.update(GLOBAL_DB_POOL.get().unwrap()).await?;
         Ok(())

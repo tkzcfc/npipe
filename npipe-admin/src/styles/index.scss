@@ -1,41 +1,41 @@
 // ── CSS Custom Properties ─────────────────────────────────────────────────────
 :root {
   // ── Light palette ──
-  --bg-primary:     #f5f7fa;
+  --bg-primary:     #f4f5f7;
   --bg-card:        #ffffff;
-  --bg-sidebar:     #1b2540;
+  --bg-sidebar:     #171717;
   --bg-header:      #ffffff;
-  --text-primary:   #1a1d2e;
-  --text-secondary: #5a607a;
-  --text-muted:     #9399af;
-  --border-color:   #e2e6f0;
-  --accent:         #4f7df4;
-  --accent-hover:   #6d94f7;
-  --accent-bg:      #eef3fe;
-  --success:        #27ae72;
-  --warning:        #d99d2a;
-  --danger:         #e84c4c;
-  --shadow-sm:      0 1px 6px rgba(30,40,80,.07);
-  --shadow-md:      0 4px 18px rgba(30,40,80,.12);
-  --radius:         10px;
+  --text-primary:   #171717;
+  --text-secondary: #525866;
+  --text-muted:     #8a919f;
+  --border-color:   #dfe3ea;
+  --accent:         #2f6fed;
+  --accent-hover:   #1f5bd8;
+  --accent-bg:      #eef4ff;
+  --success:        #15905f;
+  --warning:        #b7791f;
+  --danger:         #dc3f3f;
+  --shadow-sm:      0 1px 4px rgba(15,23,42,.06);
+  --shadow-md:      0 10px 28px rgba(15,23,42,.11);
+  --radius:         8px;
 }
 
 // ── Dark palette ──────────────────────────────────────────────────────────────
 .dark {
-  --bg-primary:     #10131c;
-  --bg-card:        #181d2e;
-  --bg-sidebar:     #0d1020;
-  --bg-header:      #181d2e;
-  --text-primary:   #dde3f4;
-  --text-secondary: #8b93b0;
-  --text-muted:     #5c6380;
-  --border-color:   #272d44;
-  --accent:         #5b8ff9;
-  --accent-hover:   #7aa5fb;
-  --accent-bg:      #1a2448;
-  --success:        #35c87c;
-  --warning:        #e8b84b;
-  --danger:         #f06060;
+  --bg-primary:     #111214;
+  --bg-card:        #191b1f;
+  --bg-sidebar:     #0f1012;
+  --bg-header:      #191b1f;
+  --text-primary:   #eceff3;
+  --text-secondary: #a4abb7;
+  --text-muted:     #6f7785;
+  --border-color:   #2b2f36;
+  --accent:         #6aa0ff;
+  --accent-hover:   #8bb5ff;
+  --accent-bg:      #17243d;
+  --success:        #47c78a;
+  --warning:        #e0a63a;
+  --danger:         #f06a6a;
   --shadow-sm:      0 1px 8px rgba(0,0,0,.35);
   --shadow-md:      0 4px 20px rgba(0,0,0,.55);
 }
@@ -191,7 +191,7 @@ html, body {
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
-.page-container { padding: 20px; min-height: 100%; }
+.page-container { padding: 24px; min-height: 100%; }
 .flex-center  { display: flex; align-items: center; justify-content: center; }
 .flex-between { display: flex; align-items: center; justify-content: space-between; }
 .gap-2 { gap: 8px; }
@@ -201,6 +201,69 @@ html, body {
 .font-mono {
   font-family: 'JetBrains Mono','Fira Code','Cascadia Code',Consolas,monospace;
   font-size: 13px;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+
+  h1 {
+    margin: 0;
+    font-size: 22px;
+    line-height: 1.2;
+    font-weight: 760;
+    color: var(--text-primary);
+  }
+
+  p {
+    margin: 6px 0 0;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+}
+
+.panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+
+  h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 720;
+    color: var(--text-primary);
+  }
+}
+
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.el-card {
+  border-radius: 8px;
+  border-color: var(--border-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.el-table {
+  --el-table-header-bg-color: var(--bg-primary);
 }
 
 // ── Stat card ─────────────────────────────────────────────────────────────────

@@ -1,12 +1,15 @@
 use super::Peer;
 use crate::global::manager::GLOBAL_MANAGER;
 use crate::global::GLOBAL_DB_POOL;
+use crate::orm_entity::login_history;
 use crate::orm_entity::prelude::User;
 use crate::orm_entity::user;
+use chrono::Utc;
 use log::trace;
 use np_proto::message_map::MessageType;
 use np_proto::{client_server, generic, server_client};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::ActiveValue::{NotSet, Set};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter};
 
 impl Peer {
     // 收到玩家向服务器请求的消息
@@ -67,14 +70,40 @@ impl Peer {
 
         let user = user_result.unwrap();
 
-        // 用户登录成功，将会话绑定到Player上
+        // 用户登录成功，先记录登录历史，再将会话绑定到 Player 上
         if let Some(player) = GLOBAL_MANAGER.player_manager.get_player(user.id) {
+            // 记录登录历史
+            let db = GLOBAL_DB_POOL.get().unwrap();
+            let login_record = login_history::ActiveModel {
+                id: NotSet,
+                user_id: Set(user.id),
+                ip_addr: Set(self.addr.to_string()),
+                login_time: Set(Utc::now().naive_utc()),
+                logout_time: Set(None),
+                duration_secs: Set(None),
+            };
+            let login_record = login_record.insert(db).await?;
+            let record_id = login_record.id;
+
             self.player = Some(player.clone());
-            let mut player = player.write().await;
-            if player.is_online() {
-                player.on_terminate_old_session();
+            {
+                let mut player = player.write().await;
+                if player.is_online() {
+                    player.on_terminate_old_session();
+                }
+                // 克隆流量计数器到 Peer，后续无锁计数
+                let (rx, tx) = player.clone_traffic_counters();
+                self.traffic_rx = Some(rx);
+                self.traffic_tx = Some(tx);
+                player.on_connect_session(self.session_id, self.tx.clone().unwrap(), &self.addr);
             }
-            player.on_connect_session(self.session_id, self.tx.clone().unwrap(), &self.addr);
+
+            self.login_record_id = record_id;
+            trace!(
+                "login recorded, user_id:{}, record_id:{}",
+                user.id,
+                record_id
+            );
 
             let tunnel_list = GLOBAL_MANAGER
                 .tunnel_manager

@@ -5,6 +5,7 @@ use np_base::net::WriterMessage;
 use np_proto::generic;
 use np_proto::message_map::MessageType;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
@@ -21,6 +22,9 @@ pub struct Player {
     addr: String,
     // 上线时间（Unix 时间戳，秒）
     online_time: i64,
+    // 流量计数（Arc 共享引用，Peer 可无锁访问）
+    pub traffic_rx: Arc<AtomicU64>,
+    pub traffic_tx: Arc<AtomicU64>,
 }
 
 impl Player {
@@ -31,7 +35,36 @@ impl Player {
             session_id: 0,
             addr: String::new(),
             online_time: 0,
+            traffic_rx: Arc::new(AtomicU64::new(0)),
+            traffic_tx: Arc::new(AtomicU64::new(0)),
         }))
+    }
+
+    /// 获取并重置流量计数，返回 (rx, tx)
+    pub fn take_traffic(&self) -> (u64, u64) {
+        (
+            self.traffic_rx.swap(0, Ordering::Relaxed),
+            self.traffic_tx.swap(0, Ordering::Relaxed),
+        )
+    }
+
+    /// 将已取出的流量加回计数器，用于刷库失败后的补偿
+    pub fn add_traffic(&self, rx: u64, tx: u64) {
+        self.traffic_rx.fetch_add(rx, Ordering::Relaxed);
+        self.traffic_tx.fetch_add(tx, Ordering::Relaxed);
+    }
+
+    /// 获取当前流量（不重置）
+    pub fn get_traffic(&self) -> (u64, u64) {
+        (
+            self.traffic_rx.load(Ordering::Relaxed),
+            self.traffic_tx.load(Ordering::Relaxed),
+        )
+    }
+
+    /// 克隆流量计数器引用，供 Peer 无锁访问
+    pub fn clone_traffic_counters(&self) -> (Arc<AtomicU64>, Arc<AtomicU64>) {
+        (self.traffic_rx.clone(), self.traffic_tx.clone())
     }
 
     // 获取玩家Id

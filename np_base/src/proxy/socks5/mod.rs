@@ -318,9 +318,9 @@ impl Socks5Context {
 
         // 直接按下标读取头部 4 字节，不 drain 也不分配 Vec；
         // 失败/不支持时无需 splice 还原，成功时 buffer.clear() 清空即可。
-        let ver          = self.buffer[0];
-        let cmd          = self.buffer[1];
-        let rsv          = self.buffer[2];
+        let ver = self.buffer[0];
+        let cmd = self.buffer[1];
+        let rsv = self.buffer[2];
         let address_type = self.buffer[3];
 
         let mut support = true;

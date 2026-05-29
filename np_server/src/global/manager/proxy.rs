@@ -5,15 +5,12 @@ use log::{debug, error};
 use np_base::proxy::inlet::{Inlet, InletDataEx, InletProxyType};
 use np_base::proxy::outlet::Outlet;
 use np_base::proxy::{OutputFuncType, ProxyMessage};
-use np_proto::message_map::MessageType;
+use np_proto::message_map::{get_message_size, MessageType};
 use np_proto::utils::message_bridge;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 pub struct ProxyManager {
-    /// DashMap 替代 Arc<RwLock<HashMap<u32, ...>>>:
-    /// - 每条代理消息路由时只需访问特定 tunnel 的 inlet/outlet
-    /// - 原来的全局 RwLock 导致所有消息路由串行化
-    /// - DashMap 分片锁，不同 tunnel_id 并发访问无竞争
     outlets: Arc<DashMap<u32, Arc<Outlet>>>,
     inlets: Arc<DashMap<u32, Inlet>>,
 }
@@ -224,6 +221,9 @@ impl ProxyManager {
             if p.is_online() {
                 let message = message_bridge::proxy_message_2_pb(proxy_message, tunnel_id);
                 if !message.is_none() {
+                    // 统计出站代理流量
+                    let tx_bytes = get_message_size(&message) as u64 + 13;
+                    p.traffic_tx.fetch_add(tx_bytes, Ordering::Relaxed);
                     let _ = p.send_push(&message);
                 }
                 return;
@@ -272,7 +272,11 @@ impl ProxyManager {
 
 async fn push_message_to_player(player_id: PlayerId, message: &MessageType) {
     if let Some(player) = GLOBAL_MANAGER.player_manager.get_player(player_id) {
-        let _ = player.read().await.send_push(message);
+        let p = player.read().await;
+        // 统计出站代理流量
+        let tx_bytes = get_message_size(message) as u64 + 13;
+        p.traffic_tx.fetch_add(tx_bytes, Ordering::Relaxed);
+        let _ = p.send_push(message);
     }
 }
 

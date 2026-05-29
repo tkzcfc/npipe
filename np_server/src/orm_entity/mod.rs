@@ -2,5 +2,7 @@
 
 pub mod prelude;
 
+pub mod login_history;
+pub mod traffic_hourly;
 pub mod tunnel;
 pub mod user;

@@ -45,10 +45,8 @@ pub async fn run_server(
                     // 反射回本 socket，属于可恢复错误，直接 continue。
                     // 但若连续错误过多，说明 socket 可能已损坏，退出避免 CPU 空转。
                     #[cfg(windows)]
-                    if e.raw_os_error() == Some(10054) {
-                        if consecutive_errors <= 3 {
-                            continue;
-                        }
+                    if e.raw_os_error() == Some(10054) && consecutive_errors <= 3 {
+                        continue;
                     }
 
                     if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
@@ -68,45 +66,43 @@ pub async fn run_server(
 
             let received_data = Bytes::copy_from_slice(&buf[..amt]);
 
-            let sender = session_map
-                .entry(addr)
-                .or_insert_with(|| {
-                    // 全局唯一 session_id，与所有协议的会话共用同一空间
-                    let session_id = net_session::create_session_id();
-                    // 每个会话独立的 delegate 实例，避免跨会话状态干扰
-                    let delegate = on_create_session_delegate_callback();
-                    // 通知会话结束
-                    let shutdown = receiver_shutdown.resubscribe();
-                    // 反向通知会话结束完毕
-                    let shutdown_complete = shutdown_complete_tx.clone();
-                    // UDP 会话直接使用共享 socket，避免每个会话创建独立 socket 的资源开销和端口占用问题
-                    let socket_cloned = socket.clone();
+            let sender = session_map.entry(addr).or_insert_with(|| {
+                // 全局唯一 session_id，与所有协议的会话共用同一空间
+                let session_id = net_session::create_session_id();
+                // 每个会话独立的 delegate 实例，避免跨会话状态干扰
+                let delegate = on_create_session_delegate_callback();
+                // 通知会话结束
+                let shutdown = receiver_shutdown.resubscribe();
+                // 反向通知会话结束完毕
+                let shutdown_complete = shutdown_complete_tx.clone();
+                // UDP 会话直接使用共享 socket，避免每个会话创建独立 socket 的资源开销和端口占用问题
+                let socket_cloned = socket.clone();
 
-                    // 创建有界通道，限制积压消息数量
-                    let (udp_recv_sender, udp_recv_receiver) = mpsc::channel::<Bytes>(128);
+                // 创建有界通道，限制积压消息数量
+                let (udp_recv_sender, udp_recv_receiver) = mpsc::channel::<Bytes>(128);
 
-                    // clone session_map 供会话任务使用
-                    let session_map_cloned = session_map.clone();
-                    // 新连接单独起一个异步任务处理
-                    tokio::spawn(async move {
-                        trace!("UDP Server new connection: {addr}, session_id: {session_id}");
-                        udp_session::run(
-                            session_id,
-                            addr,
-                            delegate,
-                            Some(udp_recv_receiver),
-                            shutdown,
-                            socket_cloned,
-                        )
-                            .await;
-                        session_map_cloned.remove(&addr);
-                        trace!("UDP Server disconnect: {addr}");
-                        // 反向通知会话结束
-                        drop(shutdown_complete);
-                    });
-
-                    udp_recv_sender
+                // clone session_map 供会话任务使用
+                let session_map_cloned = session_map.clone();
+                // 新连接单独起一个异步任务处理
+                tokio::spawn(async move {
+                    trace!("UDP Server new connection: {addr}, session_id: {session_id}");
+                    udp_session::run(
+                        session_id,
+                        addr,
+                        delegate,
+                        Some(udp_recv_receiver),
+                        shutdown,
+                        socket_cloned,
+                    )
+                    .await;
+                    session_map_cloned.remove(&addr);
+                    trace!("UDP Server disconnect: {addr}");
+                    // 反向通知会话结束
+                    drop(shutdown_complete);
                 });
+
+                udp_recv_sender
+            });
 
             match sender.try_send(received_data) {
                 Ok(_) => {}

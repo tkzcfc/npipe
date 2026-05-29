@@ -18,7 +18,7 @@ const routes: RouteRecordRaw[] = [
         path: 'dashboard',
         name: 'Dashboard',
         component: () => import('@/views/dashboard/index.vue'),
-        meta: { title: 'Dashboard', icon: 'Odometer', requiresAuth: true },
+        meta: { title: '运行概览', icon: 'Odometer', requiresAuth: true },
       },
       {
         path: 'players',
@@ -31,6 +31,12 @@ const routes: RouteRecordRaw[] = [
         name: 'Tunnels',
         component: () => import('@/views/tunnels/index.vue'),
         meta: { title: '隧道管理', icon: 'Connection', requiresAuth: true },
+      },
+      {
+        path: 'logs',
+        name: 'LoginLogs',
+        component: () => import('@/views/logins/index.vue'),
+        meta: { title: '登录日志', icon: 'Document', requiresAuth: true },
       },
     ],
   },

@@ -1,9 +1,8 @@
 <template>
   <div class="main-layout" :class="{ 'sidebar-collapsed': appStore.sidebarCollapsed }">
-    <!-- Sidebar -->
     <aside class="sidebar">
       <div class="sidebar-logo">
-        <span class="logo-icon">⚡</span>
+        <span class="logo-icon"><el-icon><Connection /></el-icon></span>
         <span v-show="!appStore.sidebarCollapsed" class="logo-text">npipe Console</span>
       </div>
 
@@ -38,15 +37,9 @@
 
     <!-- Main content -->
     <div class="main-wrapper">
-      <!-- Header -->
       <header class="header">
         <div class="header-left">
-          <el-breadcrumb separator="/">
-            <el-breadcrumb-item :to="{ path: '/' }">{{ $t('layout.home') }}</el-breadcrumb-item>
-            <el-breadcrumb-item v-if="route.meta.title">
-              {{ route.meta.title }}
-            </el-breadcrumb-item>
-          </el-breadcrumb>
+          <div class="route-title">{{ route.meta.title }}</div>
         </div>
         <div class="header-right">
           <el-tooltip :content="appStore.theme === 'dark' ? $t('layout.themeLight') : $t('layout.themeDark')">
@@ -57,23 +50,6 @@
               </el-icon>
             </button>
           </el-tooltip>
-
-          <!-- Language Switcher -->
-          <el-dropdown @command="onSwitchLang">
-            <button class="icon-btn">
-              <el-icon><Flag /></el-icon>
-            </button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="zh-CN" :class="{ 'is-active': currentLang === 'zh-CN' }">
-                  🇨🇳 中文
-                </el-dropdown-item>
-                <el-dropdown-item command="en-US" :class="{ 'is-active': currentLang === 'en-US' }">
-                  🇺🇸 English
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
 
           <el-dropdown @command="onCommand">
             <div class="user-avatar">
@@ -92,7 +68,6 @@
         </div>
       </header>
 
-      <!-- Page content -->
       <main class="content">
         <router-view v-slot="{ Component }">
           <transition name="fade" mode="out-in">
@@ -110,26 +85,20 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
-import { setLanguage } from '@/locales'
 import { ElMessageBox, ElMessage } from 'element-plus'
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 
-const currentLang = computed(() => locale.value)
-
 const menuItems = computed(() => [
-  { path: '/dashboard', title: t('dashboard.title'),  icon: 'Odometer' },
-  { path: '/players',   title: t('player.title'),     icon: 'User' },
-  { path: '/tunnels',   title: t('tunnel.title'),     icon: 'Connection' },
+  { path: '/dashboard', title: t('dashboard.title'), icon: 'Odometer' },
+  { path: '/players', title: t('player.title'), icon: 'User' },
+  { path: '/tunnels', title: t('tunnel.title'), icon: 'Connection' },
+  { path: '/logs', title: t('loginLog.title'), icon: 'Document' },
 ])
-
-function onSwitchLang(lang: 'zh-CN' | 'en-US') {
-  setLanguage(lang)
-}
 
 async function onCommand(cmd: string) {
   if (cmd === 'logout') {
@@ -163,7 +132,7 @@ async function onCommand(cmd: string) {
   width: var(--sidebar-w);
   min-width: var(--sidebar-w);
   height: 100vh;
-  background: var(--bg-sidebar);
+  background: linear-gradient(180deg, #111827 0%, #0f1724 100%);
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
@@ -174,7 +143,7 @@ async function onCommand(cmd: string) {
 }
 
 .sidebar-logo {
-  height: 56px;
+  height: 64px;
   display: flex;
   align-items: center;
   padding: 0 20px;
@@ -183,13 +152,23 @@ async function onCommand(cmd: string) {
   white-space: nowrap;
   overflow: hidden;
 
-  .logo-icon { font-size: 22px; flex-shrink: 0; }
+  .logo-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #8ab4ff;
+    background: rgba(91,143,249,.14);
+    flex-shrink: 0;
+  }
 
   .logo-text {
     font-size: 15px;
     font-weight: 700;
     color: #fff;
-    letter-spacing: .5px;
+    letter-spacing: 0;
   }
 }
 
@@ -205,7 +184,7 @@ async function onCommand(cmd: string) {
     height: 42px;
     line-height: 42px;
     margin: 2px 10px;
-    border-radius: 8px;
+    border-radius: 7px;
     color: rgba(255,255,255,.55);
     transition: all .18s;
 
@@ -257,15 +236,21 @@ async function onCommand(cmd: string) {
 
 // ── Header ──────────────────────────────────────────────────────────────────
 .header {
-  height: 56px;
+  height: 64px;
   background: var(--bg-header);
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  padding: 0 24px;
   flex-shrink: 0;
   box-shadow: var(--shadow-sm);
+}
+
+.route-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
 }
 
 .header-right {

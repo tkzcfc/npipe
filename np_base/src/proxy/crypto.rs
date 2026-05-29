@@ -88,7 +88,7 @@ pub fn encrypt(
         EncryptionMethod::None => Ok(data.into_owned()),
         EncryptionMethod::Aes128 => {
             // &*data = &[u8]，Cow::Borrowed 时零拷贝直接借用，Cow::Owned 时借用 Vec 内容
-            simplestcrypt::encrypt_and_serialize(key, &*data)
+            simplestcrypt::encrypt_and_serialize(key, &data)
                 .map_err(|err| anyhow!("encrypt_and_serialize error: {:?}", err))
         }
         EncryptionMethod::Xor => {
@@ -110,7 +110,7 @@ pub fn decrypt(
         EncryptionMethod::None => Ok(data.into_owned()),
         EncryptionMethod::Aes128 => {
             // 同 encrypt，直接借用，不需要调用方先 to_vec()
-            simplestcrypt::deserialize_and_decrypt(key, &*data)
+            simplestcrypt::deserialize_and_decrypt(key, &data)
                 .map_err(|err| anyhow!("deserialize_and_decrypt error: {:?}", err))
         }
         EncryptionMethod::Xor => {

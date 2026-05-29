@@ -1,13 +1,13 @@
 <template>
   <div class="page-container">
-    <div class="flex-between" style="margin-bottom: 20px;">
+    <div class="page-head">
       <div>
-        <h2 style="margin: 0 0 2px; font-size: 20px; font-weight: 700;">{{ $t('tunnel.title') }}</h2>
-        <span style="font-size: 13px; color: var(--text-muted);">{{ $t('tunnel.subtitle') }}</span>
+        <h1>{{ $t('tunnel.title') }}</h1>
+        <p>{{ $t('tunnel.subtitle') }}</p>
       </div>
     </div>
 
-    <el-card>
+    <section class="panel">
       <!-- Toolbar -->
       <div class="table-toolbar">
         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -101,23 +101,29 @@
 
         <el-table-column prop="description" :label="$t('tunnel.table.description')" min-width="120" show-overflow-tooltip />
 
-        <el-table-column :label="$t('tunnel.table.actions')" width="220" fixed="right">
+        <el-table-column :label="$t('tunnel.table.actions')" width="100" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" type="primary" text @click="openEditDialog(row)">
-              <el-icon><Edit /></el-icon> {{ $t('tunnel.edit') }}
-            </el-button>
-            <el-button
-              size="small"
-              :type="row.enabled ? 'warning' : 'success'"
-              text
-              :loading="toggling.has(row.id)"
-              @click="handleToggle(row)"
-            >
-              {{ row.enabled ? $t('common.disable') : $t('common.enable') }}
-            </el-button>
-            <el-button size="small" type="danger" text @click="handleRemove(row)">
-              <el-icon><Delete /></el-icon> {{ $t('common.delete') }}
-            </el-button>
+            <el-dropdown trigger="click">
+              <el-button size="small" text type="primary" style="font-size:16px; padding:0 8px;" :loading="toggling.has(row.id)">
+                <el-icon><MoreFilled /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item @click="openEditDialog(row)">
+                    <el-icon><Edit /></el-icon> {{ $t('tunnel.edit') }}
+                  </el-dropdown-item>
+                  <el-dropdown-item @click="openCloneDialog(row)">
+                    <el-icon><CopyDocument /></el-icon> {{ $t('tunnel.clone') }}
+                  </el-dropdown-item>
+                  <el-dropdown-item @click="handleToggle(row)">
+                    <el-icon><SwitchButton /></el-icon> {{ row.enabled ? $t('common.disable') : $t('common.enable') }}
+                  </el-dropdown-item>
+                  <el-dropdown-item divided @click="handleRemove(row)">
+                    <el-icon><Delete /></el-icon> {{ $t('common.delete') }}
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
@@ -133,7 +139,7 @@
           @current-change="loadData"
         />
       </div>
-    </el-card>
+    </section>
 
     <!-- Add / Edit Dialog -->
     <el-dialog
@@ -219,9 +225,9 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { Plus, Refresh, Search, Edit, Delete } from '@element-plus/icons-vue'
+import { Plus, Refresh, Search, Edit, Delete, MoreFilled, CopyDocument, SwitchButton } from '@element-plus/icons-vue'
 import { tunnelApi } from '@/api'
-import type { Tunnel, TunnelMutateRequest } from '@/types'
+import type { Tunnel, TunnelDetail, TunnelMutateRequest } from '@/types'
 
 const { t } = useI18n()
 
@@ -337,8 +343,8 @@ function openAddDialog() {
   formDialog.visible = true
 }
 
-function openEditDialog(tunnel: Tunnel) {
-  formDialog.form = {
+function formFromTunnel(tunnel: TunnelDetail): TunnelForm {
+  return {
     id:                tunnel.id,
     source:            tunnel.source,
     endpoint:          tunnel.endpoint,
@@ -352,7 +358,46 @@ function openEditDialog(tunnel: Tunnel) {
     enabled:           tunnel.enabled,
     description:       tunnel.description,
   }
+}
+
+async function fetchTunnelDetail(id: number): Promise<TunnelDetail | null> {
+  const res = await tunnelApi.detail({ id })
+  const detail = res.data.tunnel
+  if (!detail) {
+    ElMessage.error(t('tunnel.notFound'))
+    return null
+  }
+  return detail
+}
+
+async function openEditDialog(tunnel: Tunnel) {
+  const detail = await fetchTunnelDetail(tunnel.id)
+  if (!detail) return
+
+  formDialog.form = formFromTunnel(detail)
   formDialog.isEdit  = true
+  formDialog.visible = true
+}
+
+async function openCloneDialog(tunnel: Tunnel) {
+  const detail = await fetchTunnelDetail(tunnel.id)
+  if (!detail) return
+
+  formDialog.form = {
+    id: 0,
+    source: detail.source,
+    endpoint: detail.endpoint,
+    tunnel_type: detail.tunnel_type,
+    sender: detail.sender,
+    receiver: detail.receiver,
+    username: detail.username,
+    password: detail.password,
+    encryption_method: detail.encryption_method || 'None',
+    is_compressed: detail.is_compressed,
+    enabled: true,
+    description: detail.description ? `${detail.description} copy` : '',
+  }
+  formDialog.isEdit = false
   formDialog.visible = true
 }
 
@@ -402,22 +447,10 @@ async function handleToggle(tunnel: Tunnel) {
   toggling.value = s
 
   try {
-    const req: TunnelMutateRequest = {
-      id:                tunnel.id,
-      source:            tunnel.source,
-      endpoint:          tunnel.endpoint,
-      enabled:           tunnel.enabled ? 0 : 1,
-      sender:            tunnel.sender,
-      receiver:          tunnel.receiver,
-      description:       tunnel.description,
-      tunnel_type:       tunnel.tunnel_type,
-      password:          tunnel.password,
-      username:          tunnel.username,
-      is_compressed:     tunnel.is_compressed ? 1 : 0,
-      encryption_method: tunnel.encryption_method,
-      custom_mapping:    tunnel.custom_mapping ?? {},
-    }
-    const res = await tunnelApi.update(req)
+    const res = await tunnelApi.updateStatus({
+      id: tunnel.id,
+      enabled: tunnel.enabled ? 0 : 1,
+    })
     if (res.data.code === 0) {
       ElMessage.success(t('tunnel.toggleSuccess'))
       loadData(pagination.currentPage)

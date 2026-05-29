@@ -99,7 +99,11 @@ impl TunnelManager {
     }
 
     /// 更新通道
-    pub async fn update_tunnel(&self, tunnel: tunnel::Model) -> anyhow::Result<()> {
+    pub async fn update_tunnel(
+        &self,
+        mut tunnel: tunnel::Model,
+        preserve_password: bool,
+    ) -> anyhow::Result<()> {
         self.tunnel_detection(&tunnel).await?;
 
         // 一次读锁找 position 和旧值，立即 drop
@@ -120,7 +124,12 @@ impl TunnelManager {
                 .await?;
             anyhow::ensure!(db_tunnel.is_some(), "Can't find tunnel: {}", tunnel.id);
 
-            let mut db_tunnel: tunnel::ActiveModel = db_tunnel.unwrap().into();
+            let db_tunnel = db_tunnel.unwrap();
+            if preserve_password && tunnel.password.is_empty() {
+                tunnel.password = db_tunnel.password.clone();
+            }
+
+            let mut db_tunnel: tunnel::ActiveModel = db_tunnel.into();
             db_tunnel.source = Set(tunnel.source.to_owned());
             db_tunnel.endpoint = Set(tunnel.endpoint.to_owned());
             db_tunnel.enabled = Set(tunnel.enabled);
@@ -151,6 +160,44 @@ impl TunnelManager {
             return Ok(());
         }
         Err(anyhow!(format!("Unable to find tunnel_id: {}", tunnel.id)))
+    }
+
+    /// 更新通道启用状态
+    pub async fn update_tunnel_status(&self, tunnel_id: u32, enabled: u8) -> anyhow::Result<()> {
+        let found = {
+            let guard = self.tunnels.read().await;
+            guard.iter().enumerate().find_map(|(i, t)| {
+                if t.id == tunnel_id {
+                    Some((i, t.clone()))
+                } else {
+                    None
+                }
+            })
+        };
+
+        if let Some((index, mut tunnel)) = found {
+            let db_tunnel = Tunnel::find_by_id(tunnel_id)
+                .one(GLOBAL_DB_POOL.get().unwrap())
+                .await?;
+            anyhow::ensure!(db_tunnel.is_some(), "Can't find tunnel: {}", tunnel_id);
+
+            tunnel.enabled = enabled;
+
+            let mut db_tunnel: tunnel::ActiveModel = db_tunnel.unwrap().into();
+            db_tunnel.enabled = Set(enabled);
+            db_tunnel.update(GLOBAL_DB_POOL.get().unwrap()).await?;
+
+            Self::broadcast_tunnel_info(tunnel.sender, &tunnel, false).await;
+            if tunnel.sender != tunnel.receiver {
+                Self::broadcast_tunnel_info(tunnel.receiver, &tunnel, false).await;
+            }
+
+            self.tunnels.write().await[index] = tunnel;
+            GLOBAL_MANAGER.proxy_manager.sync_tunnels().await;
+            return Ok(());
+        }
+
+        Err(anyhow!(format!("Unable to find tunnel_id: {}", tunnel_id)))
     }
 
     /// 广播通道修改通知
@@ -238,10 +285,10 @@ impl TunnelManager {
         page_number: usize,
         page_size: usize,
     ) -> (Vec<tunnel::Model>, usize) {
-        let page_size = if page_size == 0 || page_size > 100 {
-            10
+        let page_size = if page_size == 0 {
+            20
         } else {
-            page_size
+            page_size.min(100)
         };
         let guard = self.tunnels.read().await;
         let total_count = guard.len();

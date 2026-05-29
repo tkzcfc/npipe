@@ -39,5 +39,6 @@ socket2 = "0.6"
 tokio_kcp = { git = "https://github.com/tkzcfc/tokio_kcp.git", optional = true }
 http = "1.3"
 dashmap = "6"
+sysinfo = "0.38.4"
 
 [dev-dependencies]

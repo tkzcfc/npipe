@@ -177,7 +177,9 @@ where
 
             // Detect delegates that forget to consume buffer data.
             if buffer.len() > 10 * 1024 * 1024 {
-                return Err(anyhow!("[{addr}] buffer.len() is abnormal – on_try_extract_frame must consume data"));
+                return Err(anyhow!(
+                    "[{addr}] buffer.len() is abnormal – on_try_extract_frame must consume data"
+                ));
             }
         }
     }

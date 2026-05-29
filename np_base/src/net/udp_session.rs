@@ -46,7 +46,7 @@ impl LastActiveTime {
 }
 
 /// 背压等待：若 delegate 暂时无法处理数据，使用指数退避等待直到就绪。
-async fn wait_until_ready(delegate: &Box<dyn SessionDelegate>) {
+async fn wait_until_ready(delegate: &dyn SessionDelegate) {
     if delegate.is_ready_for_read().await {
         return;
     }
@@ -66,7 +66,7 @@ async fn poll_read_from_bounded_receiver(
     mut udp_recv_receiver: mpsc::Receiver<Bytes>,
     last_active: LastActiveTime,
 ) {
-    wait_until_ready(delegate).await;
+    wait_until_ready(delegate.as_ref()).await;
 
     while let Some(data) = udp_recv_receiver.recv().await {
         last_active.touch(); // O(1) 原子写，无锁
@@ -86,7 +86,7 @@ async fn poll_read(
 ) {
     let mut buf = [0; 65535];
     loop {
-        wait_until_ready(delegate).await;
+        wait_until_ready(delegate.as_ref()).await;
 
         match socket.recv_from(&mut buf).await {
             Err(_) => continue,

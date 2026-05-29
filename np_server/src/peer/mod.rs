@@ -3,18 +3,24 @@ mod handle_request;
 mod handle_response;
 
 use crate::global::config::GLOBAL_CONFIG;
+use crate::global::GLOBAL_DB_POOL;
+use crate::orm_entity::login_history;
 use crate::player::Player;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use byteorder::{BigEndian, ByteOrder};
 use bytes::{Bytes, BytesMut};
+use chrono::Utc;
 use log::{debug, error, trace};
 use np_base::net::session_delegate::SessionDelegate;
 use np_base::net::WriterMessage;
 use np_proto::message_map::{encode_raw_message, get_message_id, get_message_size, MessageType};
 use np_proto::{generic, message_map};
+use sea_orm::ActiveValue::Set;
+use sea_orm::{ActiveModelTrait, EntityTrait};
 use socket2::{SockRef, TcpKeepalive};
 use std::net::SocketAddr;
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, WriteHalf};
@@ -29,6 +35,11 @@ pub struct Peer {
     session_id: u32,
     traffic_forward_writer: Option<WriteHalf<TcpStream>>,
     addr: SocketAddr,
+    // 流量计数 — 从 Player 克隆的 Arc 引用，无锁直接操作
+    traffic_rx: Option<Arc<AtomicU64>>,
+    traffic_tx: Option<Arc<AtomicU64>>,
+    // 登录历史记录 ID，用于登出时更新
+    login_record_id: u32,
 }
 
 impl Peer {
@@ -39,6 +50,9 @@ impl Peer {
             session_id: 0,
             traffic_forward_writer: None,
             addr: SocketAddr::from(([0, 0, 0, 0], 0)),
+            traffic_rx: None,
+            traffic_tx: None,
+            login_record_id: 0,
         }
     }
 
@@ -49,6 +63,10 @@ impl Peer {
         message: &MessageType,
     ) -> anyhow::Result<()> {
         assert!(serial < 0);
+        // 委托给 Player::send_response，统一统计出站流量
+        if let Some(ref player) = self.player {
+            return player.read().await.send_response(serial, message);
+        }
         package_and_send_message(&self.tx, -serial, message, true)
     }
 
@@ -60,6 +78,10 @@ impl Peer {
     #[inline]
     #[allow(dead_code)]
     pub(crate) async fn send_push(&self, message: &MessageType) -> anyhow::Result<()> {
+        // 委托给 Player::send_push，统一统计出站流量
+        if let Some(ref player) = self.player {
+            return player.read().await.send_push(message);
+        }
         package_and_send_message(&self.tx, 0, message, true)
     }
 
@@ -167,6 +189,30 @@ impl SessionDelegate for Peer {
     // 会话关闭回调
     async fn on_session_close(&mut self) -> anyhow::Result<()> {
         self.tx.take();
+
+        // 更新登出时间
+        if self.login_record_id > 0 {
+            let now = Utc::now().naive_utc();
+            let db = GLOBAL_DB_POOL.get().unwrap();
+            if let Some(record) = login_history::Entity::find_by_id(self.login_record_id)
+                .one(db)
+                .await?
+            {
+                let login_time = record.login_time;
+                let duration = (now - login_time).num_seconds().max(0) as i32;
+                let mut active: login_history::ActiveModel = record.into();
+                active.logout_time = Set(Some(now));
+                active.duration_secs = Set(Some(duration));
+                if let Err(e) = active.update(db).await {
+                    error!(
+                        "update login history logout failed, record_id:{}, error:{}",
+                        self.login_record_id, e
+                    );
+                }
+            }
+        }
+        self.login_record_id = 0;
+
         // 合并为单次写锁，避免 read-check → write-act 的 TOCTOU 窗口
         if let Some(player) = self.player.take() {
             let mut p = player.write().await;
@@ -239,6 +285,7 @@ impl SessionDelegate for Peer {
             self.send_http_404_response().await?;
             return Err(anyhow!("message length is too small"));
         }
+
         // 消息序号
         let serial: i32 = BigEndian::read_i32(&frame[0..4]);
         // 消息类型id

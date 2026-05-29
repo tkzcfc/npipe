@@ -1,10 +1,15 @@
 use crate::global::config::GLOBAL_CONFIG;
 use crate::global::logger::init_logger;
 use crate::global::manager::GLOBAL_MANAGER;
-use crate::orm_entity::{tunnel, user};
-use sea_orm::sea_query::{MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+use crate::orm_entity::{login_history, traffic_hourly, tunnel, user};
+use chrono::Utc;
+use log::info;
+use rand::Rng;
+use sea_orm::sea_query::{Index, MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+use sea_orm::ActiveValue::Set;
 use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Schema, Statement,
+    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
+    DbBackend, EntityTrait, QueryFilter, Schema, Statement,
 };
 use std::time::Duration;
 use tokio::sync::OnceCell;
@@ -60,6 +65,22 @@ pub(crate) async fn init_global() -> anyhow::Result<()> {
                     .to_string(MysqlQueryBuilder),
             ))
             .await?;
+            db.execute(Statement::from_string(
+                backend,
+                schema
+                    .create_table_from_entity(traffic_hourly::Entity)
+                    .if_not_exists()
+                    .to_string(MysqlQueryBuilder),
+            ))
+            .await?;
+            db.execute(Statement::from_string(
+                backend,
+                schema
+                    .create_table_from_entity(login_history::Entity)
+                    .if_not_exists()
+                    .to_string(MysqlQueryBuilder),
+            ))
+            .await?;
         }
         DbBackend::Postgres => {
             db.execute(Statement::from_string(
@@ -74,6 +95,22 @@ pub(crate) async fn init_global() -> anyhow::Result<()> {
                 backend,
                 schema
                     .create_table_from_entity(tunnel::Entity)
+                    .if_not_exists()
+                    .to_string(PostgresQueryBuilder),
+            ))
+            .await?;
+            db.execute(Statement::from_string(
+                backend,
+                schema
+                    .create_table_from_entity(traffic_hourly::Entity)
+                    .if_not_exists()
+                    .to_string(PostgresQueryBuilder),
+            ))
+            .await?;
+            db.execute(Statement::from_string(
+                backend,
+                schema
+                    .create_table_from_entity(login_history::Entity)
                     .if_not_exists()
                     .to_string(PostgresQueryBuilder),
             ))
@@ -96,8 +133,26 @@ pub(crate) async fn init_global() -> anyhow::Result<()> {
                     .to_string(SqliteQueryBuilder),
             ))
             .await?;
+            db.execute(Statement::from_string(
+                backend,
+                schema
+                    .create_table_from_entity(traffic_hourly::Entity)
+                    .if_not_exists()
+                    .to_string(SqliteQueryBuilder),
+            ))
+            .await?;
+            db.execute(Statement::from_string(
+                backend,
+                schema
+                    .create_table_from_entity(login_history::Entity)
+                    .if_not_exists()
+                    .to_string(SqliteQueryBuilder),
+            ))
+            .await?;
         }
     }
+
+    ensure_indexes(db, backend).await?;
 
     // 加载所有通道信息
     GLOBAL_MANAGER.tunnel_manager.load_all_tunnel().await?;
@@ -107,5 +162,97 @@ pub(crate) async fn init_global() -> anyhow::Result<()> {
 
     GLOBAL_MANAGER.proxy_manager.sync_tunnels().await;
 
+    // 启动流量定期刷库任务
+    tokio::spawn(async move {
+        traffic_flush_loop().await;
+    });
+
     Ok(())
+}
+
+async fn ensure_indexes(db: &DatabaseConnection, backend: DbBackend) -> anyhow::Result<()> {
+    let index = Index::create()
+        .name("idx_traffic_hourly_user_id_hour")
+        .table(traffic_hourly::Entity)
+        .col(traffic_hourly::Column::UserId)
+        .col(traffic_hourly::Column::Hour)
+        .if_not_exists()
+        .to_owned();
+
+    let sql = match backend {
+        DbBackend::MySql => index.to_string(MysqlQueryBuilder),
+        DbBackend::Postgres => index.to_string(PostgresQueryBuilder),
+        DbBackend::Sqlite => index.to_string(SqliteQueryBuilder),
+    };
+
+    db.execute(Statement::from_string(backend, sql)).await?;
+    Ok(())
+}
+
+/// 每 5 分钟将玩家内存中的流量计数刷入数据库
+async fn traffic_flush_loop() {
+    loop {
+        tokio::time::sleep(Duration::from_secs(300)).await;
+
+        let hour = Utc::now().format("%Y-%m-%d %H").to_string();
+        let db = GLOBAL_DB_POOL.get().expect("DB pool not initialized");
+
+        for entry in GLOBAL_MANAGER.player_manager.player_map.iter() {
+            let player_id = *entry.key();
+            let player = entry.value().clone();
+            let (rx, tx) = {
+                let player = player.read().await;
+                player.take_traffic()
+            };
+            if rx == 0 && tx == 0 {
+                continue;
+            }
+
+            // 查找当前小时的记录
+            let existing = traffic_hourly::Entity::find()
+                .filter(traffic_hourly::Column::UserId.eq(player_id))
+                .filter(traffic_hourly::Column::Hour.eq(&hour))
+                .one(db)
+                .await;
+
+            let save_result = match existing {
+                Ok(Some(model)) => {
+                    // 累加
+                    let mut active: traffic_hourly::ActiveModel = model.into();
+                    active.bytes_in = Set(active.bytes_in.unwrap() + rx as i64);
+                    active.bytes_out = Set(active.bytes_out.unwrap() + tx as i64);
+                    active.update(db).await.map(|_| ())
+                }
+                Ok(None) => {
+                    // 新建
+                    let id: u32 = rand::rng().random_range(10000000..99999999);
+                    let new_row = traffic_hourly::ActiveModel {
+                        id: Set(id),
+                        user_id: Set(player_id),
+                        bytes_in: Set(rx as i64),
+                        bytes_out: Set(tx as i64),
+                        hour: Set(hour.clone()),
+                    };
+                    new_row.insert(db).await.map(|_| ())
+                }
+                Err(e) => {
+                    log::error!("traffic flush query error: {}", e);
+                    Err(e)
+                }
+            };
+
+            if let Err(e) = save_result {
+                let player = player.read().await;
+                player.add_traffic(rx, tx);
+                log::error!(
+                    "traffic flush save error, restored counters, user_id:{}, rx:{}, tx:{}, error:{}",
+                    player_id,
+                    rx,
+                    tx,
+                    e
+                );
+            }
+        }
+        info!("Traffic flushed for hour: {}", hour);
+    }
 }
