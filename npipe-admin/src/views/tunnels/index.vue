@@ -72,6 +72,19 @@
           </template>
         </el-table-column>
 
+        <el-table-column :label="$t('tunnel.table.runtime')" width="120">
+          <template #default="{ row }">
+            <el-tooltip
+              :content="runtimeTip(row)"
+              placement="top"
+            >
+              <el-tag :type="runtimeTagType(row)" size="small">
+                {{ runtimeLabel(row) }}
+              </el-tag>
+            </el-tooltip>
+          </template>
+        </el-table-column>
+
         <el-table-column :label="$t('tunnel.table.encryption')" width="110">
           <template #default="{ row }">
             <el-tag
@@ -109,16 +122,16 @@
               </el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item @click="openEditDialog(row)">
+                  <el-dropdown-item v-if="canManageTunnel(row)" @click="openEditDialog(row)">
                     <el-icon><Edit /></el-icon> {{ $t('tunnel.edit') }}
                   </el-dropdown-item>
-                  <el-dropdown-item @click="openCloneDialog(row)">
+                  <el-dropdown-item v-if="canManageTunnel(row)" @click="openCloneDialog(row)">
                     <el-icon><CopyDocument /></el-icon> {{ $t('tunnel.clone') }}
                   </el-dropdown-item>
-                  <el-dropdown-item @click="handleToggle(row)">
+                  <el-dropdown-item v-if="canManageTunnel(row)" @click="handleToggle(row)">
                     <el-icon><SwitchButton /></el-icon> {{ row.enabled ? $t('common.disable') : $t('common.enable') }}
                   </el-dropdown-item>
-                  <el-dropdown-item divided @click="handleRemove(row)">
+                  <el-dropdown-item v-if="canManageTunnel(row)" divided @click="handleRemove(row)">
                     <el-icon><Delete /></el-icon> {{ $t('common.delete') }}
                   </el-dropdown-item>
                 </el-dropdown-menu>
@@ -173,12 +186,29 @@
         </el-form-item>
 
         <el-form-item :label="$t('tunnel.senderId')">
-          <el-input-number v-model="formDialog.form.sender" :min="0" style="width:100%;" />
+          <el-input-number
+            v-if="authStore.isAdmin"
+            v-model="formDialog.form.sender"
+            :min="0"
+            style="width:100%;"
+          />
+          <el-select v-else v-model="formDialog.form.sender" style="width:100%;">
+            <el-option :label="$t('tunnel.endpointOption.self')" :value="authStore.currentUserId" />
+          </el-select>
           <div class="form-hint">{{ $t('tunnel.hintServer') }}</div>
         </el-form-item>
 
         <el-form-item :label="$t('tunnel.receiverId')">
-          <el-input-number v-model="formDialog.form.receiver" :min="0" style="width:100%;" />
+          <el-input-number
+            v-if="authStore.isAdmin"
+            v-model="formDialog.form.receiver"
+            :min="0"
+            style="width:100%;"
+          />
+          <el-select v-else v-model="formDialog.form.receiver" style="width:100%;">
+            <el-option :label="$t('tunnel.endpointOption.server')" :value="0" />
+            <el-option :label="$t('tunnel.endpointOption.self')" :value="authStore.currentUserId" />
+          </el-select>
           <div class="form-hint">{{ $t('tunnel.hintServer') }}</div>
         </el-form-item>
 
@@ -211,8 +241,25 @@
           <el-input v-model="formDialog.form.description" :placeholder="$t('common.optional')" />
         </el-form-item>
       </el-form>
+
+      <div v-if="diagnoseResult.items.length" class="diagnose-panel">
+        <div class="diagnose-title">
+          <span>{{ $t('tunnel.diagnoseResult') }}</span>
+          <el-tag :type="diagnoseResult.ok ? 'success' : 'danger'" size="small">
+            {{ diagnoseResult.ok ? $t('tunnel.diagnosePassed') : $t('tunnel.diagnoseFailed') }}
+          </el-tag>
+        </div>
+        <div class="diagnose-list">
+          <div v-for="item in diagnoseResult.items" :key="item.key" class="diagnose-item">
+            <el-tag :type="diagnoseTagType(item.level)" size="small">{{ diagnoseLevelLabel(item.level) }}</el-tag>
+            <span>{{ diagnoseMessage(item) }}</span>
+          </div>
+        </div>
+      </div>
+
       <template #footer>
         <el-button @click="formDialog.visible = false">{{ $t('common.cancel') }}</el-button>
+        <el-button :loading="diagnosing" @click="handleDiagnose">{{ $t('tunnel.diagnose') }}</el-button>
         <el-button type="primary" :loading="formDialog.loading" @click="handleSubmit">
           {{ formDialog.isEdit ? $t('common.save') : $t('common.add') }}
         </el-button>
@@ -227,9 +274,11 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Refresh, Search, Edit, Delete, MoreFilled, CopyDocument, SwitchButton } from '@element-plus/icons-vue'
 import { tunnelApi } from '@/api'
-import type { Tunnel, TunnelDetail, TunnelMutateRequest } from '@/types'
+import { useAuthStore } from '@/stores/auth'
+import type { Tunnel, TunnelDetail, TunnelDiagnoseItem, TunnelDiagnoseResponse, TunnelMutateRequest } from '@/types'
 
 const { t } = useI18n()
+const authStore = useAuthStore()
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const TUNNEL_TYPE_NAMES: Record<number, string> = { 0: 'TCP', 1: 'UDP', 2: 'SOCKS5', 3: 'HTTP' }
@@ -240,11 +289,42 @@ function tunnelTypeColor(type: number): TagType | undefined {
   return TUNNEL_TYPE_COLORS[type]
 }
 
+function runtimeTagType(tunnel: Tunnel): TagType {
+  if (!tunnel.enabled) return 'info'
+  return tunnel.available ? 'success' : 'warning'
+}
+
+function runtimeLabel(tunnel: Tunnel): string {
+  if (!tunnel.enabled) return t('tunnel.runtime.disabled')
+  if (tunnel.available) return t('tunnel.runtime.available')
+  return t('tunnel.runtime.waiting')
+}
+
+function endpointStatus(id: number, online: boolean): string {
+  if (id === 0) return t('common.server')
+  return online ? t('common.online') : t('common.offline')
+}
+
+function runtimeTip(tunnel: Tunnel): string {
+  return `${t('tunnel.table.sender')}: ${endpointStatus(tunnel.sender, tunnel.sender_online)} / ${t('tunnel.table.receiver')}: ${endpointStatus(tunnel.receiver, tunnel.receiver_online)}`
+}
+
+function canManageTunnel(tunnel: Tunnel): boolean {
+  return authStore.isAdmin ||
+    (tunnel.sender === authStore.currentUserId &&
+      (tunnel.receiver === 0 || tunnel.receiver === authStore.currentUserId))
+}
+
 // ── State ─────────────────────────────────────────────────────────────────────
 const loading    = ref(false)
 const tunnels    = ref<Tunnel[]>([])
 const searchText = ref('')
 const toggling   = ref<Set<number>>(new Set())
+const diagnosing = ref(false)
+const diagnoseResult = reactive<TunnelDiagnoseResponse>({
+  ok: false,
+  items: [],
+})
 
 const pagination = reactive({
   currentPage: 1,
@@ -339,7 +419,12 @@ function onTypeChange() {
 
 function openAddDialog() {
   formDialog.form   = defaultForm()
+  if (!authStore.isAdmin) {
+    formDialog.form.sender = authStore.currentUserId
+    formDialog.form.receiver = 0
+  }
   formDialog.isEdit = false
+  clearDiagnoseResult()
   formDialog.visible = true
 }
 
@@ -376,6 +461,7 @@ async function openEditDialog(tunnel: Tunnel) {
 
   formDialog.form = formFromTunnel(detail)
   formDialog.isEdit  = true
+  clearDiagnoseResult()
   formDialog.visible = true
 }
 
@@ -398,17 +484,20 @@ async function openCloneDialog(tunnel: Tunnel) {
     description: detail.description ? `${detail.description} copy` : '',
   }
   formDialog.isEdit = false
+  clearDiagnoseResult()
   formDialog.visible = true
 }
 
 function buildRequest(form: TunnelForm): TunnelMutateRequest {
+  const sender = authStore.isAdmin ? form.sender : authStore.currentUserId
+  const receiver = authStore.isAdmin ? form.receiver : form.receiver === authStore.currentUserId ? authStore.currentUserId : 0
   return {
     id:                form.id,
     source:            form.source,
     endpoint:          isProxyType.value ? '' : form.endpoint,
     enabled:           form.enabled ? 1 : 0,
-    sender:            form.sender,
-    receiver:          form.receiver,
+    sender,
+    receiver,
     description:       form.description,
     tunnel_type:       form.tunnel_type,
     password:          isProxyType.value ? form.password : '',
@@ -438,6 +527,46 @@ async function handleSubmit() {
   } finally {
     formDialog.loading = false
   }
+}
+
+function clearDiagnoseResult() {
+  diagnoseResult.ok = false
+  diagnoseResult.items = []
+}
+
+async function handleDiagnose() {
+  const valid = await tunnelFormRef.value?.validate().catch(() => false)
+  if (!valid) return
+
+  diagnosing.value = true
+  try {
+    const res = await tunnelApi.diagnose({
+      id: formDialog.isEdit ? formDialog.form.id : undefined,
+      source: formDialog.form.source,
+      endpoint: isProxyType.value ? '' : formDialog.form.endpoint,
+      sender: authStore.isAdmin ? formDialog.form.sender : authStore.currentUserId,
+      receiver: authStore.isAdmin ? formDialog.form.receiver : formDialog.form.receiver === authStore.currentUserId ? authStore.currentUserId : 0,
+      tunnel_type: formDialog.form.tunnel_type,
+    })
+    diagnoseResult.ok = res.data.ok
+    diagnoseResult.items = res.data.items ?? []
+  } finally {
+    diagnosing.value = false
+  }
+}
+
+function diagnoseTagType(level: TunnelDiagnoseItem['level']): TagType {
+  if (level === 'ok') return 'success'
+  if (level === 'warn') return 'warning'
+  return 'danger'
+}
+
+function diagnoseLevelLabel(level: TunnelDiagnoseItem['level']): string {
+  return t(`tunnel.diagnoseLevel.${level}`)
+}
+
+function diagnoseMessage(item: TunnelDiagnoseItem): string {
+  return t(`tunnel.diagnoseMessage.${item.key}.${item.level}`)
 }
 
 // ── Toggle ────────────────────────────────────────────────────────────────────
@@ -505,6 +634,38 @@ onMounted(() => loadData(1))
   font-size: 12px;
   color: var(--text-muted);
   margin-top: 4px;
+}
+
+.diagnose-panel {
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  padding: 12px;
+  margin-top: 12px;
+}
+
+.diagnose-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.diagnose-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.diagnose-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
 }
 </style>
 

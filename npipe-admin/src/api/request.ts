@@ -1,6 +1,7 @@
 import axios, { type AxiosInstance, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
 import router from '@/router'
+import { useAuthStore } from '@/stores/auth'
 
 const request: AxiosInstance = axios.create({
   baseURL: '/',
@@ -20,19 +21,31 @@ request.interceptors.request.use(
 )
 
 // Response interceptor
+function handleSessionExpired() {
+  const authStore = useAuthStore()
+  authStore.clearSession()
+  if (router.currentRoute.value.name !== 'Login') {
+    ElMessage.error('登录已过期，请重新登录')
+    router.replace({ name: 'Login', query: { redirect: router.currentRoute.value.fullPath } })
+  }
+}
+
 request.interceptors.response.use(
   (response: AxiosResponse) => {
     const data = response.data
     // Session expired
     if (data?.code === 10086) {
-      ElMessage.error('登录已过期，请重新登录')
-      router.push('/login')
+      handleSessionExpired()
       return Promise.reject(new Error('Session expired'))
     }
     return response
   },
   (error) => {
     const status = error.response?.status
+    if (status === 401) {
+      handleSessionExpired()
+      return Promise.reject(error)
+    }
     const messages: Record<number, string> = {
       400: '请求参数错误',
       401: '未授权，请重新登录',

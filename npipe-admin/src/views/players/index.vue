@@ -11,7 +11,7 @@
       <!-- Toolbar -->
       <div class="table-toolbar">
         <div style="display: flex; gap: 8px;">
-          <el-button type="primary" :icon="Plus" @click="openAddDialog">{{ $t('player.add') }}</el-button>
+          <el-button v-if="authStore.isAdmin" type="primary" :icon="Plus" @click="openAddDialog">{{ $t('player.add') }}</el-button>
           <el-button :icon="Refresh" @click="loadData(pagination.currentPage)">{{ $t('common.refresh') }}</el-button>
         </div>
         <el-input
@@ -46,8 +46,22 @@
         </el-table-column>
         <el-table-column :label="$t('player.table.status')" width="110">
           <template #default="{ row }">
-            <el-tag :type="row.online ? 'success' : 'info'" size="small">
-              {{ row.online ? $t('common.online') : $t('common.offline') }}
+            <el-tag :type="row.enabled ? row.online ? 'success' : 'info' : 'danger'" size="small">
+              {{ row.enabled ? row.online ? $t('common.online') : $t('common.offline') : $t('player.disabled') }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column :label="$t('player.table.account')" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.enabled ? 'success' : 'danger'" size="small">
+              {{ row.enabled ? $t('player.enabled') : $t('player.disabled') }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="authStore.isAdmin" :label="$t('player.table.webAccess')" width="110">
+          <template #default="{ row }">
+            <el-tag :type="row.web_access ? 'success' : 'info'" size="small">
+              {{ row.web_access ? $t('player.allowed') : $t('player.notAllowed') }}
             </el-tag>
           </template>
         </el-table-column>
@@ -79,16 +93,27 @@
               </el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item @click="openRenameDialog(row)">
+                  <el-dropdown-item @click="openDetailDialog(row)">
+                    <el-icon><View /></el-icon> {{ $t('player.detail') }}
+                  </el-dropdown-item>
+                  <el-dropdown-item v-if="authStore.isAdmin" @click="openRenameDialog(row)">
                     <el-icon><Edit /></el-icon> {{ $t('player.rename') }}
                   </el-dropdown-item>
                   <el-dropdown-item @click="openPasswordDialog(row)">
                     <el-icon><Lock /></el-icon> {{ $t('player.resetPassword') }}
                   </el-dropdown-item>
-                  <el-dropdown-item :disabled="!row.online" @click="handleKick(row)">
+                  <el-dropdown-item v-if="authStore.isAdmin" :disabled="!row.online" @click="handleKick(row)">
                     <el-icon><SwitchButton /></el-icon> {{ $t('player.kick') }}
                   </el-dropdown-item>
-                  <el-dropdown-item divided @click="handleRemove(row)">
+                  <el-dropdown-item v-if="authStore.isAdmin" @click="handleToggleStatus(row)">
+                    <el-icon><CircleClose v-if="row.enabled" /><SuccessFilled v-else /></el-icon>
+                    {{ row.enabled ? $t('player.disable') : $t('player.enable') }}
+                  </el-dropdown-item>
+                  <el-dropdown-item v-if="authStore.isAdmin" @click="handleToggleWebAccess(row)">
+                    <el-icon><View /></el-icon>
+                    {{ row.web_access ? $t('player.revokeWebAccess') : $t('player.grantWebAccess') }}
+                  </el-dropdown-item>
+                  <el-dropdown-item v-if="authStore.isAdmin" divided @click="handleRemove(row)">
                     <el-icon><Delete /></el-icon> {{ $t('player.delete') }}
                   </el-dropdown-item>
                 </el-dropdown-menu>
@@ -191,6 +216,83 @@
         <el-button type="primary" :loading="passwordDialog.loading" @click="handleResetPassword">{{ $t('common.save') }}</el-button>
       </template>
     </el-dialog>
+
+    <!-- Detail Dialog -->
+    <el-dialog
+      v-model="detailDialog.visible"
+      :title="$t('player.detailTitle')"
+      width="760px"
+      destroy-on-close
+    >
+      <div v-loading="detailDialog.loading">
+        <template v-if="detailDialog.data">
+          <div class="detail-summary">
+            <div class="detail-card">
+              <span>{{ $t('player.table.status') }}</span>
+              <strong>
+                <el-tag :type="detailDialog.data.enabled ? detailDialog.data.online ? 'success' : 'info' : 'danger'" size="small">
+                  {{ detailDialog.data.enabled ? detailDialog.data.online ? $t('common.online') : $t('common.offline') : $t('player.disabled') }}
+                </el-tag>
+              </strong>
+            </div>
+            <div class="detail-card">
+              <span>{{ $t('player.detailTraffic24h') }}</span>
+              <strong>{{ formatBytes(detailDialog.data.traffic_24h_in + detailDialog.data.traffic_24h_out) }}</strong>
+            </div>
+            <div class="detail-card">
+              <span>{{ $t('player.detailTunnels') }}</span>
+              <strong>{{ detailDialog.data.tunnels.length }}</strong>
+            </div>
+          </div>
+
+          <el-descriptions :column="2" border size="small" style="margin-top: 14px;">
+            <el-descriptions-item :label="$t('common.id')">{{ detailDialog.data.id }}</el-descriptions-item>
+            <el-descriptions-item :label="$t('player.username')">{{ detailDialog.data.username }}</el-descriptions-item>
+            <el-descriptions-item :label="$t('player.table.account')">
+              {{ detailDialog.data.enabled ? $t('player.enabled') : $t('player.disabled') }}
+            </el-descriptions-item>
+            <el-descriptions-item :label="$t('player.table.ip')">{{ detailDialog.data.online ? detailDialog.data.ip_addr : '-' }}</el-descriptions-item>
+            <el-descriptions-item :label="$t('player.table.onlineTime')">
+              {{ detailDialog.data.online ? formatDuration(detailDialog.data.online_time) : '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item :label="$t('player.createTime')">{{ detailDialog.data.create_time }}</el-descriptions-item>
+            <el-descriptions-item :label="$t('player.currentTraffic')">
+              ↓ {{ formatBytes(detailDialog.data.bytes_in) }} / ↑ {{ formatBytes(detailDialog.data.bytes_out) }}
+            </el-descriptions-item>
+          </el-descriptions>
+
+          <h3 class="detail-title">{{ $t('player.associatedTunnels') }}</h3>
+          <el-table :data="detailDialog.data.tunnels" size="small" max-height="220" empty-text="-">
+            <el-table-column prop="id" label="ID" width="72" />
+            <el-table-column :label="$t('tunnel.table.source')" min-width="150">
+              <template #default="{ row }"><code class="font-mono">{{ row.source }}</code></template>
+            </el-table-column>
+            <el-table-column :label="$t('tunnel.table.type')" width="90">
+              <template #default="{ row }">{{ TUNNEL_TYPE_NAMES[row.tunnel_type] ?? row.tunnel_type }}</template>
+            </el-table-column>
+            <el-table-column :label="$t('player.role')" width="90">
+              <template #default="{ row }">{{ $t(`player.tunnelRole.${row.role}`) }}</template>
+            </el-table-column>
+            <el-table-column :label="$t('tunnel.table.runtime')" width="100">
+              <template #default="{ row }">
+                <el-tag :type="row.available ? 'success' : row.enabled ? 'warning' : 'info'" size="small">
+                  {{ row.available ? $t('tunnel.runtime.available') : row.enabled ? $t('tunnel.runtime.waiting') : $t('tunnel.runtime.disabled') }}
+                </el-tag>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <h3 class="detail-title">{{ $t('player.recentLogins') }}</h3>
+          <el-table :data="detailDialog.data.recent_logins" size="small" max-height="220" empty-text="-">
+            <el-table-column prop="ip_addr" :label="$t('player.table.ip')" min-width="140" />
+            <el-table-column prop="login_time" :label="$t('loginLog.loginTime')" min-width="160" />
+            <el-table-column :label="$t('loginLog.duration')" width="110">
+              <template #default="{ row }">{{ row.logout_time ? formatDuration(row.duration_secs) : $t('loginLog.online') }}</template>
+            </el-table-column>
+          </el-table>
+        </template>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -198,11 +300,13 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { Plus, Refresh, Search, Edit, Delete, SwitchButton, MoreFilled, Lock } from '@element-plus/icons-vue'
+import { Plus, Refresh, Search, Edit, Delete, SwitchButton, MoreFilled, Lock, View, CircleClose, SuccessFilled } from '@element-plus/icons-vue'
 import { playerApi } from '@/api'
-import type { Player } from '@/types'
+import { useAuthStore } from '@/stores/auth'
+import type { Player, PlayerDetail } from '@/types'
 
 const { t } = useI18n()
+const authStore = useAuthStore()
 
 // ── State ───────────────────────────────────────────────────────────────────
 const loading = ref(false)
@@ -214,6 +318,7 @@ const pagination = reactive({
   pageSize: 20,
   total: 0,
 })
+const TUNNEL_TYPE_NAMES: Record<number, string> = { 0: 'TCP', 1: 'UDP', 2: 'SOCKS5', 3: 'HTTP' }
 
 // ── Computed ─────────────────────────────────────────────────────────────────
 const displayedPlayers = computed(() => {
@@ -289,6 +394,7 @@ const renameRules: FormRules = {
 }
 
 function openRenameDialog(player: Player) {
+  if (!authStore.isAdmin) return
   renameDialog.form = { id: player.id, username: player.username }
   renameDialog.visible = true
 }
@@ -346,6 +452,34 @@ async function handleResetPassword() {
   }
 }
 
+// ── Detail ───────────────────────────────────────────────────────────────────
+const detailDialog = reactive<{
+  visible: boolean
+  loading: boolean
+  data: PlayerDetail | null
+}>({
+  visible: false,
+  loading: false,
+  data: null,
+})
+
+async function openDetailDialog(player: Player) {
+  detailDialog.visible = true
+  detailDialog.loading = true
+  detailDialog.data = null
+  try {
+    const res = await playerApi.detail({ id: player.id })
+    if (res.data.player) {
+      detailDialog.data = res.data.player
+    } else {
+      ElMessage.error(t('player.notFound'))
+      detailDialog.visible = false
+    }
+  } finally {
+    detailDialog.loading = false
+  }
+}
+
 // ── Remove ────────────────────────────────────────────────────────────────────
 async function handleRemove(player: Player) {
   await ElMessageBox.confirm(
@@ -390,6 +524,46 @@ function formatBytes(n: number): string {
   return (n / 1073741824).toFixed(2) + ' GB'
 }
 
+async function handleToggleStatus(player: Player) {
+  await ElMessageBox.confirm(
+    t(player.enabled ? 'player.disableConfirm' : 'player.enableConfirm', { name: player.username }),
+    t(player.enabled ? 'player.disableTitle' : 'player.enableTitle'),
+    { type: 'warning', confirmButtonText: t('common.confirm'), cancelButtonText: t('common.cancel') }
+  )
+  const res = await playerApi.updateStatus({ id: player.id, enabled: player.enabled ? 0 : 1 })
+  if (res.data.code === 0) {
+    ElMessage.success(player.enabled ? t('player.disableSuccess') : t('player.enableSuccess'))
+    loadData(pagination.currentPage)
+  } else {
+    ElMessage.error(res.data.msg || t('common.failed'))
+  }
+}
+
+async function handleToggleWebAccess(player: Player) {
+  await ElMessageBox.confirm(
+    t(player.web_access ? 'player.revokeWebAccessConfirm' : 'player.grantWebAccessConfirm', { name: player.username }),
+    t(player.web_access ? 'player.revokeWebAccessTitle' : 'player.grantWebAccessTitle'),
+    { type: 'warning', confirmButtonText: t('common.confirm'), cancelButtonText: t('common.cancel') }
+  )
+  const res = await playerApi.updateWebAccess({ id: player.id, web_access: player.web_access ? 0 : 1 })
+  if (res.data.code === 0) {
+    ElMessage.success(player.web_access ? t('player.revokeWebAccessSuccess') : t('player.grantWebAccessSuccess'))
+    loadData(pagination.currentPage)
+  } else {
+    ElMessage.error(res.data.msg || t('common.failed'))
+  }
+}
+
+function formatDuration(seconds: number): string {
+  if (!seconds) return '0s'
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = seconds % 60
+  if (h > 0) return `${h}h ${m}m`
+  if (m > 0) return `${m}m ${s}s`
+  return `${s}s`
+}
+
 onMounted(() => loadData(1))
 </script>
 
@@ -400,6 +574,45 @@ onMounted(() => loadData(1))
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 12px;
+}
+
+.detail-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.detail-card {
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  span {
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+
+  strong {
+    color: var(--text-primary);
+    font-size: 18px;
+  }
+}
+
+.detail-title {
+  margin: 18px 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+@media (max-width: 720px) {
+  .detail-summary {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
 

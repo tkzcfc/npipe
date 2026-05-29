@@ -14,6 +14,7 @@ pub struct LoginResponse {
     pub msg: String,
     pub code: i32,
     pub role: Option<String>,
+    pub user_id: Option<u32>,
 }
 
 /// 通用回复
@@ -36,6 +37,8 @@ pub struct PlayerListRequest {
 pub struct PlayerListItem {
     pub id: u32,
     pub username: String,
+    pub enabled: bool,
+    pub web_access: bool,
     pub online: bool,
     pub ip_addr: String,
     pub online_time: i64,
@@ -86,10 +89,67 @@ pub struct PlayerResetPasswordReq {
     pub password: String,
 }
 
+/// 修改玩家启用状态
+#[derive(Serialize, Deserialize)]
+pub struct PlayerStatusUpdateReq {
+    pub id: u32,
+    pub enabled: u8,
+}
+
+/// 修改玩家后台访问权限
+#[derive(Serialize, Deserialize)]
+pub struct PlayerWebAccessUpdateReq {
+    pub id: u32,
+    pub web_access: u8,
+}
+
 /// 踢玩家下线
 #[derive(Serialize, Deserialize)]
 pub struct KickPlayerReq {
     pub id: u32,
+}
+
+/// 玩家详情请求
+#[derive(Serialize, Deserialize)]
+pub struct PlayerDetailRequest {
+    pub id: u32,
+}
+
+/// 玩家关联隧道
+#[derive(Serialize, Deserialize, Clone)]
+pub struct PlayerTunnelItem {
+    pub id: u32,
+    pub source: String,
+    pub endpoint: String,
+    pub enabled: bool,
+    pub tunnel_type: u32,
+    pub role: String,
+    pub available: bool,
+}
+
+/// 玩家详情
+#[derive(Serialize, Deserialize)]
+pub struct PlayerDetailItem {
+    pub id: u32,
+    pub username: String,
+    pub enabled: bool,
+    pub web_access: bool,
+    pub create_time: String,
+    pub online: bool,
+    pub ip_addr: String,
+    pub online_time: i64,
+    pub bytes_in: i64,
+    pub bytes_out: i64,
+    pub traffic_24h_in: i64,
+    pub traffic_24h_out: i64,
+    pub tunnels: Vec<PlayerTunnelItem>,
+    pub recent_logins: Vec<LoginHistoryItem>,
+}
+
+/// 玩家详情响应
+#[derive(Serialize, Deserialize)]
+pub struct PlayerDetailResponse {
+    pub player: Option<PlayerDetailItem>,
 }
 
 /// 流量统计请求
@@ -182,6 +242,66 @@ pub struct LoginHistoryResponse {
     pub total_count: usize,
 }
 
+/// 操作日志请求
+#[derive(Serialize, Deserialize)]
+pub struct OperationLogRequest {
+    pub page_number: Option<usize>,
+    pub page_size: Option<usize>,
+}
+
+/// 操作日志子项
+#[derive(Serialize, Deserialize, Clone)]
+pub struct OperationLogItem {
+    pub id: u32,
+    pub actor: String,
+    pub action: String,
+    pub target_type: String,
+    pub target_id: u32,
+    pub target_name: String,
+    pub detail: String,
+    pub created_at: String,
+}
+
+/// 操作日志响应
+#[derive(Serialize, Deserialize)]
+pub struct OperationLogResponse {
+    pub items: Vec<OperationLogItem>,
+    pub total_count: usize,
+}
+
+/// 数据库清理请求
+#[derive(Serialize, Deserialize)]
+pub struct CleanupDatabaseRequest {
+    pub login_history_keep_days: Option<u32>,
+    pub operation_log_keep_days: Option<u32>,
+    pub traffic_hourly_keep_days: Option<u32>,
+}
+
+/// 数据库清理响应
+#[derive(Serialize, Deserialize)]
+pub struct CleanupDatabaseResponse {
+    pub login_history_deleted: u64,
+    pub operation_log_deleted: u64,
+    pub traffic_hourly_deleted: u64,
+}
+
+/// 数据库维护表信息
+#[derive(Serialize, Deserialize)]
+pub struct DatabaseMaintenanceTableInfo {
+    pub total_count: u64,
+    pub cleanup_count: u64,
+    pub oldest: String,
+    pub newest: String,
+}
+
+/// 数据库维护信息响应
+#[derive(Serialize, Deserialize)]
+pub struct DatabaseMaintenanceInfoResponse {
+    pub login_history: DatabaseMaintenanceTableInfo,
+    pub operation_log: DatabaseMaintenanceTableInfo,
+    pub traffic_hourly: DatabaseMaintenanceTableInfo,
+}
+
 /// 玩家列表请求
 #[derive(Serialize, Deserialize)]
 pub struct TunnelListRequest {
@@ -205,6 +325,9 @@ pub struct TunnelListItem {
     pub is_compressed: bool,
     pub encryption_method: String,
     pub custom_mapping: HashMap<String, String>,
+    pub sender_online: bool,
+    pub receiver_online: bool,
+    pub available: bool,
 }
 
 /// 通道详情请求
@@ -229,6 +352,9 @@ pub struct TunnelDetailItem {
     pub is_compressed: bool,
     pub encryption_method: String,
     pub custom_mapping: HashMap<String, String>,
+    pub sender_online: bool,
+    pub receiver_online: bool,
+    pub available: bool,
 }
 
 /// 通道详情回复
@@ -256,6 +382,32 @@ pub struct TunnelRemoveReq {
 pub struct TunnelStatusUpdateReq {
     pub id: u32,
     pub enabled: u8,
+}
+
+/// 通道诊断请求
+#[derive(Serialize, Deserialize)]
+pub struct TunnelDiagnoseRequest {
+    pub id: Option<u32>,
+    pub source: String,
+    pub endpoint: String,
+    pub sender: u32,
+    pub receiver: u32,
+    pub tunnel_type: u32,
+}
+
+/// 通道诊断子项
+#[derive(Serialize, Deserialize, Clone)]
+pub struct TunnelDiagnoseItem {
+    pub key: String,
+    pub level: String,
+    pub message: String,
+}
+
+/// 通道诊断响应
+#[derive(Serialize, Deserialize)]
+pub struct TunnelDiagnoseResponse {
+    pub ok: bool,
+    pub items: Vec<TunnelDiagnoseItem>,
 }
 
 /// 新增通道请求

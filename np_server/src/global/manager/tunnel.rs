@@ -32,7 +32,7 @@ impl TunnelManager {
     }
 
     /// 增加通道
-    pub async fn add_tunnel(&self, mut tunnel: tunnel::Model) -> anyhow::Result<()> {
+    pub async fn add_tunnel(&self, mut tunnel: tunnel::Model) -> anyhow::Result<u32> {
         self.tunnel_detection(&tunnel).await?;
 
         let new_tunnel = tunnel::ActiveModel {
@@ -58,11 +58,12 @@ impl TunnelManager {
         if tunnel.sender != tunnel.receiver {
             Self::broadcast_tunnel_info(tunnel.receiver, &tunnel, false).await;
         }
+        let tunnel_id = tunnel.id;
         self.tunnels.write().await.push(tunnel);
 
         GLOBAL_MANAGER.proxy_manager.sync_tunnels().await;
 
-        Ok(())
+        Ok(tunnel_id)
     }
 
     /// 删除通道
@@ -276,6 +277,18 @@ impl TunnelManager {
                 && is_udp == matches!(InletProxyType::from_u32(x.tunnel_type), InletProxyType::UDP)
                 && get_tunnel_address_port(&x.source) == port
         })
+    }
+
+    /// 检测端口是否和现有通道冲突
+    pub async fn has_port_conflict(
+        &self,
+        receiver: u32,
+        port: Option<u16>,
+        tunnel_id: Option<u32>,
+        is_udp: bool,
+    ) -> bool {
+        self.port_conflict_detection(receiver, port, tunnel_id, is_udp)
+            .await
     }
 
     /// 查询通道，同时返回总条数

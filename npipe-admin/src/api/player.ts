@@ -7,8 +7,12 @@ import type {
   PlayerUpdateRequest,
   PlayerRenameRequest,
   PlayerResetPasswordRequest,
+  PlayerStatusUpdateRequest,
+  PlayerWebAccessUpdateRequest,
   PlayerRemoveRequest,
   KickPlayerRequest,
+  PlayerDetailRequest,
+  PlayerDetailResponse,
   TrafficStatsRequest,
   TrafficStatsResponse,
   LoginHistoryRequest,
@@ -31,11 +35,20 @@ export const playerApi = {
   resetPassword(data: PlayerResetPasswordRequest) {
     return request.post<GeneralResponse>('/api/reset_player_password', data)
   },
+  updateStatus(data: PlayerStatusUpdateRequest) {
+    return request.post<GeneralResponse>('/api/update_player_status', data)
+  },
+  updateWebAccess(data: PlayerWebAccessUpdateRequest) {
+    return request.post<GeneralResponse>('/api/update_player_web_access', data)
+  },
   remove(data: PlayerRemoveRequest) {
     return request.post<GeneralResponse>('/api/remove_player', data)
   },
   kick(data: KickPlayerRequest) {
     return request.post<GeneralResponse>('/api/kick_player', data)
+  },
+  detail(data: PlayerDetailRequest) {
+    return request.post<PlayerDetailResponse>('/api/player_detail', data)
   },
   trafficStats(data: TrafficStatsRequest) {
     return request.post<TrafficStatsResponse>('/api/traffic_stats', data)

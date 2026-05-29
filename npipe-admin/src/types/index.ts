@@ -14,6 +14,7 @@ export interface LoginResponse {
   code: number
   msg: string
   role: string | null
+  user_id?: number | null
 }
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
@@ -54,6 +55,8 @@ export interface DashboardOverviewResponse {
 export interface Player {
   id: number
   username: string
+  enabled: boolean
+  web_access: boolean
   online: boolean
   ip_addr: string
   online_time: number
@@ -99,6 +102,52 @@ export interface LoginHistoryResponse {
   total_count: number
 }
 
+export interface OperationLogRequest {
+  page_number?: number
+  page_size?: number
+}
+
+export interface OperationLogItem {
+  id: number
+  actor: string
+  action: string
+  target_type: string
+  target_id: number
+  target_name: string
+  detail: string
+  created_at: string
+}
+
+export interface OperationLogResponse {
+  items: OperationLogItem[]
+  total_count: number
+}
+
+export interface CleanupDatabaseRequest {
+  login_history_keep_days?: number
+  operation_log_keep_days?: number
+  traffic_hourly_keep_days?: number
+}
+
+export interface CleanupDatabaseResponse {
+  login_history_deleted: number
+  operation_log_deleted: number
+  traffic_hourly_deleted: number
+}
+
+export interface DatabaseMaintenanceTableInfo {
+  total_count: number
+  cleanup_count: number
+  oldest: string
+  newest: string
+}
+
+export interface DatabaseMaintenanceInfoResponse {
+  login_history: DatabaseMaintenanceTableInfo
+  operation_log: DatabaseMaintenanceTableInfo
+  traffic_hourly: DatabaseMaintenanceTableInfo
+}
+
 export interface PlayerListRequest {
   page_number: number
   page_size: number
@@ -131,12 +180,57 @@ export interface PlayerResetPasswordRequest {
   password: string
 }
 
+export interface PlayerStatusUpdateRequest {
+  id: number
+  enabled: number
+}
+
+export interface PlayerWebAccessUpdateRequest {
+  id: number
+  web_access: number
+}
+
 export interface PlayerRemoveRequest {
   id: number
 }
 
 export interface KickPlayerRequest {
   id: number
+}
+
+export interface PlayerDetailRequest {
+  id: number
+}
+
+export interface PlayerTunnelItem {
+  id: number
+  source: string
+  endpoint: string
+  enabled: boolean
+  tunnel_type: number
+  role: string
+  available: boolean
+}
+
+export interface PlayerDetail {
+  id: number
+  username: string
+  enabled: boolean
+  web_access: boolean
+  create_time: string
+  online: boolean
+  ip_addr: string
+  online_time: number
+  bytes_in: number
+  bytes_out: number
+  traffic_24h_in: number
+  traffic_24h_out: number
+  tunnels: PlayerTunnelItem[]
+  recent_logins: LoginHistoryItem[]
+}
+
+export interface PlayerDetailResponse {
+  player: PlayerDetail | null
 }
 
 // ── Tunnel ─────────────────────────────────────────────────────────────────
@@ -156,6 +250,9 @@ export interface Tunnel {
   is_compressed: boolean
   encryption_method: EncryptionMethod
   custom_mapping: Record<string, string>
+  sender_online: boolean
+  receiver_online: boolean
+  available: boolean
 }
 
 export interface TunnelDetail extends Tunnel {
@@ -205,4 +302,24 @@ export interface TunnelRemoveRequest {
 export interface TunnelStatusUpdateRequest {
   id: number
   enabled: number
+}
+
+export interface TunnelDiagnoseRequest {
+  id?: number
+  source: string
+  endpoint: string
+  sender: number
+  receiver: number
+  tunnel_type: number
+}
+
+export interface TunnelDiagnoseItem {
+  key: string
+  level: 'ok' | 'warn' | 'error'
+  message: string
+}
+
+export interface TunnelDiagnoseResponse {
+  ok: boolean
+  items: TunnelDiagnoseItem[]
 }

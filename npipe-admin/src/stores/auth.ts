@@ -14,8 +14,12 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const res = await authApi.testAuth()
       isLoggedIn.value = res.data.code === 0
+      role.value = res.data.role ?? ''
+      currentUserId.value = res.data.user_id ?? 0
     } catch {
       isLoggedIn.value = false
+      role.value = ''
+      currentUserId.value = 0
     }
     return isLoggedIn.value
   }
@@ -25,6 +29,7 @@ export const useAuthStore = defineStore('auth', () => {
     if (res.data.code === 0) {
       isLoggedIn.value = true
       role.value = res.data.role ?? ''
+      currentUserId.value = res.data.user_id ?? 0
       return { ok: true, msg: res.data.msg }
     }
     return { ok: false, msg: res.data.msg }
@@ -32,11 +37,15 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function logout() {
     try { await authApi.logout() } catch { /* ignore */ }
+    clearSession()
+  }
+
+  function clearSession() {
     isLoggedIn.value = false
     role.value = ''
     currentUserId.value = 0
   }
 
-  return { isLoggedIn, role, currentUserId, isAdmin, isUser, checkAuth, login, logout }
+  return { isLoggedIn, role, currentUserId, isAdmin, isUser, checkAuth, login, logout, clearSession }
 })
 

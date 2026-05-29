@@ -3,6 +3,8 @@ import type {
   GeneralResponse,
   TunnelDetailRequest,
   TunnelDetailResponse,
+  TunnelDiagnoseRequest,
+  TunnelDiagnoseResponse,
   TunnelListRequest,
   TunnelListResponse,
   TunnelMutateRequest,
@@ -25,6 +27,9 @@ export const tunnelApi = {
   },
   updateStatus(data: TunnelStatusUpdateRequest) {
     return request.post<GeneralResponse>('/api/update_tunnel_status', data)
+  },
+  diagnose(data: TunnelDiagnoseRequest) {
+    return request.post<TunnelDiagnoseResponse>('/api/tunnel_diagnose', data)
   },
   remove(data: TunnelRemoveRequest) {
     return request.post<GeneralResponse>('/api/remove_tunnel', data)

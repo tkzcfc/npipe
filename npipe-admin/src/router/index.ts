@@ -18,7 +18,7 @@ const routes: RouteRecordRaw[] = [
         path: 'dashboard',
         name: 'Dashboard',
         component: () => import('@/views/dashboard/index.vue'),
-        meta: { title: '运行概览', icon: 'Odometer', requiresAuth: true },
+        meta: { title: '运行概览', icon: 'Odometer', requiresAuth: true, adminOnly: true },
       },
       {
         path: 'players',
@@ -37,6 +37,12 @@ const routes: RouteRecordRaw[] = [
         name: 'LoginLogs',
         component: () => import('@/views/logins/index.vue'),
         meta: { title: '登录日志', icon: 'Document', requiresAuth: true },
+      },
+      {
+        path: 'operations',
+        name: 'OperationLogs',
+        component: () => import('@/views/operations/index.vue'),
+        meta: { title: '操作日志', icon: 'Tickets', requiresAuth: true, adminOnly: true },
       },
     ],
   },
@@ -60,6 +66,9 @@ router.beforeEach(async (to) => {
       if (!ok) {
         return { name: 'Login', query: { redirect: to.fullPath } }
       }
+    }
+    if (to.meta.adminOnly && !authStore.isAdmin) {
+      return { name: 'Players' }
     }
   } else {
     // On login page, if already logged in, redirect to dashboard

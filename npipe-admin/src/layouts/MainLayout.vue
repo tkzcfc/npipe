@@ -94,10 +94,11 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 
 const menuItems = computed(() => [
-  { path: '/dashboard', title: t('dashboard.title'), icon: 'Odometer' },
+  ...(authStore.isAdmin ? [{ path: '/dashboard', title: t('dashboard.title'), icon: 'Odometer' }] : []),
   { path: '/players', title: t('player.title'), icon: 'User' },
   { path: '/tunnels', title: t('tunnel.title'), icon: 'Connection' },
   { path: '/logs', title: t('loginLog.title'), icon: 'Document' },
+  ...(authStore.isAdmin ? [{ path: '/operations', title: t('operationLog.title'), icon: 'Tickets' }] : []),
 ])
 
 async function onCommand(cmd: string) {

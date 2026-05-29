@@ -10,6 +10,8 @@ pub struct Model {
     pub username: String,
     pub password: String,
     pub create_time: DateTime,
+    pub enabled: u8,
+    pub web_access: u8,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

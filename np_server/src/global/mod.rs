@@ -1,12 +1,11 @@
 use crate::global::config::GLOBAL_CONFIG;
 use crate::global::logger::init_logger;
 use crate::global::manager::GLOBAL_MANAGER;
-use crate::orm_entity::{login_history, traffic_hourly, tunnel, user};
+use crate::orm_entity::{login_history, operation_log, traffic_hourly, tunnel, user};
 use chrono::Utc;
 use log::info;
-use rand::Rng;
 use sea_orm::sea_query::{Index, MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
-use sea_orm::ActiveValue::Set;
+use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
     DbBackend, EntityTrait, QueryFilter, Schema, Statement,
@@ -81,6 +80,14 @@ pub(crate) async fn init_global() -> anyhow::Result<()> {
                     .to_string(MysqlQueryBuilder),
             ))
             .await?;
+            db.execute(Statement::from_string(
+                backend,
+                schema
+                    .create_table_from_entity(operation_log::Entity)
+                    .if_not_exists()
+                    .to_string(MysqlQueryBuilder),
+            ))
+            .await?;
         }
         DbBackend::Postgres => {
             db.execute(Statement::from_string(
@@ -111,6 +118,14 @@ pub(crate) async fn init_global() -> anyhow::Result<()> {
                 backend,
                 schema
                     .create_table_from_entity(login_history::Entity)
+                    .if_not_exists()
+                    .to_string(PostgresQueryBuilder),
+            ))
+            .await?;
+            db.execute(Statement::from_string(
+                backend,
+                schema
+                    .create_table_from_entity(operation_log::Entity)
                     .if_not_exists()
                     .to_string(PostgresQueryBuilder),
             ))
@@ -149,10 +164,19 @@ pub(crate) async fn init_global() -> anyhow::Result<()> {
                     .to_string(SqliteQueryBuilder),
             ))
             .await?;
+            db.execute(Statement::from_string(
+                backend,
+                schema
+                    .create_table_from_entity(operation_log::Entity)
+                    .if_not_exists()
+                    .to_string(SqliteQueryBuilder),
+            ))
+            .await?;
         }
     }
 
     ensure_indexes(db, backend).await?;
+    ensure_user_columns(db, backend).await?;
 
     // 加载所有通道信息
     GLOBAL_MANAGER.tunnel_manager.load_all_tunnel().await?;
@@ -171,7 +195,7 @@ pub(crate) async fn init_global() -> anyhow::Result<()> {
 }
 
 async fn ensure_indexes(db: &DatabaseConnection, backend: DbBackend) -> anyhow::Result<()> {
-    let index = Index::create()
+    let traffic_index = Index::create()
         .name("idx_traffic_hourly_user_id_hour")
         .table(traffic_hourly::Entity)
         .col(traffic_hourly::Column::UserId)
@@ -179,13 +203,52 @@ async fn ensure_indexes(db: &DatabaseConnection, backend: DbBackend) -> anyhow::
         .if_not_exists()
         .to_owned();
 
-    let sql = match backend {
-        DbBackend::MySql => index.to_string(MysqlQueryBuilder),
-        DbBackend::Postgres => index.to_string(PostgresQueryBuilder),
-        DbBackend::Sqlite => index.to_string(SqliteQueryBuilder),
+    let operation_index = Index::create()
+        .name("idx_operation_log_created_at")
+        .table(operation_log::Entity)
+        .col(operation_log::Column::CreatedAt)
+        .if_not_exists()
+        .to_owned();
+
+    for index in [traffic_index, operation_index] {
+        let sql = match backend {
+            DbBackend::MySql => index.to_string(MysqlQueryBuilder),
+            DbBackend::Postgres => index.to_string(PostgresQueryBuilder),
+            DbBackend::Sqlite => index.to_string(SqliteQueryBuilder),
+        };
+        db.execute(Statement::from_string(backend, sql)).await?;
+    }
+    Ok(())
+}
+
+async fn ensure_user_columns(db: &DatabaseConnection, backend: DbBackend) -> anyhow::Result<()> {
+    let columns = match backend {
+        DbBackend::MySql => vec![
+            "ALTER TABLE user ADD COLUMN enabled TINYINT NOT NULL DEFAULT 1",
+            "ALTER TABLE user ADD COLUMN web_access TINYINT NOT NULL DEFAULT 0",
+        ],
+        DbBackend::Postgres => vec![
+            "ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS enabled SMALLINT NOT NULL DEFAULT 1",
+            "ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS web_access SMALLINT NOT NULL DEFAULT 0",
+        ],
+        DbBackend::Sqlite => vec![
+            "ALTER TABLE user ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE user ADD COLUMN web_access INTEGER NOT NULL DEFAULT 0",
+        ],
     };
 
-    db.execute(Statement::from_string(backend, sql)).await?;
+    for sql in columns {
+        if let Err(err) = db.execute(Statement::from_string(backend, sql)).await {
+            let msg = err.to_string().to_lowercase();
+            if !(msg.contains("duplicate")
+                || msg.contains("exists")
+                || msg.contains("duplicate column"))
+            {
+                return Err(err.into());
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -225,9 +288,8 @@ async fn traffic_flush_loop() {
                 }
                 Ok(None) => {
                     // 新建
-                    let id: u32 = rand::rng().random_range(10000000..99999999);
                     let new_row = traffic_hourly::ActiveModel {
-                        id: Set(id),
+                        id: NotSet,
                         user_id: Set(player_id),
                         bytes_in: Set(rx as i64),
                         bytes_out: Set(tx as i64),
@@ -253,6 +315,5 @@ async fn traffic_flush_loop() {
                 );
             }
         }
-        info!("Traffic flushed for hour: {}", hour);
     }
 }

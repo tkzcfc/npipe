@@ -1,17 +1,19 @@
-//! `SeaORM` Entity — 流量按小时统计表
+//! `SeaORM` Entity — 后台操作日志表
 
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
-#[sea_orm(table_name = "traffic_hourly")]
+#[sea_orm(table_name = "operation_log")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: u32,
-    pub user_id: u32,
-    pub bytes_in: i64,
-    pub bytes_out: i64,
-    /// 小时标识，格式 "2026-05-28 14"
-    pub hour: String,
+    pub actor: String,
+    pub action: String,
+    pub target_type: String,
+    pub target_id: u32,
+    pub target_name: String,
+    pub detail: String,
+    pub created_at: DateTime,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

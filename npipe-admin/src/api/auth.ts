@@ -14,7 +14,7 @@ export const authApi = {
     return request.post<GeneralResponse>('/api/logout', {})
   },
   testAuth() {
-    return request.post<GeneralResponse>('/api/test_auth', {})
+    return request.post<LoginResponseType>('/api/test_auth', {})
   },
 }
 

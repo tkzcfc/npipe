@@ -69,6 +69,12 @@ impl Peer {
         }
 
         let user = user_result.unwrap();
+        if user.enabled != 1 {
+            return Ok(MessageType::GenericError(generic::Error {
+                number: -4,
+                message: "User has been disabled".into(),
+            }));
+        }
 
         // 用户登录成功，先记录登录历史，再将会话绑定到 Player 上
         if let Some(player) = GLOBAL_MANAGER.player_manager.get_player(user.id) {

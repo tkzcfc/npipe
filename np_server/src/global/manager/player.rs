@@ -124,6 +124,8 @@ impl PlayerManager {
                 username: Set(username.to_owned()),
                 password: Set(password.to_owned()),
                 create_time: Set(Utc::now().naive_utc()),
+                enabled: Set(1),
+                web_access: Set(0),
             };
 
             let _ = new_user.insert(GLOBAL_DB_POOL.get().unwrap()).await?;
@@ -173,6 +175,44 @@ impl PlayerManager {
         user.password = Set(password.to_owned());
 
         let _ = user.update(GLOBAL_DB_POOL.get().unwrap()).await?;
+        Ok(())
+    }
+
+    /// 修改玩家启用状态
+    pub async fn update_player_status(&self, player_id: u32, enabled: u8) -> anyhow::Result<()> {
+        let user = User::find_by_id(player_id)
+            .one(GLOBAL_DB_POOL.get().unwrap())
+            .await?;
+        anyhow::ensure!(user.is_some(), "can't find user: {}", player_id);
+
+        let mut user: user::ActiveModel = user.unwrap().into();
+        user.enabled = Set(enabled);
+        let _ = user.update(GLOBAL_DB_POOL.get().unwrap()).await?;
+
+        if enabled == 0 {
+            if let Some(player) = self.get_player(player_id) {
+                player.write().await.kick_offline();
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 修改玩家后台访问权限
+    pub async fn update_player_web_access(
+        &self,
+        player_id: u32,
+        web_access: u8,
+    ) -> anyhow::Result<()> {
+        let user = User::find_by_id(player_id)
+            .one(GLOBAL_DB_POOL.get().unwrap())
+            .await?;
+        anyhow::ensure!(user.is_some(), "can't find user: {}", player_id);
+
+        let mut user: user::ActiveModel = user.unwrap().into();
+        user.web_access = Set(web_access);
+        let _ = user.update(GLOBAL_DB_POOL.get().unwrap()).await?;
+
         Ok(())
     }
 }
