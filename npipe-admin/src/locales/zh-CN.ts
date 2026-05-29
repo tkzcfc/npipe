@@ -40,6 +40,8 @@ export default {
     expand: '展开',
     collapse: '收起',
     lang: '语言',
+    admin: '管理员',
+    user: '用户',
   },
 
   login: {
@@ -65,9 +67,11 @@ export default {
     totalUsers: '用户总数',
     enabledTunnels: '启用隧道',
     totalTunnels: '隧道总数',
+    userAndTunnel: '用户与隧道',
     resourceUsage: '资源使用率',
     machineInfo: '机器信息',
     serverConfig: '服务配置',
+    serverStatus: '服务器状态',
     system: {
       cpuUsage: 'CPU 使用率',
       memoryUsage: '内存使用率',
@@ -187,6 +191,7 @@ export default {
 
   player: {
     title: '用户管理',
+    myAccount: '我的账号',
     subtitle: '管理所有注册用户',
     add: '添加用户',
     searchPlaceholder: '搜索用户名...',
@@ -204,6 +209,7 @@ export default {
     resetPassword: '重置密码',
     detail: '详情',
     detailTitle: '用户详情',
+    accountActions: '账号操作',
     enable: '启用用户',
     disable: '禁用用户',
     enabled: '已启用',
@@ -221,6 +227,7 @@ export default {
     addSuccess: '添加成功',
     saveSuccess: '保存成功',
     passwordResetSuccess: '密码已重置',
+    selfResetPasswordConfirm: '重置密码后当前后台登录会失效，并且需要管理员重新批准后台访问权限。确定继续吗？',
     enableConfirm: '确定要启用用户 "{name}" 吗？',
     disableConfirm: '确定要禁用用户 "{name}" 吗？禁用后会立即断开当前连接。',
     enableTitle: '启用确认',
@@ -237,6 +244,13 @@ export default {
     currentTraffic: '当前连接流量',
     detailTraffic24h: '近 24 小时流量',
     detailTunnels: '关联隧道',
+    trafficTrend: '流量走势',
+    trafficIn: '入站流量',
+    trafficOut: '出站流量',
+    trafficRange24h: '24 小时',
+    trafficRange72h: '3 天',
+    trafficRange7d: '7 天',
+    trafficRange30d: '30 天',
     associatedTunnels: '关联隧道',
     recentLogins: '最近登录',
     role: '角色',

@@ -35,13 +35,13 @@ export default defineConfig({
   build: {
     outDir: '../dist',
     emptyOutDir: true,
-    chunkSizeWarningLimit: 2000,
+    chunkSizeWarningLimit: 700,
     rollupOptions: {
       output: {
         manualChunks: {
-          'vue-core':     ['vue', 'vue-router', 'pinia'],
-          'element-plus': ['element-plus', '@element-plus/icons-vue'],
-          'axios':        ['axios'],
+          'vue-core': ['vue', 'vue-router', 'pinia'],
+          'echarts': ['echarts/core', 'echarts/renderers', 'echarts/charts', 'echarts/components', 'vue-echarts'],
+          'axios': ['axios'],
         },
       },
     },

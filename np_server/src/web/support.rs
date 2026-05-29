@@ -1,4 +1,5 @@
 use super::proto;
+use crate::global::config::GLOBAL_CONFIG;
 use crate::global::manager::GLOBAL_MANAGER;
 use crate::global::GLOBAL_DB_POOL;
 use crate::orm_entity::operation_log;
@@ -13,6 +14,7 @@ use sea_orm::{ActiveModelTrait, EntityTrait};
 pub(super) struct AuthContext {
     pub(super) role: String,
     pub(super) user_id: Option<u32>,
+    pub(super) username: Option<String>,
 }
 
 pub(super) async fn auth_context(
@@ -32,6 +34,7 @@ pub(super) async fn auth_context(
         return Ok(AuthContext {
             role: "admin".to_owned(),
             user_id: None,
+            username: Some(GLOBAL_CONFIG.web_username.clone()),
         });
     }
 
@@ -57,6 +60,7 @@ pub(super) async fn auth_context(
         return Ok(AuthContext {
             role: "user".to_owned(),
             user_id: Some(user_id),
+            username: Some(user.username),
         });
     }
 

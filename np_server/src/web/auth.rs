@@ -14,12 +14,14 @@ pub(super) async fn test_auth(identity: Option<Identity>) -> actix_web::Result<i
             msg: "Success".into(),
             role: Some(auth.role),
             user_id: auth.user_id,
+            username: auth.username,
         })),
         Err(_) => Ok(HttpResponse::Ok().json(proto::LoginResponse {
             code: 10086,
             msg: "Session expired, please log in again.".into(),
             role: None,
             user_id: None,
+            username: None,
         })),
     }
 }
@@ -50,6 +52,7 @@ pub(super) async fn login(
             msg: "Success".into(),
             role: Some("admin".into()),
             user_id: None,
+            username: Some(req.username),
         }));
     }
 
@@ -66,6 +69,7 @@ pub(super) async fn login(
                 msg: "User has been disabled".into(),
                 role: None,
                 user_id: None,
+                username: None,
             }));
         }
         if user.web_access != 1 {
@@ -74,6 +78,7 @@ pub(super) async fn login(
                 msg: "Console access has not been approved".into(),
                 role: None,
                 user_id: None,
+                username: None,
             }));
         }
 
@@ -84,6 +89,7 @@ pub(super) async fn login(
             msg: "Success".into(),
             role: Some("user".into()),
             user_id: Some(user.id),
+            username: Some(user.username),
         }));
     }
 
@@ -92,5 +98,6 @@ pub(super) async fn login(
         msg: "Incorrect username or password".into(),
         role: None,
         user_id: None,
+        username: None,
     }))
 }

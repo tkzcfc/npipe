@@ -7,7 +7,7 @@
       </div>
 
       <el-menu
-        :default-active="route.path"
+        :default-active="activeMenu"
         :collapse="appStore.sidebarCollapsed"
         :collapse-transition="false"
         router
@@ -54,7 +54,8 @@
           <el-dropdown @command="onCommand">
             <div class="user-avatar">
               <el-icon><UserFilled /></el-icon>
-              <span class="username">Admin</span>
+              <span class="username">{{ authStore.displayName }}</span>
+              <span class="role-badge">{{ authStore.isAdmin ? $t('layout.admin') : $t('layout.user') }}</span>
               <el-icon class="arrow"><ArrowDown /></el-icon>
             </div>
             <template #dropdown>
@@ -86,6 +87,21 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessageBox, ElMessage } from 'element-plus'
+import {
+  ArrowDown,
+  Connection,
+  Document,
+  Expand,
+  Fold,
+  Moon,
+  Odometer,
+  Sunny,
+  SwitchButton,
+  Tickets,
+  Tools,
+  User,
+  UserFilled,
+} from '@element-plus/icons-vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -93,13 +109,19 @@ const router = useRouter()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 
+const activeMenu = computed(() => {
+  if (route.path.startsWith('/players')) return authStore.isAdmin ? '/players' : `/players/${authStore.currentUserId}`
+  if (route.path.startsWith('/tunnels')) return '/tunnels'
+  return route.path
+})
+
 const menuItems = computed(() => [
-  ...(authStore.isAdmin ? [{ path: '/dashboard', title: t('dashboard.title'), icon: 'Odometer' }] : []),
-  { path: '/players', title: t('player.title'), icon: 'User' },
-  { path: '/tunnels', title: t('tunnel.title'), icon: 'Connection' },
-  { path: '/logs', title: t('loginLog.title'), icon: 'Document' },
-  ...(authStore.isAdmin ? [{ path: '/operations', title: t('operationLog.title'), icon: 'Tickets' }] : []),
-  ...(authStore.isAdmin ? [{ path: '/maintenance', title: t('maintenance.title'), icon: 'Tools' }] : []),
+  ...(authStore.isAdmin ? [{ path: '/dashboard', title: t('dashboard.title'), icon: Odometer }] : []),
+  { path: authStore.isAdmin ? '/players' : `/players/${authStore.currentUserId}`, title: authStore.isAdmin ? t('player.title') : t('player.myAccount'), icon: User },
+  { path: '/tunnels', title: t('tunnel.title'), icon: Connection },
+  { path: '/logs', title: t('loginLog.title'), icon: Document },
+  ...(authStore.isAdmin ? [{ path: '/operations', title: t('operationLog.title'), icon: Tickets }] : []),
+  ...(authStore.isAdmin ? [{ path: '/maintenance', title: t('maintenance.title'), icon: Tools }] : []),
 ])
 
 async function onCommand(cmd: string) {
@@ -289,6 +311,14 @@ async function onCommand(cmd: string) {
   &:hover { border-color: var(--accent); color: var(--accent); }
 
   .username { font-weight: 500; }
+  .role-badge {
+    font-size: 11px;
+    line-height: 1;
+    padding: 3px 5px;
+    border-radius: 5px;
+    color: var(--accent);
+    background: rgba(91,143,249,.12);
+  }
   .arrow { font-size: 12px; }
 }
 

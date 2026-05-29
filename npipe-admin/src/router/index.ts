@@ -27,6 +27,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '用户管理', icon: 'User', requiresAuth: true },
       },
       {
+        path: 'players/:id',
+        name: 'PlayerDetail',
+        component: () => import('@/views/players/detail.vue'),
+        meta: { title: '用户详情', requiresAuth: true },
+      },
+      {
         path: 'tunnels',
         name: 'Tunnels',
         component: () => import('@/views/tunnels/index.vue'),
@@ -74,7 +80,13 @@ router.beforeEach(async (to) => {
       }
     }
     if (to.meta.adminOnly && !authStore.isAdmin) {
-      return { name: 'Players' }
+      return { name: 'PlayerDetail', params: { id: authStore.currentUserId } }
+    }
+    if (to.name === 'Players' && !authStore.isAdmin) {
+      return { name: 'PlayerDetail', params: { id: authStore.currentUserId } }
+    }
+    if (to.name === 'PlayerDetail' && !authStore.isAdmin && Number(to.params.id) !== authStore.currentUserId) {
+      return { name: 'PlayerDetail', params: { id: authStore.currentUserId } }
     }
   } else {
     // On login page, if already logged in, redirect to dashboard

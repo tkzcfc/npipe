@@ -40,6 +40,8 @@ export default {
     expand: 'Expand',
     collapse: 'Collapse',
     lang: 'Language',
+    admin: 'Admin',
+    user: 'User',
   },
 
   login: {
@@ -65,9 +67,11 @@ export default {
     totalUsers: 'Total Users',
     enabledTunnels: 'Active Tunnels',
     totalTunnels: 'Total Tunnels',
+    userAndTunnel: 'Users & Tunnels',
     resourceUsage: 'Resource Usage',
     machineInfo: 'Machine Information',
     serverConfig: 'Service Configuration',
+    serverStatus: 'Server Status',
     system: {
       cpuUsage: 'CPU Usage',
       memoryUsage: 'Memory Usage',
@@ -187,6 +191,7 @@ export default {
 
   player: {
     title: 'User Management',
+    myAccount: 'My Account',
     subtitle: 'Manage all registered users',
     add: 'Add User',
     searchPlaceholder: 'Search username...',
@@ -204,6 +209,7 @@ export default {
     resetPassword: 'Reset Password',
     detail: 'Detail',
     detailTitle: 'User Detail',
+    accountActions: 'Account Actions',
     enable: 'Enable User',
     disable: 'Disable User',
     enabled: 'Enabled',
@@ -221,6 +227,7 @@ export default {
     addSuccess: 'User added successfully',
     saveSuccess: 'Saved successfully',
     passwordResetSuccess: 'Password reset successfully',
+    selfResetPasswordConfirm: 'After resetting your password, the current console session will expire and console access must be approved again by an administrator. Continue?',
     enableConfirm: 'Are you sure you want to enable "{name}"?',
     disableConfirm: 'Are you sure you want to disable "{name}"? The current connection will be closed.',
     enableTitle: 'Enable Confirmation',
@@ -237,6 +244,13 @@ export default {
     currentTraffic: 'Current Traffic',
     detailTraffic24h: 'Last 24h Traffic',
     detailTunnels: 'Tunnels',
+    trafficTrend: 'Traffic Trend',
+    trafficIn: 'Inbound',
+    trafficOut: 'Outbound',
+    trafficRange24h: '24h',
+    trafficRange72h: '3d',
+    trafficRange7d: '7d',
+    trafficRange30d: '30d',
     associatedTunnels: 'Associated Tunnels',
     recentLogins: 'Recent Logins',
     role: 'Role',

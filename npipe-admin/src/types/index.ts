@@ -15,6 +15,7 @@ export interface LoginResponse {
   msg: string
   role: string | null
   user_id?: number | null
+  username?: string | null
 }
 
 // ── Dashboard ──────────────────────────────────────────────────────────────

@@ -14,4 +14,5 @@ pub struct LoginResponse {
     pub code: i32,
     pub role: Option<String>,
     pub user_id: Option<u32>,
+    pub username: Option<String>,
 }
