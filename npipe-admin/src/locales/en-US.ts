@@ -163,6 +163,28 @@ export default {
     },
   },
 
+  maintenance: {
+    title: 'Data Maintenance',
+    subtitle: 'Clean historical data that keeps growing while retaining recent records for troubleshooting',
+    loginHistoryKeepDays: 'Login log retention days',
+    operationLogKeepDays: 'Operation log retention days',
+    trafficHourlyKeepDays: 'Hourly traffic retention days',
+    refreshInfo: 'Refresh Info',
+    dataType: 'Data Type',
+    totalCount: 'Current Count',
+    cleanupCount: 'Estimated Cleanup',
+    oldest: 'Oldest Record',
+    newest: 'Newest Record',
+    cleanup: 'Clean Data',
+    confirmTitle: 'Confirm Cleanup',
+    confirm: 'This will delete login logs, operation logs, and hourly traffic records older than the retention days. This cannot be undone. Continue?',
+    cleanupSuccess: 'Cleanup completed',
+    cleaned: 'Deleted',
+    loginHistory: 'Login logs',
+    operationLog: 'Operation logs',
+    trafficHourly: 'Hourly traffic',
+  },
+
   player: {
     title: 'User Management',
     subtitle: 'Manage all registered users',

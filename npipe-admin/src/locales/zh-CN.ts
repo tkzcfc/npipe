@@ -163,6 +163,28 @@ export default {
     },
   },
 
+  maintenance: {
+    title: '数据维护',
+    subtitle: '清理会持续增长的历史数据，保留近期记录用于排查问题',
+    loginHistoryKeepDays: '登录日志保留天数',
+    operationLogKeepDays: '操作日志保留天数',
+    trafficHourlyKeepDays: '小时流量保留天数',
+    refreshInfo: '刷新概况',
+    dataType: '数据类型',
+    totalCount: '当前数量',
+    cleanupCount: '预计清理',
+    oldest: '最早记录',
+    newest: '最新记录',
+    cleanup: '清理数据',
+    confirmTitle: '清理确认',
+    confirm: '将删除超过保留天数的登录日志、操作日志和小时流量统计，此操作不可恢复。确定继续吗？',
+    cleanupSuccess: '清理完成',
+    cleaned: '本次清理',
+    loginHistory: '登录日志',
+    operationLog: '操作日志',
+    trafficHourly: '小时流量',
+  },
+
   player: {
     title: '用户管理',
     subtitle: '管理所有注册用户',

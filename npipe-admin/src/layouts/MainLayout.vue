@@ -99,6 +99,7 @@ const menuItems = computed(() => [
   { path: '/tunnels', title: t('tunnel.title'), icon: 'Connection' },
   { path: '/logs', title: t('loginLog.title'), icon: 'Document' },
   ...(authStore.isAdmin ? [{ path: '/operations', title: t('operationLog.title'), icon: 'Tickets' }] : []),
+  ...(authStore.isAdmin ? [{ path: '/maintenance', title: t('maintenance.title'), icon: 'Tools' }] : []),
 ])
 
 async function onCommand(cmd: string) {

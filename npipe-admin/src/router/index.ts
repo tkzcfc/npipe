@@ -44,6 +44,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/operations/index.vue'),
         meta: { title: '操作日志', icon: 'Tickets', requiresAuth: true, adminOnly: true },
       },
+      {
+        path: 'maintenance',
+        name: 'Maintenance',
+        component: () => import('@/views/maintenance/index.vue'),
+        meta: { title: '数据维护', icon: 'Tools', requiresAuth: true, adminOnly: true },
+      },
     ],
   },
   {

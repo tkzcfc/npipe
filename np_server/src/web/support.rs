@@ -35,15 +35,22 @@ pub(super) async fn auth_context(
         });
     }
 
-    if let Some(user_id) = id
-        .strip_prefix("user:")
-        .and_then(|it| it.parse::<u32>().ok())
-    {
-        let user = User::find_by_id(user_id)
+    if let Some(user_id) = id.strip_prefix("user:").and_then(|it| {
+        it.split_once(':')
+            .map(|(id, _)| id)
+            .unwrap_or(it)
+            .parse::<u32>()
+            .ok()
+    }) {
+        let Some(user) = User::find_by_id(user_id)
             .one(GLOBAL_DB_POOL.get().unwrap())
             .await
-            .map_err(|err| error::ErrorInternalServerError(format!("sql error:{}", err)))?;
-        if !user.is_some_and(|user| user.enabled == 1 && user.web_access == 1) {
+            .map_err(|err| error::ErrorInternalServerError(format!("sql error:{}", err)))?
+        else {
+            return Err(error::ErrorUnauthorized("Session expired"));
+        };
+
+        if user.enabled != 1 || user.web_access != 1 {
             return Err(error::ErrorUnauthorized("Session expired"));
         }
 

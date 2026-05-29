@@ -173,6 +173,7 @@ impl PlayerManager {
 
         let mut user: user::ActiveModel = user.unwrap().into();
         user.password = Set(password.to_owned());
+        user.web_access = Set(0);
 
         let _ = user.update(GLOBAL_DB_POOL.get().unwrap()).await?;
         Ok(())

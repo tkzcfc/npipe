@@ -217,7 +217,7 @@ pub(super) async fn update_player(
             "player",
             req.id,
             &req.username,
-            "password: changed",
+            "password: changed; web_access: disabled",
         )
         .await;
     }
@@ -287,7 +287,7 @@ pub(super) async fn reset_player_password(
                 "player",
                 req.id,
                 &name,
-                "password: changed",
+                "password: changed; web_access: disabled",
             )
             .await;
             Ok(HttpResponse::Ok().json(proto::GeneralResponse {
