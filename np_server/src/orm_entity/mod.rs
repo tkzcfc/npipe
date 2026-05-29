@@ -4,6 +4,7 @@ pub mod prelude;
 
 pub mod login_history;
 pub mod operation_log;
+pub mod schema_version;
 pub mod traffic_hourly;
 pub mod tunnel;
 pub mod user;

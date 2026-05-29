@@ -7,6 +7,11 @@
 	"tls_key": "./server.key.pem",
 	"web_base_dir": "./dist",
 	"web_addr": "0.0.0.0:8120",
+	"web_enable_tls": false,
+	"web_tls_cert": "./web-cert.pem",
+	"web_tls_key": "./web-key.pem",
+	"web_tls_auto_self_signed": false,
+	"web_cookie_secure": false,
 	"web_username": "admin",
 	"web_password": "admin@1234"
 }

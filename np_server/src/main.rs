@@ -13,9 +13,33 @@ use http::Uri;
 use log::{error, info};
 use np_base::net::session_delegate::SessionDelegate;
 use once_cell::sync::Lazy;
+use std::future::Future;
 use std::str::FromStr;
 use tokio::signal;
 use tokio::task::JoinSet;
+
+struct ServerExit {
+    name: String,
+    addr: String,
+    result: anyhow::Result<()>,
+}
+
+fn spawn_server<F>(
+    set: &mut JoinSet<ServerExit>,
+    name: impl Into<String>,
+    addr: impl Into<String>,
+    fut: F,
+) where
+    F: Future<Output = anyhow::Result<()>> + Send + 'static,
+{
+    let name = name.into();
+    let addr = addr.into();
+    info!("Starting {} server on {}", name, addr);
+    set.spawn(async move {
+        let result = fut.await;
+        ServerExit { name, addr, result }
+    });
+}
 
 fn uri_to_socket_addr(uri: &Uri) -> anyhow::Result<String> {
     let host = uri
@@ -108,19 +132,30 @@ pub async fn main() -> anyhow::Result<()> {
         && !GLOBAL_CONFIG.web_username.is_empty()
         && !GLOBAL_CONFIG.web_addr.is_empty()
     {
-        set.spawn(async move {
-            info!("HttpServer listening: {}", GLOBAL_CONFIG.web_addr);
-            web::run_http_server(&GLOBAL_CONFIG.web_addr, &GLOBAL_CONFIG.web_base_dir).await
-        });
+        let name = if GLOBAL_CONFIG.web_enable_tls {
+            "HTTPS"
+        } else {
+            "HTTP"
+        };
+        spawn_server(
+            &mut set,
+            name,
+            GLOBAL_CONFIG.web_addr.clone(),
+            web::run_http_server(&GLOBAL_CONFIG.web_addr, &GLOBAL_CONFIG.web_base_dir),
+        );
     }
 
     GLOBAL_CONFIG
         .listen_addr
         .split(",")
         .filter_map(|s| {
-            Uri::from_str(s)
+            let raw = s.trim();
+            if raw.is_empty() {
+                return None;
+            }
+            Uri::from_str(raw)
                 .map_err(|e| {
-                    error!("Failed to parse URI '{}': {}", s, e);
+                    error!("Failed to parse listen_addr item '{}': {}", raw, e);
                     e
                 })
                 .ok() // 丢弃错误，保留成功的 Uri
@@ -128,21 +163,25 @@ pub async fn main() -> anyhow::Result<()> {
         .collect::<Vec<_>>()
         .into_iter()
         .for_each(|request| match request.scheme_str() {
-            Some("tcp") => {
-                set.spawn(async move { run_tcp_server(uri_to_socket_addr(&request)?).await });
-            }
+            Some("tcp") => match uri_to_socket_addr(&request) {
+                Ok(addr) => spawn_server(&mut set, "TCP", addr.clone(), run_tcp_server(addr)),
+                Err(err) => error!("Invalid TCP listen address '{}': {}", request, err),
+            },
             #[cfg(feature = "kcp")]
-            Some("kcp") => {
-                set.spawn(async move { run_kcp_server(uri_to_socket_addr(&request)?).await });
-            }
+            Some("kcp") => match uri_to_socket_addr(&request) {
+                Ok(addr) => spawn_server(&mut set, "KCP", addr.clone(), run_kcp_server(addr)),
+                Err(err) => error!("Invalid KCP listen address '{}': {}", request, err),
+            },
             #[cfg(feature = "ws")]
-            Some("ws") => {
-                set.spawn(async move { run_ws_server(uri_to_socket_addr(&request)?).await });
-            }
+            Some("ws") => match uri_to_socket_addr(&request) {
+                Ok(addr) => spawn_server(&mut set, "WebSocket", addr.clone(), run_ws_server(addr)),
+                Err(err) => error!("Invalid WebSocket listen address '{}': {}", request, err),
+            },
             #[cfg(feature = "quic")]
-            Some("quic") => {
-                set.spawn(async move { run_quic_server(uri_to_socket_addr(&request)?).await });
-            }
+            Some("quic") => match uri_to_socket_addr(&request) {
+                Ok(addr) => spawn_server(&mut set, "QUIC", addr.clone(), run_quic_server(addr)),
+                Err(err) => error!("Invalid QUIC listen address '{}': {}", request, err),
+            },
             _ => error!("Unsupported URL scheme: {}", request),
         });
 
@@ -153,8 +192,16 @@ pub async fn main() -> anyhow::Result<()> {
 
     while let Some(res) = set.join_next().await {
         match res {
-            Ok(Ok(_)) => info!("A server service has finished"),
-            Ok(Err(err)) => error!("A server service encountered an error: {}", err),
+            Ok(ServerExit {
+                name,
+                addr,
+                result: Ok(()),
+            }) => info!("{} server on {} exited normally", name, addr),
+            Ok(ServerExit {
+                name,
+                addr,
+                result: Err(err),
+            }) => error!("{} server on {} exited with error: {:?}", name, addr, err),
             Err(err) => error!("A service task panicked or was cancelled: {}", err),
         }
     }

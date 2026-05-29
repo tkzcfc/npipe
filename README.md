@@ -74,6 +74,11 @@ cargo build --release --no-default-features --features tcp
     "tls_key": "./server.key.pem",
     "web_base_dir": "./dist",
     "web_addr": "0.0.0.0:8120",
+    "web_enable_tls": false,
+    "web_tls_cert": "./web-cert.pem",
+    "web_tls_key": "./web-key.pem",
+    "web_tls_auto_self_signed": false,
+    "web_cookie_secure": false,
     "web_username": "admin",
     "web_password": "admin@1234",
     "quiet": false,
@@ -92,6 +97,11 @@ cargo build --release --no-default-features --features tcp
 | `tls_key`                 | TLS 私钥文件路径                                                     | `./server.key.pem`                                                  |
 | `web_base_dir`            | Web 管理前端静态文件目录（留空则禁用 Web 管理）                      | `./dist`                                                            |
 | `web_addr`                | Web 管理后台监听地址                                                 | `0.0.0.0:8120`                                                      |
+| `web_enable_tls`          | 是否为 Web 管理后台直接启用 HTTPS                                    | `true` / `false`                                                    |
+| `web_tls_cert`            | Web 管理后台 HTTPS 证书文件路径                                      | `./web-cert.pem`                                                    |
+| `web_tls_key`             | Web 管理后台 HTTPS 私钥文件路径                                      | `./web-key.pem`                                                     |
+| `web_tls_auto_self_signed`| Web 管理后台 HTTPS 证书为空时，是否自动生成临时自签名证书            | `true` / `false`                                                    |
+| `web_cookie_secure`       | 是否强制 Web 管理后台 Session Cookie 使用 Secure；外部 Nginx/HTTPS 反代时建议设为 `true` | `true` / `false`                                                    |
 | `web_username`            | Web 管理员账号（留空则禁用 Web 管理）                                | `admin`                                                             |
 | `web_password`            | Web 管理员密码（留空则禁用 Web 管理）                                | `admin@1234`                                                        |
 | `illegal_traffic_forward` | 非 npipe 流量转发地址，可对接 Nginx 等（留空则丢弃）                 | `127.0.0.1:80`                                                      |
@@ -102,6 +112,9 @@ cargo build --release --no-default-features --features tcp
 
 - **QUIC 协议必须启用 TLS**：QUIC 协议在设计上强制要求加密，若 `listen_addr` 中包含 `quic://` 地址，必须同时将 `enable_tls` 设为 `true` 并提供有效的 `tls_cert` 和 `tls_key`，否则服务端将无法正常启动 QUIC 监听。
 - **多协议混用**：TCP / KCP / WebSocket 可以在不启用 TLS 的情况下运行，但建议生产环境统一开启 TLS 以保障传输安全。
+- **Web 管理 HTTPS**：`web_enable_tls` 只控制 Web 管理后台是否直接启用 HTTPS，和隧道服务的 `enable_tls` 相互独立；启用时必须配置 `web_tls_cert` 和 `web_tls_key`。
+- **临时自签名证书**：如果 `web_enable_tls` 为 `true` 且未配置 `web_tls_cert` / `web_tls_key`，可将 `web_tls_auto_self_signed` 设为 `true` 自动生成临时自签名证书；浏览器会提示证书不受信任，仅建议临时测试使用。
+- **HTTPS 反向代理**：如果浏览器通过 Nginx 等 HTTPS 代理访问后台，而 `np_server` 到代理之间是 HTTP，请将 `web_cookie_secure` 设为 `true`，让后台 Session Cookie 只通过 HTTPS 发送。
 - **Web 管理禁用**：`web_username`、`web_password`、`web_addr` 三者任意一项为空，Web 管理后台将自动关闭。
 
 ### 启动服务端

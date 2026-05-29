@@ -19,6 +19,21 @@ pub struct Config {
     pub tls_key: String,
     /// web监听地址
     pub web_addr: String,
+    /// Web 管理后台是否启用 TLS
+    #[serde(default = "default_config_false_function")]
+    pub web_enable_tls: bool,
+    /// Web 管理后台 TLS 证书
+    #[serde(default = "default_config_empty_string_function")]
+    pub web_tls_cert: String,
+    /// Web 管理后台 TLS 私钥
+    #[serde(default = "default_config_empty_string_function")]
+    pub web_tls_key: String,
+    /// Web 管理后台证书未配置时是否自动生成临时自签名证书
+    #[serde(default = "default_config_false_function")]
+    pub web_tls_auto_self_signed: bool,
+    /// Web 管理后台 Cookie 是否强制 Secure
+    #[serde(default = "default_config_false_function")]
+    pub web_cookie_secure: bool,
     /// 管理员用户
     pub web_username: String,
     /// 管理员密码
@@ -40,6 +55,9 @@ fn default_config_empty_string_function() -> String {
     "".to_string()
 }
 fn default_config_quiet_function() -> bool {
+    false
+}
+fn default_config_false_function() -> bool {
     false
 }
 fn default_config_log_dir_function() -> String {

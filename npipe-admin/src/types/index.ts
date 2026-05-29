@@ -22,6 +22,10 @@ export interface DashboardConfigInfo {
   listen_addr: string
   web_addr: string
   enable_tls: boolean
+  web_enable_tls: boolean
+  web_tls_cert: string
+  web_tls_auto_self_signed: boolean
+  web_cookie_secure: boolean
   tls_cert: string
   web_base_dir: string
   illegal_traffic_forward: string
