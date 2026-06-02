@@ -62,7 +62,7 @@ async fn run_tcp_server(addr: String) -> anyhow::Result<()> {
         builder = builder.set_tls_configuration(&GLOBAL_CONFIG.tls_cert, &GLOBAL_CONFIG.tls_key);
     }
 
-    builder.build(addr, signal::ctrl_c()).await
+    builder.build(addr, shutdown_signal()).await
 }
 
 #[cfg(feature = "kcp")]
@@ -87,7 +87,7 @@ async fn run_kcp_server(addr: String) -> anyhow::Result<()> {
         builder = builder.set_tls_configuration(&GLOBAL_CONFIG.tls_cert, &GLOBAL_CONFIG.tls_key);
     }
 
-    builder.build(addr, signal::ctrl_c()).await
+    builder.build(addr, shutdown_signal()).await
 }
 
 #[cfg(feature = "ws")]
@@ -102,7 +102,7 @@ async fn run_ws_server(addr: String) -> anyhow::Result<()> {
         builder = builder.set_tls_configuration(&GLOBAL_CONFIG.tls_cert, &GLOBAL_CONFIG.tls_key);
     }
 
-    builder.build(addr, signal::ctrl_c()).await
+    builder.build(addr, shutdown_signal()).await
 }
 
 #[cfg(feature = "quic")]
@@ -117,7 +117,27 @@ async fn run_quic_server(addr: String) -> anyhow::Result<()> {
         builder = builder.set_tls_configuration(&GLOBAL_CONFIG.tls_cert, &GLOBAL_CONFIG.tls_key);
     }
 
-    builder.build(&addr, signal::ctrl_c()).await
+    builder.build(&addr, shutdown_signal()).await
+}
+
+/// 同时监听 SIGTERM（systemctl stop）和 SIGINT（Ctrl+C）
+async fn shutdown_signal() {
+    let ctrl_c = signal::ctrl_c();
+
+    #[cfg(unix)]
+    let sigterm = async {
+        let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("Failed to install SIGTERM handler");
+        sigterm.recv().await
+    };
+
+    #[cfg(not(unix))]
+    let sigterm = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = sigterm => {},
+    }
 }
 
 #[tokio::main]
