@@ -123,7 +123,15 @@ jobs:
         BIN_VERSION="${GITHUB_REF#refs/tags/v}"
         echo "BIN_VERSION=${BIN_VERSION}" >> $GITHUB_ENV
         echo "version is: ${BIN_VERSION}"
-        
+
+    - name: Patch Cargo.toml version
+      shell: bash
+      run: |
+        sed -i "s/^version = \".*\"/version = \"${BIN_VERSION}\"/" np_client/Cargo.toml
+        sed -i "s/^version = \".*\"/version = \"${BIN_VERSION}\"/" np_server/Cargo.toml
+        echo "np_client version: $(grep ^version np_client/Cargo.toml)"
+        echo "np_server version: $(grep ^version np_server/Cargo.toml)"
+
     # nightly-2023-12-28 = nightly1.75.0
     - name: Install Rust
       if: matrix.target == 'x86_64-win7-windows-msvc'
