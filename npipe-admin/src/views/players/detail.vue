@@ -541,8 +541,11 @@ function formatHourKey(date: Date): string {
 }
 
 function formatHourLabel(hour: string): string {
-  if (trafficHours.value <= 24) return `${hour.slice(11, 13)}:00`
-  return hour.slice(5, 13).replace('-', '/')
+  // hour 格式 "2026-06-02 06" (UTC)，转为浏览器本地时间显示
+  const d = new Date(hour + ':00:00Z')
+  const pad = (n: number) => n.toString().padStart(2, '0')
+  if (trafficHours.value <= 24) return `${pad(d.getHours())}:00`
+  return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:00`
 }
 
 function formatDuration(seconds: number): string {

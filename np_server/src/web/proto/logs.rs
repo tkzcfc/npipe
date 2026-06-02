@@ -15,8 +15,10 @@ pub struct LoginHistoryItem {
     pub id: u32,
     pub user_id: u32,
     pub ip_addr: String,
-    pub login_time: String,
-    pub logout_time: String,
+    /// Unix 时间戳（秒），由前端转为本地时间
+    pub login_time: i64,
+    /// Unix 时间戳（秒），0 表示仍在在线
+    pub logout_time: i64,
     pub duration_secs: i32,
 }
 

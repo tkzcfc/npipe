@@ -31,10 +31,14 @@
             <span class="font-mono">{{ row.ip_addr }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="login_time" :label="$t('loginLog.loginTime')" min-width="170" />
+        <el-table-column :label="$t('loginLog.loginTime')" min-width="170">
+          <template #default="{ row }">
+            <span>{{ row.login_time ? formatTime(row.login_time) : '-' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column :label="$t('loginLog.logoutTime')" min-width="170">
           <template #default="{ row }">
-            <span v-if="row.logout_time">{{ row.logout_time }}</span>
+            <span v-if="row.logout_time">{{ formatTime(row.logout_time) }}</span>
             <el-tag v-else type="success" size="small">{{ $t('loginLog.online') }}</el-tag>
           </template>
         </el-table-column>
@@ -94,6 +98,12 @@ async function loadData(page = pagination.currentPage) {
 function clearFilter() {
   filterUserId.value = undefined
   loadData(1)
+}
+
+function formatTime(ts: number): string {
+  const d = new Date(ts * 1000)
+  const pad = (n: number) => n.toString().padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
 function formatDuration(secs: number): string {

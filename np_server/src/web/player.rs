@@ -528,11 +528,11 @@ pub(super) async fn player_detail(
             id: r.id,
             user_id: r.user_id,
             ip_addr: r.ip_addr.clone(),
-            login_time: r.login_time.format("%Y-%m-%d %H:%M:%S").to_string(),
+            login_time: r.login_time.and_utc().timestamp(),
             logout_time: r
                 .logout_time
-                .map(|t| t.format("%Y-%m-%d %H:%M:%S").to_string())
-                .unwrap_or_default(),
+                .map(|t| t.and_utc().timestamp())
+                .unwrap_or(0),
             duration_secs: r.duration_secs.unwrap_or(0),
         })
         .collect();

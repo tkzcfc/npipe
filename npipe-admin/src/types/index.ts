@@ -97,8 +97,10 @@ export interface LoginHistoryItem {
   id: number
   user_id: number
   ip_addr: string
-  login_time: string
-  logout_time: string
+  /** Unix 时间戳（秒） */
+  login_time: number
+  /** Unix 时间戳（秒），0 表示仍在在线 */
+  logout_time: number
   duration_secs: number
 }
 
