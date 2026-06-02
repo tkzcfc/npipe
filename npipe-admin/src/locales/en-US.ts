@@ -263,11 +263,6 @@ export default {
     deleteTitle: 'Delete Confirmation',
     deleteBtn: 'Confirm Delete',
     deleteSuccess: 'Deleted successfully',
-    runtime: {
-      available: 'Available',
-      waiting: 'Waiting',
-      disabled: 'Disabled',
-    },
     validation: {
       username: 'Username: 1-30 characters',
       password: 'Password: 1-15 characters',
@@ -359,6 +354,11 @@ export default {
         ok: 'Listen port is available',
         error: 'Listen port is already used by another tunnel',
       },
+    },
+    runtime: {
+      available: 'Available',
+      waiting: 'Waiting',
+      disabled: 'Disabled',
     },
     table: {
       id: 'ID',

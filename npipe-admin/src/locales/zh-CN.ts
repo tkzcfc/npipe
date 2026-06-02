@@ -263,11 +263,6 @@ export default {
     deleteTitle: '删除确认',
     deleteBtn: '确定删除',
     deleteSuccess: '删除成功',
-    runtime: {
-      available: '可用',
-      waiting: '等待上线',
-      disabled: '未启用',
-    },
     validation: {
       username: '用户名 1-30 个字符',
       password: '密码 1-15 个字符',
@@ -359,6 +354,11 @@ export default {
         ok: '监听端口未冲突',
         error: '监听端口已被其他隧道占用',
       },
+    },
+    runtime: {
+      available: '可用',
+      waiting: '等待上线',
+      disabled: '未启用',
     },
     table: {
       id: 'ID',
