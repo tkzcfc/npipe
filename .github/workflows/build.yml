@@ -55,61 +55,61 @@ jobs:
             target: x86_64-unknown-linux-musl
             use-cross: true
 
-          - os: ubuntu-latest
-            target: armv7-unknown-linux-musleabihf
-            use-cross: true
+          # - os: ubuntu-latest
+          #   target: armv7-unknown-linux-musleabihf
+          #   use-cross: true
             
-          - os: ubuntu-latest
-            target: arm-unknown-linux-musleabihf
-            use-cross: true
+          # - os: ubuntu-latest
+          #   target: arm-unknown-linux-musleabihf
+          #   use-cross: true
             
-          - os: ubuntu-latest
-            target: i686-unknown-linux-musl
-            use-cross: true
+          # - os: ubuntu-latest
+          #   target: i686-unknown-linux-musl
+          #   use-cross: true
             
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-musl
-            use-cross: true
+          # - os: ubuntu-latest
+          #   target: aarch64-unknown-linux-musl
+          #   use-cross: true
 
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            use-cross: false
+          # - os: ubuntu-latest
+          #   target: x86_64-unknown-linux-gnu
+          #   use-cross: false
           
-          - os: ubuntu-latest
-            target: arm-unknown-linux-gnueabihf
-            use-cross: true
+          # - os: ubuntu-latest
+          #   target: arm-unknown-linux-gnueabihf
+          #   use-cross: true
 
-          - os: ubuntu-latest
-            target: armv7-unknown-linux-gnueabihf
-            use-cross: true
+          # - os: ubuntu-latest
+          #   target: armv7-unknown-linux-gnueabihf
+          #   use-cross: true
 
-          - os: windows-latest
-            target: x86_64-pc-windows-gnu
-            use-cross: false
+          # - os: windows-latest
+          #   target: x86_64-pc-windows-gnu
+          #   use-cross: false
 
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            use-cross: false
+          # - os: windows-latest
+          #   target: x86_64-pc-windows-msvc
+          #   use-cross: false
 
-          - os: windows-latest
-            target: x86_64-win7-windows-msvc
-            use-cross: false
+          # - os: windows-latest
+          #   target: x86_64-win7-windows-msvc
+          #   use-cross: false
             
-          - os: windows-latest
-            target: i686-pc-windows-msvc
-            use-cross: false
+          # - os: windows-latest
+          #   target: i686-pc-windows-msvc
+          #   use-cross: false
 
-          - os: windows-latest
-            target: aarch64-pc-windows-msvc
-            use-cross: false
+          # - os: windows-latest
+          #   target: aarch64-pc-windows-msvc
+          #   use-cross: false
           
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            use-cross: false
+          # - os: macos-latest
+          #   target: x86_64-apple-darwin
+          #   use-cross: false
 
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            use-cross: false
+          # - os: macos-latest
+          #   target: aarch64-apple-darwin
+          #   use-cross: false
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -123,14 +123,6 @@ jobs:
         BIN_VERSION="${GITHUB_REF#refs/tags/v}"
         echo "BIN_VERSION=${BIN_VERSION}" >> $GITHUB_ENV
         echo "version is: ${BIN_VERSION}"
-
-    - name: Patch Cargo.toml version
-      shell: bash
-      run: |
-        sed -i "s/^version = \".*\"/version = \"${BIN_VERSION}\"/" np_client/Cargo.toml
-        sed -i "s/^version = \".*\"/version = \"${BIN_VERSION}\"/" np_server/Cargo.toml
-        echo "np_client version: $(grep ^version np_client/Cargo.toml)"
-        echo "np_server version: $(grep ^version np_server/Cargo.toml)"
 
     # nightly-2023-12-28 = nightly1.75.0
     - name: Install Rust
