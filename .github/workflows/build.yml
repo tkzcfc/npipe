@@ -117,6 +117,7 @@ jobs:
         fetch-depth: 1
             
     - name: Set Version
+      shell: bash
       run: |
         echo "BIN_VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
 
