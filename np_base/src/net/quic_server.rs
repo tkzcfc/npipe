@@ -46,28 +46,41 @@ impl Server {
             let notify_shutdown_clone = self.notify_shutdown.clone();
 
             tokio::spawn(async move {
-                while let Ok(Some(stream)) = connection.accept_bidirectional_stream().await {
-                    trace!("Stream opened from {}", remote_addr);
+                let mut shutdown = notify_shutdown_clone.subscribe();
+                loop {
+                    tokio::select! {
+                        result = connection.accept_bidirectional_stream() => {
+                            match result {
+                                Ok(Some(stream)) => {
+                                    trace!("Stream opened from {}", remote_addr);
 
-                    let delegate = callback();
-                    let shutdown = notify_shutdown_clone.subscribe();
-                    let shutdown_complete_stream = shutdown_complete_connection.clone();
+                                    let delegate = callback();
+                                    let stream_shutdown = notify_shutdown_clone.subscribe();
+                                    let shutdown_complete_stream = shutdown_complete_connection.clone();
 
-                    // 新连接单独起一个异步任务处理
-                    tokio::spawn(async move {
-                        net_session::run(
-                            net_session::create_session_id(),
-                            remote_addr,
-                            delegate,
-                            shutdown,
-                            stream,
-                        )
-                        .await;
+                                    // 新连接单独起一个异步任务处理
+                                    tokio::spawn(async move {
+                                        net_session::run(
+                                            net_session::create_session_id(),
+                                            remote_addr,
+                                            delegate,
+                                            stream_shutdown,
+                                            stream,
+                                        )
+                                        .await;
 
-                        trace!("Stream stopped from {}", remote_addr);
-                        // 反向通知此会话结束
-                        drop(shutdown_complete_stream);
-                    });
+                                        trace!("Stream stopped from {}", remote_addr);
+                                        // 反向通知此会话结束
+                                        drop(shutdown_complete_stream);
+                                    });
+                                }
+                                _ => break,
+                            }
+                        }
+                        _ = shutdown.recv() => {
+                            break;
+                        }
+                    }
                 }
                 drop(shutdown_complete_connection);
             });
