@@ -136,6 +136,11 @@ impl Builder {
             shutdown_complete_tx,
         } = server;
 
+        // 主动发送 shutdown 消息到所有接收者（连接任务、流任务）。
+        // 不能仅靠 drop(notify_shutdown) 关闭通道，
+        // 因为连接任务持有 notify_shutdown 的克隆，通道不会关闭。
+        let _ = notify_shutdown.send(());
+
         // 销毁notify_shutdown 是为了触发 net_session run函数中shutdown.recv()返回
         drop(notify_shutdown);
         // 此处必须将 shutdown_complete_tx 并销毁，否则会一直卡在shutdown_complete_rx.recv().await
