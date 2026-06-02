@@ -1970,7 +1970,7 @@ dependencies = [
 
 [[package]]
 name = "np_client"
-version = "1.0.8"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -2011,7 +2011,7 @@ dependencies = [
 
 [[package]]
 name = "np_server"
-version = "1.0.8"
+version = "0.1.0"
 dependencies = [
  "actix-cors",
  "actix-files",

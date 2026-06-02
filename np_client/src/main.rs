@@ -66,14 +66,8 @@ pub(crate) struct CommonArgs {
     pub log_dir: String,
 }
 
-/// 优先使用 CI 中设置的 BIN_VERSION（git tag），否则回退到 Cargo.toml 版本
-const VERSION: &str = match option_env!("BIN_VERSION") {
-    Some(v) => v,
-    None => env!("CARGO_PKG_VERSION"),
-};
-
 #[derive(Parser)]
-#[command(author = "https://github.com/tkzcfc/npipe", version = VERSION, about, long_about = None)]
+#[command(author = "https://github.com/tkzcfc/npipe", version = env!("CARGO_PKG_VERSION"), about, long_about = None)]
 pub struct Opts {
     #[command(subcommand)]
     command: Option<Commands>,
