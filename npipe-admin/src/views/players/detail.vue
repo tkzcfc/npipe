@@ -192,6 +192,17 @@
         <el-button type="primary" :loading="passwordDialog.loading" @click="handleResetPassword">{{ $t('common.save') }}</el-button>
       </template>
     </el-dialog>
+
+    <ConfirmDelete
+      v-model:visible="deleteDialog.visible"
+      :title="$t('player.deleteTitle')"
+      :message="$t('player.deleteConfirm', { name: deleteDialog.username })"
+      :details="deleteDialog.details"
+      :loading="deleteDialog.loading"
+      :confirm-text="$t('player.deleteBtn')"
+      :cancel-text="$t('common.cancel')"
+      @confirm="handleRemoveConfirm"
+    />
   </div>
 </template>
 
@@ -209,6 +220,7 @@ import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/compon
 import { playerApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
+import ConfirmDelete from '@/components/ConfirmDelete.vue'
 import type { PlayerDetail, TrafficStatsResponse } from '@/types'
 
 const route = useRoute()
@@ -236,6 +248,13 @@ const passwordDialog = reactive({
   visible: false,
   loading: false,
   form: { id: 0, password: '' },
+})
+
+const deleteDialog = reactive({
+  visible: false,
+  loading: false,
+  username: '',
+  details: [] as { label: string; value: string }[],
 })
 const renameRules: FormRules = {
   username: [{ required: true, message: () => t('player.validation.usernameRequired'), trigger: 'blur' },
@@ -511,20 +530,33 @@ async function handleKick() {
   }
 }
 
-async function handleRemove() {
+function handleRemove() {
   if (!player.value || !authStore.isAdmin) return
   const target = player.value
-  await ElMessageBox.confirm(
-    t('player.deleteConfirm', { name: target.username }),
-    t('player.deleteTitle'),
-    { type: 'warning', confirmButtonText: t('player.deleteBtn'), cancelButtonText: t('common.cancel') },
-  )
-  const res = await playerApi.remove({ id: target.id })
-  if (res.data.code === 0) {
-    ElMessage.success(t('player.deleteSuccess'))
-    router.push('/players')
-  } else {
-    ElMessage.error(res.data.msg || t('common.failed'))
+  deleteDialog.username = target.username
+  deleteDialog.details = [
+    { label: t('common.id'), value: String(target.id) },
+    { label: t('player.username'), value: target.username },
+    { label: t('player.table.status'), value: target.online ? t('common.online') : t('common.offline') },
+  ]
+  deleteDialog.loading = false
+  deleteDialog.visible = true
+}
+
+async function handleRemoveConfirm() {
+  if (!player.value) return
+  deleteDialog.loading = true
+  try {
+    const res = await playerApi.remove({ id: player.value.id })
+    if (res.data.code === 0) {
+      ElMessage.success(t('player.deleteSuccess'))
+      deleteDialog.visible = false
+      router.push('/players')
+    } else {
+      ElMessage.error(res.data.msg || t('common.failed'))
+    }
+  } finally {
+    deleteDialog.loading = false
   }
 }
 

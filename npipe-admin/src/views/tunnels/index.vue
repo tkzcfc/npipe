@@ -265,16 +265,28 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <ConfirmDelete
+      v-model:visible="deleteDialog.visible"
+      :title="$t('tunnel.deleteTitle')"
+      :message="$t('tunnel.deleteConfirm', { desc: deleteDialog.source })"
+      :details="deleteDialog.details"
+      :loading="deleteDialog.loading"
+      :confirm-text="$t('common.delete')"
+      :cancel-text="$t('common.cancel')"
+      @confirm="handleRemoveConfirm"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Refresh, Search, Edit, Delete, MoreFilled, CopyDocument, SwitchButton } from '@element-plus/icons-vue'
 import { tunnelApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
+import ConfirmDelete from '@/components/ConfirmDelete.vue'
 import type { Tunnel, TunnelDetail, TunnelDiagnoseItem, TunnelDiagnoseResponse, TunnelMutateRequest } from '@/types'
 
 const { t } = useI18n()
@@ -324,6 +336,14 @@ const diagnosing = ref(false)
 const diagnoseResult = reactive<TunnelDiagnoseResponse>({
   ok: false,
   items: [],
+})
+
+const deleteDialog = reactive({
+  visible: false,
+  loading: false,
+  tunnelId: 0,
+  source: '',
+  details: [] as { label: string; value: string }[],
 })
 
 const pagination = reactive({
@@ -594,17 +614,32 @@ async function handleToggle(tunnel: Tunnel) {
 }
 
 // ── Remove ────────────────────────────────────────────────────────────────────
-async function handleRemove(tunnel: Tunnel) {
-  await ElMessageBox.confirm(
-    t('tunnel.deleteConfirm', { desc: tunnel.source }),
-    t('tunnel.deleteTitle'), { type: 'warning', confirmButtonText: t('common.delete'), cancelButtonText: t('common.cancel') }
-  )
-  const res = await tunnelApi.remove({ id: tunnel.id })
-  if (res.data.code === 0) {
-    ElMessage.success(t('tunnel.deleteSuccess'))
-    loadData(pagination.currentPage)
-  } else {
-    ElMessage.error(res.data.msg || t('common.failed'))
+function handleRemove(tunnel: Tunnel) {
+  deleteDialog.tunnelId = tunnel.id
+  deleteDialog.source = tunnel.source
+  deleteDialog.details = [
+    { label: t('common.id'), value: String(tunnel.id) },
+    { label: t('tunnel.source'), value: tunnel.source },
+    { label: t('tunnel.endpoint'), value: tunnel.endpoint || '-' },
+    { label: t('common.type'), value: TUNNEL_TYPE_NAMES[tunnel.tunnel_type] ?? String(tunnel.tunnel_type) },
+  ]
+  deleteDialog.loading = false
+  deleteDialog.visible = true
+}
+
+async function handleRemoveConfirm() {
+  deleteDialog.loading = true
+  try {
+    const res = await tunnelApi.remove({ id: deleteDialog.tunnelId })
+    if (res.data.code === 0) {
+      ElMessage.success(t('tunnel.deleteSuccess'))
+      deleteDialog.visible = false
+      loadData(pagination.currentPage)
+    } else {
+      ElMessage.error(res.data.msg || t('common.failed'))
+    }
+  } finally {
+    deleteDialog.loading = false
   }
 }
 

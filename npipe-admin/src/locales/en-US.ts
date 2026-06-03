@@ -27,6 +27,7 @@ export default {
     description: 'Description',
     actions: 'Actions',
     id: 'ID',
+    irreversible: 'This action cannot be undone',
   },
 
   layout: {

@@ -27,6 +27,7 @@ export default {
     description: '描述',
     actions: '操作',
     id: 'ID',
+    irreversible: '此操作不可恢复',
   },
 
   layout: {
