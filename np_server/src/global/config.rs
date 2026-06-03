@@ -1,8 +1,17 @@
+use crate::global::forward_rule::ForwardRule;
 use crate::global::opts::GLOBAL_OPTS;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::BufReader;
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ForwardRuleConfig {
+    #[serde(default = "default_config_empty_string_function")]
+    pub name: String,
+    pub match_expr: String,
+    pub target: String,
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
@@ -43,12 +52,18 @@ pub struct Config {
     /// 非法流量转发地址
     #[serde(default = "default_config_empty_string_function")]
     pub illegal_traffic_forward: String,
+    /// 非法流量转发规则
+    #[serde(default)]
+    pub illegal_traffic_forward_rules: Vec<ForwardRuleConfig>,
     /// 安静模式下不输出日志
     #[serde(default = "default_config_quiet_function")]
     pub quiet: bool,
     /// 日志保存路径
     #[serde(default = "default_config_log_dir_function")]
     pub log_dir: String,
+
+    #[serde(skip)]
+    pub forward_rules: Vec<ForwardRule>,
 }
 
 fn default_config_empty_string_function() -> String {
@@ -72,12 +87,17 @@ pub static GLOBAL_CONFIG: Lazy<Config> = Lazy::new(|| {
             std::process::exit(1);
         }
     };
+
     let reader = BufReader::new(file);
-    match serde_json::from_reader(reader) {
+    let mut config: Config = match serde_json::from_reader(reader) {
         Ok(cfg) => cfg,
         Err(e) => {
             eprintln!("Failed to parse config file: {}", e);
             std::process::exit(1);
         }
-    }
+    };
+
+    config.forward_rules = crate::global::forward_rule::parse_config(&config);
+
+    config
 });

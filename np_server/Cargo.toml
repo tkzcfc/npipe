@@ -43,5 +43,7 @@ tokio_kcp = { git = "https://github.com/tkzcfc/tokio_kcp.git", optional = true }
 http = "1.3"
 dashmap = "6"
 sysinfo = "0.38.4"
+regex = "1.12.2"
+hex = "0.4.3"
 
 [dev-dependencies]

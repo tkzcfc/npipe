@@ -49,10 +49,7 @@ pub(super) async fn login_history(
             user_id: r.user_id,
             ip_addr: r.ip_addr.clone(),
             login_time: r.login_time.and_utc().timestamp(),
-            logout_time: r
-                .logout_time
-                .map(|t| t.and_utc().timestamp())
-                .unwrap_or(0),
+            logout_time: r.logout_time.map(|t| t.and_utc().timestamp()).unwrap_or(0),
             duration_secs: r.duration_secs.unwrap_or(0),
         })
         .collect();

@@ -227,10 +227,10 @@ impl TunnelManager {
         // SOCKS5 HTTP类型不检测
         let proxy_type = InletProxyType::from_u32(tunnel.tunnel_type);
         match proxy_type {
-            InletProxyType::TCP | InletProxyType::UDP => {
-                if !is_valid_tunnel_endpoint_address(&tunnel.endpoint) {
-                    return Err(anyhow!("endpoint address format error"));
-                }
+            InletProxyType::TCP | InletProxyType::UDP
+                if !is_valid_tunnel_endpoint_address(&tunnel.endpoint) =>
+            {
+                return Err(anyhow!("endpoint address format error"));
             }
             _ => {}
         }

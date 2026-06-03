@@ -1,8 +1,8 @@
 mod handle_push;
 mod handle_request;
 mod handle_response;
-
 use crate::global::config::GLOBAL_CONFIG;
+use crate::global::forward_rule::match_rule;
 use crate::global::GLOBAL_DB_POOL;
 use crate::orm_entity::login_history;
 use crate::player::Player;
@@ -136,12 +136,16 @@ impl Peer {
     }
 
     /// 创建流量转发通道
-    async fn create_traffic_forward_channel(&mut self) -> anyhow::Result<()> {
-        if GLOBAL_CONFIG.illegal_traffic_forward.is_empty() {
-            return Err(anyhow!("no config illegal_traffic_forward"));
-        }
+    async fn create_traffic_forward_channel(&mut self, buf: &[u8]) -> anyhow::Result<()> {
         if let Some(ref tx) = self.tx {
-            let stream = TcpStream::connect(&GLOBAL_CONFIG.illegal_traffic_forward).await?;
+            let target = GLOBAL_CONFIG
+                .forward_rules
+                .iter()
+                .find(|rule| match_rule(&rule.matcher, buf))
+                .map(|rule| rule.target);
+
+            let addr = target.ok_or(anyhow!("No forward rule matched"))?;
+            let stream = TcpStream::connect(addr).await?;
 
             // set tcp keepalive
             let ka = TcpKeepalive::new().with_time(Duration::from_secs(30));
@@ -238,7 +242,7 @@ impl SessionDelegate for Peer {
         if !buffer.is_empty()
             && buffer[0] != 33u8
             && self.traffic_forward_writer.is_none()
-            && self.create_traffic_forward_channel().await.is_err()
+            && self.create_traffic_forward_channel(buffer).await.is_err()
         {
             debug!("bad flag");
             self.send_http_404_response().await?;

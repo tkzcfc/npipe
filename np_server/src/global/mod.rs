@@ -4,6 +4,7 @@ use crate::global::manager::GLOBAL_MANAGER;
 
 pub mod config;
 pub mod database;
+pub mod forward_rule;
 pub mod logger;
 pub mod manager;
 pub mod opts;
