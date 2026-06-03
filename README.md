@@ -69,6 +69,18 @@ cargo build --release --no-default-features --features tcp
     "database_url": "sqlite://data.db?mode=rwc",
     "listen_addr": "tcp://0.0.0.0:8118,kcp://0.0.0.0:8118,ws://0.0.0.0:8119,quic://0.0.0.0:8119",
     "illegal_traffic_forward": "",
+    "illegal_traffic_forward_rules": [
+        {
+            "name": "http-to-nginx",
+            "match_expr": "http",
+            "target": "127.0.0.1:80"
+        },
+        {
+            "name": "tls-to-https",
+            "match_expr": "tls",
+            "target": "127.0.0.1:443"
+        }
+    ],
     "enable_tls": false,
     "tls_cert": "./cert.pem",
     "tls_key": "./server.key.pem",
@@ -105,6 +117,7 @@ cargo build --release --no-default-features --features tcp
 | `web_username`            | Web 管理员账号（留空则禁用 Web 管理）                                | `admin`                                                             |
 | `web_password`            | Web 管理员密码（留空则禁用 Web 管理）                                | `admin@1234`                                                        |
 | `illegal_traffic_forward` | 非 npipe 流量转发地址，可对接 Nginx 等（留空则丢弃）                 | `127.0.0.1:80`                                                      |
+| `illegal_traffic_forward_rules` | 非法流量转发规则数组，支持按流量类型匹配转发（见下方详细说明） | 见示例                                                               |
 | `quiet`                   | 安静模式，不输出日志                                                 | `true` / `false`                                                    |
 | `log_dir`                 | 日志保存目录                                                         | `logs`                                                              |
 
@@ -116,6 +129,55 @@ cargo build --release --no-default-features --features tcp
 - **临时自签名证书**：如果 `web_enable_tls` 为 `true` 且未配置 `web_tls_cert` / `web_tls_key`，可将 `web_tls_auto_self_signed` 设为 `true` 自动生成临时自签名证书；浏览器会提示证书不受信任，仅建议临时测试使用。
 - **HTTPS 反向代理**：如果浏览器通过 Nginx 等 HTTPS 代理访问后台，而 `np_server` 到代理之间是 HTTP，请将 `web_cookie_secure` 设为 `true`，让后台 Session Cookie 只通过 HTTPS 发送。
 - **Web 管理禁用**：`web_username`、`web_password`、`web_addr` 三者任意一项为空，Web 管理后台将自动关闭。
+
+#### 非法流量转发规则 (`illegal_traffic_forward_rules`)
+
+当服务端收到非 npipe 协议的流量时，可通过 `illegal_traffic_forward` 简单转发到单一地址，也可通过 `illegal_traffic_forward_rules` 按流量类型精确匹配后分发到不同目标。
+
+每条规则包含三个字段：
+
+| 字段         | 说明                           |
+|--------------|--------------------------------|
+| `name`       | 规则名称（仅标识用途）         |
+| `match_expr` | 匹配表达式（见下方语法）       |
+| `target`     | 匹配后转发到的目标地址         |
+
+**`match_expr` 语法**：
+
+| 表达式              | 说明                                           | 示例                       |
+|---------------------|------------------------------------------------|----------------------------|
+| `http`              | 检测 HTTP 方法开头（GET/POST/PUT/DELETE 等）   | `"http"`                   |
+| `tls`               | 检测 TLS ClientHello（`0x16 0x03` 开头）       | `"tls"`                    |
+| `any`               | 兜底，永远匹配                                 | `"any"`                    |
+| `prefix:<hex>`      | 十六进制字节前缀匹配                           | `"prefix:1603"`（即 TLS）  |
+| `prefix:str:<s>`    | 字符串前缀匹配                                 | `"prefix:str:GET "`        |
+| `regex:<pattern>`   | 正则表达式匹配                                 | `"regex:^(GET|POST) "`     |
+
+> **注意**：规则按数组顺序依次匹配，命中即停止。若同时配置了 `illegal_traffic_forward`，它等价于一条 `match_expr` 为 `any` 的兜底规则，放在所有 `illegal_traffic_forward_rules` 之后执行。
+
+**配置示例**：
+
+```json
+{
+    "illegal_traffic_forward_rules": [
+        {
+            "name": "http-to-nginx",
+            "match_expr": "http",
+            "target": "127.0.0.1:80"
+        },
+        {
+            "name": "tls-to-https",
+            "match_expr": "tls",
+            "target": "127.0.0.1:443"
+        },
+        {
+            "name": "rdp",
+            "match_expr": "prefix:0300",
+            "target": "192.168.1.100:3389"
+        }
+    ]
+}
+```
 
 ### 启动服务端
 
