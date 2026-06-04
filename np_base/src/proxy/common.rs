@@ -76,7 +76,7 @@ impl SessionCommonInfo {
             is_compressed,
             encryption_method,
             encryption_key: Arc::new(encryption_key),
-            flow_controller: FlowController::new(1024 * 1024), // 默认最大1MB未处理数据
+            flow_controller: FlowController::new(4 * 1024 * 1024), // 默认最大4MB未处理数据
         }
     }
 

@@ -115,12 +115,15 @@ async fn poll_write<S>(
                         error!("[{addr}] error when write_all {}", error);
                         break;
                     }
+                    // flush 和 callback 并发，不互相等待
+                    callback().await; // 先发 release，不等 flush
                     if let Err(error) = writer.flush().await {
                         error!("[{addr}] error when flushing {}", error);
                         break;
                     }
+                } else {
+                    callback().await;
                 }
-                callback().await;
             }
             WriterMessage::Flush => {
                 if let Err(error) = writer.flush().await {
