@@ -304,11 +304,12 @@ where
     client.send_login().await?;
 
     let last_active_secs = Arc::new(AtomicU64::new(now_secs()));
+    let last_read_secs = Arc::new(AtomicU64::new(now_secs()));
 
     let result;
     select! {
-        r1 = client.run(reader, last_active_secs.clone()) => { result = r1 },
-        r2 = ping_forever(writer, last_active_secs) => { result = r2 },
+        r1 = client.run(reader, last_active_secs.clone(), last_read_secs.clone()) => { result = r1 },
+        r2 = ping_forever(writer, last_active_secs, last_read_secs) => { result = r2 },
     }
     client.sync_tunnels(&Vec::new()).await;
     result
@@ -326,21 +327,37 @@ fn now_secs() -> u64 {
 async fn ping_forever<S>(
     writer: Arc<Mutex<WriteHalf<S>>>,
     last_active_secs: Arc<AtomicU64>,
+    last_read_secs: Arc<AtomicU64>,
 ) -> anyhow::Result<()>
 where
     S: AsyncRead + AsyncWrite + Send + 'static,
 {
     const PING_INTERVAL_SECS: u64 = 5;
     const PING_TIMEOUT_SECS: u64 = 15;
+    /// 纯读方向的硬超时：即使写方向通畅（如 KCP/UDP sendto 永不断错），
+    /// 超过此时间没有收到任何字节也判定连接已死。
+    const HARD_READ_TIMEOUT_SECS: u64 = 90;
     loop {
         sleep(Duration::from_secs(1)).await;
 
-        let elapsed = now_secs().saturating_sub(last_active_secs.load(Ordering::Relaxed));
+        let elapsed_active = now_secs().saturating_sub(last_active_secs.load(Ordering::Relaxed));
+        let elapsed_read = now_secs().saturating_sub(last_read_secs.load(Ordering::Relaxed));
 
-        if elapsed < PING_INTERVAL_SECS {
+        // 快速路径：最近有数据活动，跳过
+        if elapsed_active < PING_INTERVAL_SECS {
             continue;
         }
-        if elapsed > PING_TIMEOUT_SECS {
+
+        // 硬超时：基于纯读方向，KCP/QUIC 等基于 UDP 的传输也能正确检测断连
+        if elapsed_read > HARD_READ_TIMEOUT_SECS {
+            return Err(anyhow!(
+                "ping timeout: no data received for {}s",
+                elapsed_read
+            ));
+        }
+
+        // 软超时：写方向能通说明 TCP 连接大概率活着，仅读不到数据不判死
+        if elapsed_active > PING_TIMEOUT_SECS {
             return Err(anyhow!("ping timeout"));
         }
 
@@ -357,6 +374,10 @@ where
             }),
         )
         .await?;
+
+        // 能成功发出 ping，说明写方向通畅，连接大概率还活着。
+        // 更新活跃时间，避免在 SG→HK 等拥塞链路上收不到 pong 时误判超时。
+        last_active_secs.store(now_secs(), Ordering::Relaxed);
     }
 }
 
@@ -368,6 +389,7 @@ where
         &mut self,
         mut reader: ReadHalf<S>,
         last_active_secs: Arc<AtomicU64>,
+        last_read_secs: Arc<AtomicU64>,
     ) -> anyhow::Result<()> {
         const WRITE_TIMEOUT_SECS: u64 = 1;
         let mut buffer = BytesMut::with_capacity(65536);
@@ -378,10 +400,13 @@ where
                 break;
             } else {
                 // 原子更新活跃时间（秒级精度，对 ping 检测已足够）
-                let elapsed = now_secs().saturating_sub(last_active_secs.load(Ordering::Relaxed));
+                let now = now_secs();
+                let elapsed = now.saturating_sub(last_active_secs.load(Ordering::Relaxed));
                 if elapsed >= WRITE_TIMEOUT_SECS {
-                    last_active_secs.store(now_secs(), Ordering::Relaxed);
+                    last_active_secs.store(now, Ordering::Relaxed);
                 }
+                // 纯读方向时间戳，用于 KCP/QUIC 等 UDP 传输的硬超时检测
+                last_read_secs.store(now, Ordering::Relaxed);
 
                 loop {
                     if buffer.is_empty() {

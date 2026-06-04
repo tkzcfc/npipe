@@ -9,7 +9,7 @@
         <el-button :icon="Refresh" :loading="maintenanceLoading" @click="loadMaintenanceInfo">
           {{ $t('maintenance.refreshInfo') }}
         </el-button>
-        <el-button type="danger" :icon="Delete" :loading="cleanupLoading" @click="cleanupDatabase">
+        <el-button type="danger" :icon="Delete" @click="cleanupDatabase">
           {{ $t('maintenance.cleanup') }}
         </el-button>
       </div>
@@ -79,6 +79,16 @@
         <el-tag type="info">{{ $t('maintenance.trafficHourly') }} {{ cleanupResult.traffic_hourly_deleted }}</el-tag>
       </div>
     </section>
+
+    <ConfirmDelete
+      v-model:visible="cleanupDialog.visible"
+      :title="$t('maintenance.confirmTitle')"
+      :message="$t('maintenance.confirm')"
+      :loading="cleanupDialog.loading"
+      :confirm-text="$t('maintenance.cleanup')"
+      :cancel-text="$t('common.cancel')"
+      @confirm="handleCleanupConfirm"
+    />
   </div>
 </template>
 
@@ -86,16 +96,21 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Delete, Refresh } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { operationApi } from '@/api'
+import ConfirmDelete from '@/components/ConfirmDelete.vue'
 import type { CleanupDatabaseResponse, DatabaseMaintenanceInfoResponse } from '@/types'
 
 const { t } = useI18n()
 
 const maintenanceLoading = ref(false)
-const cleanupLoading = ref(false)
 const maintenanceInfo = ref<DatabaseMaintenanceInfoResponse | null>(null)
 const cleanupResult = ref<CleanupDatabaseResponse | null>(null)
+
+const cleanupDialog = reactive({
+  visible: false,
+  loading: false,
+})
 
 const cleanupForm = reactive({
   login_history_keep_days: 90,
@@ -140,26 +155,20 @@ async function loadMaintenanceInfo() {
   }
 }
 
-async function cleanupDatabase() {
-  await ElMessageBox.confirm(
-    t('maintenance.confirm'),
-    t('maintenance.confirmTitle'),
-    {
-      confirmButtonText: t('maintenance.cleanup'),
-      cancelButtonText: t('common.cancel'),
-      type: 'warning',
-      confirmButtonClass: 'el-button--danger',
-    },
-  )
+function cleanupDatabase() {
+  cleanupDialog.visible = true
+}
 
-  cleanupLoading.value = true
+async function handleCleanupConfirm() {
+  cleanupDialog.loading = true
   try {
     const res = await operationApi.cleanupDatabase({ ...cleanupForm })
     cleanupResult.value = res.data
     ElMessage.success(t('maintenance.cleanupSuccess'))
+    cleanupDialog.visible = false
     loadMaintenanceInfo()
   } finally {
-    cleanupLoading.value = false
+    cleanupDialog.loading = false
   }
 }
 
