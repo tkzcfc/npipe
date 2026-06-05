@@ -80,13 +80,15 @@
       </div>
     </section>
 
-    <ConfirmDelete
+    <ConfirmAction
       v-model:visible="cleanupDialog.visible"
       :title="$t('maintenance.confirmTitle')"
       :message="$t('maintenance.confirm')"
       :loading="cleanupDialog.loading"
       :confirm-text="$t('maintenance.cleanup')"
       :cancel-text="$t('common.cancel')"
+      confirm-type="danger"
+      :warning-text="$t('common.irreversible')"
       @confirm="handleCleanupConfirm"
     />
   </div>
@@ -98,7 +100,7 @@ import { useI18n } from 'vue-i18n'
 import { Delete, Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { operationApi } from '@/api'
-import ConfirmDelete from '@/components/ConfirmDelete.vue'
+import ConfirmAction from '@/components/ConfirmAction.vue'
 import type { CleanupDatabaseResponse, DatabaseMaintenanceInfoResponse } from '@/types'
 
 const { t } = useI18n()

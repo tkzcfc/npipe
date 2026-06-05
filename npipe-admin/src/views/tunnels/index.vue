@@ -273,7 +273,7 @@
       </template>
     </el-dialog>
 
-    <ConfirmDelete
+    <ConfirmAction
       v-model:visible="deleteDialog.visible"
       :title="$t('tunnel.deleteTitle')"
       :message="$t('tunnel.deleteConfirm', { desc: deleteDialog.source })"
@@ -281,6 +281,8 @@
       :loading="deleteDialog.loading"
       :confirm-text="$t('common.delete')"
       :cancel-text="$t('common.cancel')"
+      confirm-type="danger"
+      :warning-text="$t('common.irreversible')"
       @confirm="handleRemoveConfirm"
     />
   </div>
@@ -293,7 +295,7 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Refresh, Search, Edit, Delete, MoreFilled, CopyDocument, SwitchButton } from '@element-plus/icons-vue'
 import { tunnelApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
-import ConfirmDelete from '@/components/ConfirmDelete.vue'
+import ConfirmAction from '@/components/ConfirmAction.vue'
 import type { Tunnel, TunnelDetail, TunnelDiagnoseItem, TunnelDiagnoseResponse, TunnelMutateRequest } from '@/types'
 
 const { t } = useI18n()
@@ -718,4 +720,3 @@ onMounted(() => loadData(1))
   color: var(--text-secondary);
 }
 </style>
-

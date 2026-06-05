@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useAppStore } from '@/stores/app'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -69,8 +70,13 @@ const router = createRouter({
   routes,
 })
 
-router.beforeEach(async (to) => {
+router.beforeEach(async (to, from) => {
   const authStore = useAuthStore()
+  const appStore = useAppStore()
+
+  if (to.fullPath !== from.fullPath) {
+    appStore.setRouteLoading(true)
+  }
 
   if (to.meta.requiresAuth !== false) {
     if (!authStore.isLoggedIn) {
@@ -98,5 +104,12 @@ router.beforeEach(async (to) => {
   document.title = `${to.meta.title ? to.meta.title + ' - ' : ''}npipe Console`
 })
 
-export default router
+router.afterEach(() => {
+  useAppStore().setRouteLoading(false)
+})
 
+router.onError(() => {
+  useAppStore().setRouteLoading(false)
+})
+
+export default router

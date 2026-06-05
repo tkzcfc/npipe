@@ -79,6 +79,17 @@
         </router-view>
       </main>
     </div>
+
+    <ConfirmAction
+      v-model:visible="logoutDialog.visible"
+      :title="$t('layout.logoutTitle')"
+      :message="$t('layout.logoutConfirm')"
+      :loading="logoutDialog.loading"
+      :confirm-text="$t('layout.logout')"
+      :cancel-text="$t('common.cancel')"
+      confirm-type="warning"
+      @confirm="handleLogoutConfirm"
+    />
   </div>
 </template>
 
@@ -88,7 +99,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
-import { ElMessageBox, ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus'
+import ConfirmAction from '@/components/ConfirmAction.vue'
 import {
   ArrowDown,
   Connection,
@@ -112,6 +124,10 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 const pendingPath = ref('')
 const isRouteLoading = ref(false)
+const logoutDialog = ref({
+  visible: false,
+  loading: false,
+})
 
 watch(
   () => route.fullPath,
@@ -150,14 +166,19 @@ async function navigateTo(path: string) {
 
 async function onCommand(cmd: string) {
   if (cmd === 'logout') {
-    await ElMessageBox.confirm(t('layout.logoutConfirm'), t('layout.logoutTitle'), {
-      confirmButtonText: t('common.ok'),
-      cancelButtonText: t('common.cancel'),
-      type: 'warning',
-    })
+    logoutDialog.value.visible = true
+  }
+}
+
+async function handleLogoutConfirm() {
+  logoutDialog.value.loading = true
+  try {
     await authStore.logout()
     ElMessage.success(t('layout.logoutSuccess'))
-    router.push('/login')
+    logoutDialog.value.visible = false
+    await router.push('/login')
+  } finally {
+    logoutDialog.value.loading = false
   }
 }
 </script>
@@ -389,4 +410,3 @@ async function onCommand(cmd: string) {
   100% { left: 100%; }
 }
 </style>
-

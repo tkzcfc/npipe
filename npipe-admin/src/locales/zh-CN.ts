@@ -28,6 +28,7 @@ export default {
     actions: '操作',
     id: 'ID',
     irreversible: '此操作不可恢复',
+    loadingPage: '页面加载中...',
   },
 
   layout: {
@@ -287,6 +288,7 @@ export default {
     subtitle: '管理所有内网穿透隧道',
     add: '添加隧道',
     addTitle: '添加隧道',
+    edit: '编辑',
     editTitle: '修改隧道',
     clone: '复制',
     searchPlaceholder: '搜索地址/描述...',

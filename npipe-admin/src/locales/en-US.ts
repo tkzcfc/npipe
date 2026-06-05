@@ -28,6 +28,7 @@ export default {
     actions: 'Actions',
     id: 'ID',
     irreversible: 'This action cannot be undone',
+    loadingPage: 'Loading page...',
   },
 
   layout: {
@@ -287,6 +288,7 @@ export default {
     subtitle: 'Manage all proxy tunnels',
     add: 'Add Tunnel',
     addTitle: 'Add Tunnel',
+    edit: 'Edit',
     editTitle: 'Edit Tunnel',
     clone: 'Clone',
     searchPlaceholder: 'Search address/description...',

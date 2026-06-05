@@ -6,6 +6,7 @@ export type Theme = 'dark' | 'light'
 export const useAppStore = defineStore('app', () => {
   const theme = ref<Theme>((localStorage.getItem('theme') as Theme) ?? 'dark')
   const sidebarCollapsed = ref(false)
+  const routeLoading = ref(false)
 
   function setTheme(t: Theme) {
     theme.value = t
@@ -26,9 +27,12 @@ export const useAppStore = defineStore('app', () => {
     sidebarCollapsed.value = !sidebarCollapsed.value
   }
 
+  function setRouteLoading(loading: boolean) {
+    routeLoading.value = loading
+  }
+
   // init on creation
   setTheme(theme.value)
 
-  return { theme, sidebarCollapsed, setTheme, toggleTheme, toggleSidebar }
+  return { theme, sidebarCollapsed, routeLoading, setTheme, toggleTheme, toggleSidebar, setRouteLoading }
 })
-

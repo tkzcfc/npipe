@@ -193,7 +193,7 @@
       </template>
     </el-dialog>
 
-    <ConfirmDelete
+    <ConfirmAction
       v-model:visible="deleteDialog.visible"
       :title="$t('player.deleteTitle')"
       :message="$t('player.deleteConfirm', { name: deleteDialog.username })"
@@ -201,7 +201,21 @@
       :loading="deleteDialog.loading"
       :confirm-text="$t('player.deleteBtn')"
       :cancel-text="$t('common.cancel')"
+      confirm-type="danger"
+      :warning-text="$t('common.irreversible')"
       @confirm="handleRemoveConfirm"
+    />
+
+    <ConfirmAction
+      v-model:visible="actionDialog.visible"
+      :title="actionDialog.title"
+      :message="actionDialog.message"
+      :details="actionDialog.details"
+      :loading="actionDialog.loading"
+      :confirm-text="actionDialog.confirmText"
+      :cancel-text="$t('common.cancel')"
+      :confirm-type="actionDialog.confirmType"
+      @confirm="handleActionConfirm"
     />
   </div>
 </template>
@@ -220,7 +234,7 @@ import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/compon
 import { playerApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
-import ConfirmDelete from '@/components/ConfirmDelete.vue'
+import ConfirmAction from '@/components/ConfirmAction.vue'
 import type { PlayerDetail, TrafficStatsResponse } from '@/types'
 
 const route = useRoute()
@@ -254,7 +268,19 @@ const deleteDialog = reactive({
   visible: false,
   loading: false,
   username: '',
-  details: [] as { label: string; value: string }[],
+  details: [] as { label: string; value: string | number }[],
+})
+type PlayerDetailAction = 'status' | 'webAccess' | 'kick'
+
+const actionDialog = reactive({
+  visible: false,
+  loading: false,
+  action: '' as PlayerDetailAction | '',
+  title: '',
+  message: '',
+  confirmText: '',
+  confirmType: 'warning' as 'primary' | 'success' | 'warning' | 'danger',
+  details: [] as { label: string; value: string | number }[],
 })
 const renameRules: FormRules = {
   username: [{ required: true, message: () => t('player.validation.usernameRequired'), trigger: 'blur' },
@@ -482,51 +508,84 @@ async function handleResetPassword() {
   }
 }
 
-async function handleToggleStatus() {
+function handleToggleStatus() {
   if (!player.value || !authStore.isAdmin) return
-  await ElMessageBox.confirm(
-    t(player.value.enabled ? 'player.disableConfirm' : 'player.enableConfirm', { name: player.value.username }),
-    t(player.value.enabled ? 'player.disableTitle' : 'player.enableTitle'),
-    { type: 'warning', confirmButtonText: t('common.confirm'), cancelButtonText: t('common.cancel') },
-  )
-  const res = await playerApi.updateStatus({ id: player.value.id, enabled: player.value.enabled ? 0 : 1 })
-  if (res.data.code === 0) {
-    ElMessage.success(player.value.enabled ? t('player.disableSuccess') : t('player.enableSuccess'))
-    loadDetail()
-  } else {
-    ElMessage.error(res.data.msg || t('common.failed'))
-  }
+  actionDialog.action = 'status'
+  actionDialog.title = t(player.value.enabled ? 'player.disableTitle' : 'player.enableTitle')
+  actionDialog.message = t(player.value.enabled ? 'player.disableConfirm' : 'player.enableConfirm', { name: player.value.username })
+  actionDialog.confirmText = t(player.value.enabled ? 'common.disable' : 'common.enable')
+  actionDialog.confirmType = player.value.enabled ? 'warning' : 'success'
+  actionDialog.details = playerDetails()
+  actionDialog.loading = false
+  actionDialog.visible = true
 }
 
-async function handleToggleWebAccess() {
+function handleToggleWebAccess() {
   if (!player.value || !authStore.isAdmin) return
-  await ElMessageBox.confirm(
-    t(player.value.web_access ? 'player.revokeWebAccessConfirm' : 'player.grantWebAccessConfirm', { name: player.value.username }),
-    t(player.value.web_access ? 'player.revokeWebAccessTitle' : 'player.grantWebAccessTitle'),
-    { type: 'warning', confirmButtonText: t('common.confirm'), cancelButtonText: t('common.cancel') },
-  )
-  const res = await playerApi.updateWebAccess({ id: player.value.id, web_access: player.value.web_access ? 0 : 1 })
-  if (res.data.code === 0) {
-    ElMessage.success(player.value.web_access ? t('player.revokeWebAccessSuccess') : t('player.grantWebAccessSuccess'))
-    loadDetail()
-  } else {
-    ElMessage.error(res.data.msg || t('common.failed'))
-  }
+  actionDialog.action = 'webAccess'
+  actionDialog.title = t(player.value.web_access ? 'player.revokeWebAccessTitle' : 'player.grantWebAccessTitle')
+  actionDialog.message = t(player.value.web_access ? 'player.revokeWebAccessConfirm' : 'player.grantWebAccessConfirm', { name: player.value.username })
+  actionDialog.confirmText = t('common.confirm')
+  actionDialog.confirmType = player.value.web_access ? 'warning' : 'success'
+  actionDialog.details = playerDetails()
+  actionDialog.loading = false
+  actionDialog.visible = true
 }
 
-async function handleKick() {
+function handleKick() {
   if (!player.value || !authStore.isAdmin) return
-  await ElMessageBox.confirm(
-    t('player.kickConfirm', { name: player.value.username }),
-    t('player.kickTitle'),
-    { type: 'warning', confirmButtonText: t('common.confirm'), cancelButtonText: t('common.cancel') },
-  )
-  const res = await playerApi.kick({ id: player.value.id })
-  if (res.data.code === 0) {
-    ElMessage.success(t('player.kickSuccess'))
-    loadDetail()
-  } else {
-    ElMessage.error(res.data.msg || t('common.failed'))
+  actionDialog.action = 'kick'
+  actionDialog.title = t('player.kickTitle')
+  actionDialog.message = t('player.kickConfirm', { name: player.value.username })
+  actionDialog.confirmText = t('common.confirm')
+  actionDialog.confirmType = 'warning'
+  actionDialog.details = playerDetails()
+  actionDialog.loading = false
+  actionDialog.visible = true
+}
+
+async function handleActionConfirm() {
+  const target = player.value
+  if (!target || !actionDialog.action) return
+
+  actionDialog.loading = true
+  try {
+    if (actionDialog.action === 'status') {
+      const wasEnabled = target.enabled
+      const res = await playerApi.updateStatus({ id: target.id, enabled: wasEnabled ? 0 : 1 })
+      if (res.data.code === 0) {
+        ElMessage.success(wasEnabled ? t('player.disableSuccess') : t('player.enableSuccess'))
+        actionDialog.visible = false
+        loadDetail()
+      } else {
+        ElMessage.error(res.data.msg || t('common.failed'))
+      }
+      return
+    }
+
+    if (actionDialog.action === 'webAccess') {
+      const hadWebAccess = target.web_access
+      const res = await playerApi.updateWebAccess({ id: target.id, web_access: hadWebAccess ? 0 : 1 })
+      if (res.data.code === 0) {
+        ElMessage.success(hadWebAccess ? t('player.revokeWebAccessSuccess') : t('player.grantWebAccessSuccess'))
+        actionDialog.visible = false
+        loadDetail()
+      } else {
+        ElMessage.error(res.data.msg || t('common.failed'))
+      }
+      return
+    }
+
+    const res = await playerApi.kick({ id: target.id })
+    if (res.data.code === 0) {
+      ElMessage.success(t('player.kickSuccess'))
+      actionDialog.visible = false
+      loadDetail()
+    } else {
+      ElMessage.error(res.data.msg || t('common.failed'))
+    }
+  } finally {
+    actionDialog.loading = false
   }
 }
 
@@ -541,6 +600,15 @@ function handleRemove() {
   ]
   deleteDialog.loading = false
   deleteDialog.visible = true
+}
+
+function playerDetails() {
+  if (!player.value) return []
+  return [
+    { label: t('common.id'), value: player.value.id },
+    { label: t('player.username'), value: player.value.username },
+    { label: t('player.table.status'), value: player.value.online ? t('common.online') : t('common.offline') },
+  ]
 }
 
 async function handleRemoveConfirm() {

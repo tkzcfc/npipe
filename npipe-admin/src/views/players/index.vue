@@ -163,6 +163,17 @@
       </template>
     </el-dialog>
 
+    <ConfirmAction
+      v-model:visible="actionDialog.visible"
+      :title="actionDialog.title"
+      :message="actionDialog.message"
+      :details="actionDialog.details"
+      :loading="actionDialog.loading"
+      :confirm-text="actionDialog.confirmText"
+      :cancel-text="$t('common.cancel')"
+      :confirm-type="actionDialog.confirmType"
+      @confirm="handleActionConfirm"
+    />
   </div>
 </template>
 
@@ -170,10 +181,11 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { CircleClose, Plus, Refresh, Search, SuccessFilled, SwitchButton, View } from '@element-plus/icons-vue'
 import { playerApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
+import ConfirmAction from '@/components/ConfirmAction.vue'
 import type { Player } from '@/types'
 
 const { t } = useI18n()
@@ -237,6 +249,20 @@ const addRules: FormRules = {
              { min: 1, max: 15, message: () => t('player.validation.password'), trigger: 'blur' }],
 }
 
+type PlayerAction = 'status' | 'kick'
+
+const actionDialog = reactive({
+  visible: false,
+  loading: false,
+  action: '' as PlayerAction | '',
+  target: null as Player | null,
+  title: '',
+  message: '',
+  confirmText: '',
+  confirmType: 'warning' as 'primary' | 'success' | 'warning' | 'danger',
+  details: [] as { label: string; value: string | number }[],
+})
+
 function openAddDialog() {
   addDialog.form = { username: '', password: '' }
   addDialog.visible = true
@@ -264,36 +290,70 @@ function openDetailDialog(player: Player) {
   router.push({ name: 'PlayerDetail', params: { id: player.id } })
 }
 
-async function handleToggleStatus(player: Player) {
+function handleToggleStatus(player: Player) {
   if (!authStore.isAdmin) return
-  await ElMessageBox.confirm(
-    t(player.enabled ? 'player.disableConfirm' : 'player.enableConfirm', { name: player.username }),
-    t(player.enabled ? 'player.disableTitle' : 'player.enableTitle'),
-    { type: 'warning', confirmButtonText: t('common.confirm'), cancelButtonText: t('common.cancel') }
-  )
-  const res = await playerApi.updateStatus({ id: player.id, enabled: player.enabled ? 0 : 1 })
-  if (res.data.code === 0) {
-    ElMessage.success(player.enabled ? t('player.disableSuccess') : t('player.enableSuccess'))
-    loadData(pagination.currentPage)
-  } else {
-    ElMessage.error(res.data.msg || t('common.failed'))
+  actionDialog.action = 'status'
+  actionDialog.target = player
+  actionDialog.title = t(player.enabled ? 'player.disableTitle' : 'player.enableTitle')
+  actionDialog.message = t(player.enabled ? 'player.disableConfirm' : 'player.enableConfirm', { name: player.username })
+  actionDialog.confirmText = t(player.enabled ? 'common.disable' : 'common.enable')
+  actionDialog.confirmType = player.enabled ? 'warning' : 'success'
+  actionDialog.details = playerDetails(player)
+  actionDialog.loading = false
+  actionDialog.visible = true
+}
+
+function handleKick(player: Player) {
+  if (!authStore.isAdmin) return
+  actionDialog.action = 'kick'
+  actionDialog.target = player
+  actionDialog.title = t('player.kickTitle')
+  actionDialog.message = t('player.kickConfirm', { name: player.username })
+  actionDialog.confirmText = t('common.confirm')
+  actionDialog.confirmType = 'warning'
+  actionDialog.details = playerDetails(player)
+  actionDialog.loading = false
+  actionDialog.visible = true
+}
+
+async function handleActionConfirm() {
+  const target = actionDialog.target
+  if (!target || !actionDialog.action) return
+
+  actionDialog.loading = true
+  try {
+    if (actionDialog.action === 'status') {
+      const wasEnabled = target.enabled
+      const res = await playerApi.updateStatus({ id: target.id, enabled: wasEnabled ? 0 : 1 })
+      if (res.data.code === 0) {
+        ElMessage.success(wasEnabled ? t('player.disableSuccess') : t('player.enableSuccess'))
+        actionDialog.visible = false
+        loadData(pagination.currentPage)
+      } else {
+        ElMessage.error(res.data.msg || t('common.failed'))
+      }
+      return
+    }
+
+    const res = await playerApi.kick({ id: target.id })
+    if (res.data.code === 0) {
+      ElMessage.success(t('player.kickSuccess'))
+      actionDialog.visible = false
+      loadData(pagination.currentPage)
+    } else {
+      ElMessage.error(res.data.msg || t('common.failed'))
+    }
+  } finally {
+    actionDialog.loading = false
   }
 }
 
-async function handleKick(player: Player) {
-  if (!authStore.isAdmin) return
-  await ElMessageBox.confirm(
-    t('player.kickConfirm', { name: player.username }),
-    t('player.kickTitle'),
-    { type: 'warning', confirmButtonText: t('common.confirm'), cancelButtonText: t('common.cancel') }
-  )
-  const res = await playerApi.kick({ id: player.id })
-  if (res.data.code === 0) {
-    ElMessage.success(t('player.kickSuccess'))
-    loadData(pagination.currentPage)
-  } else {
-    ElMessage.error(res.data.msg || t('common.failed'))
-  }
+function playerDetails(player: Player) {
+  return [
+    { label: t('common.id'), value: player.id },
+    { label: t('player.username'), value: player.username },
+    { label: t('player.table.status'), value: player.online ? t('common.online') : t('common.offline') },
+  ]
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -341,4 +401,3 @@ onMounted(() => loadData(1))
   }
 }
 </style>
-

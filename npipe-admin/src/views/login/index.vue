@@ -20,6 +20,13 @@
         class="login-form"
         size="large"
       >
+        <transition name="err-slide">
+          <div v-if="errorMsg" class="login-error">
+            <el-icon><WarningFilled /></el-icon>
+            <span>{{ errorMsg }}</span>
+          </div>
+        </transition>
+
         <el-form-item prop="username">
           <el-input
             v-model="form.username"
@@ -50,18 +57,9 @@
           class="login-btn"
           :loading="loading"
           native-type="submit"
-          @click="onSubmit"
         >
           {{ loading ? $t('login.submitting') : $t('login.submit') }}
         </el-button>
-
-        <!-- Inline error message -->
-        <transition name="err-slide">
-          <div v-if="errorMsg" class="login-error">
-            <el-icon><WarningFilled /></el-icon>
-            {{ errorMsg }}
-          </div>
-        </transition>
       </el-form>
 
       <p class="login-footer">npipe &copy; {{ new Date().getFullYear() }}</p>
@@ -98,6 +96,7 @@ const rules: FormRules = {
 }
 
 async function onSubmit() {
+  if (loading.value) return
   errorMsg.value = ''
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
@@ -115,7 +114,7 @@ async function onSubmit() {
       }
       ElMessage.success(t('login.success'))
       const redirect = (route.query.redirect as string) ?? '/dashboard'
-      router.push(redirect)
+      await router.push(redirect)
     } else {
       errorMsg.value = msg || t('login.error')
     }
@@ -260,16 +259,28 @@ function particleStyle(i: number) {
 
 .login-error {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
-  margin-top: 12px;
-  padding: 10px 14px;
-  border-radius: 8px;
-  background: rgba(240, 96, 96, 0.12);
-  border: 1px solid rgba(240, 96, 96, 0.35);
-  color: #f06060;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(240, 96, 96, 0.2), rgba(240, 96, 96, 0.09));
+  border: 1px solid rgba(240, 96, 96, 0.52);
+  color: #ff9a9a;
   font-size: 13px;
-  font-weight: 500;
+  line-height: 1.5;
+  font-weight: 600;
+  box-shadow: 0 10px 26px rgba(240, 96, 96, 0.16);
+
+  .el-icon {
+    flex-shrink: 0;
+    margin-top: 2px;
+    font-size: 16px;
+  }
+
+  span {
+    word-break: break-word;
+  }
 }
 
 .err-slide-enter-active, .err-slide-leave-active {
@@ -281,4 +292,3 @@ function particleStyle(i: number) {
 }
 
 </style>
-
