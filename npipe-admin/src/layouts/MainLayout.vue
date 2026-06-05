@@ -10,13 +10,14 @@
         :default-active="activeMenu"
         :collapse="appStore.sidebarCollapsed"
         :collapse-transition="false"
-        router
         class="sidebar-menu"
       >
         <el-menu-item
           v-for="item in menuItems"
           :key="item.path"
           :index="item.path"
+          :class="{ 'is-navigating': pendingPath === item.path }"
+          @click="navigateTo(item.path)"
         >
           <el-icon><component :is="item.icon" /></el-icon>
           <template #title>{{ item.title }}</template>
@@ -70,6 +71,7 @@
       </header>
 
       <main class="content">
+        <div v-if="isRouteLoading" class="route-loading-bar" />
         <router-view v-slot="{ Component }">
           <transition name="fade" mode="out-in">
             <component :is="Component" />
@@ -81,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -108,6 +110,16 @@ const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const pendingPath = ref('')
+const isRouteLoading = ref(false)
+
+watch(
+  () => route.fullPath,
+  () => {
+    pendingPath.value = ''
+    isRouteLoading.value = false
+  },
+)
 
 const activeMenu = computed(() => {
   if (route.path.startsWith('/players')) return authStore.isAdmin ? '/players' : `/players/${authStore.currentUserId}`
@@ -123,6 +135,18 @@ const menuItems = computed(() => [
   ...(authStore.isAdmin ? [{ path: '/operations', title: t('operationLog.title'), icon: Tickets }] : []),
   ...(authStore.isAdmin ? [{ path: '/maintenance', title: t('maintenance.title'), icon: Tools }] : []),
 ])
+
+async function navigateTo(path: string) {
+  if (path === route.path || pendingPath.value === path) return
+  pendingPath.value = path
+  isRouteLoading.value = true
+  try {
+    await router.push(path)
+  } catch {
+    pendingPath.value = ''
+    isRouteLoading.value = false
+  }
+}
 
 async function onCommand(cmd: string) {
   if (cmd === 'logout') {
@@ -217,11 +241,17 @@ async function onCommand(cmd: string) {
       color: rgba(255,255,255,.9);
     }
 
-    &.is-active {
+    &.is-active,
+    &.is-navigating {
       background: rgba(91,143,249,.22) !important;
       color: #5b8ff9 !important;
 
       .el-icon { color: #5b8ff9; }
+    }
+
+    &.is-navigating {
+      cursor: wait;
+      opacity: .82;
     }
   }
 }
@@ -327,10 +357,36 @@ async function onCommand(cmd: string) {
   flex: 1;
   overflow-y: auto;
   background: var(--bg-primary);
+  position: relative;
+}
+
+.route-loading-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: 2px;
+  overflow: hidden;
+  background: rgba(91,143,249,.14);
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -35%;
+    width: 35%;
+    background: var(--accent);
+    animation: route-loading 1s ease-in-out infinite;
+  }
 }
 
 // ── Transition ───────────────────────────────────────────────────────────────
 .fade-enter-active, .fade-leave-active { transition: opacity .2s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
+
+@keyframes route-loading {
+  0% { left: -35%; }
+  100% { left: 100%; }
+}
 </style>
 

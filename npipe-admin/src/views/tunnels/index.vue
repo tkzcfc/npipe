@@ -12,7 +12,7 @@
       <div class="table-toolbar">
         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
           <el-button type="primary" :icon="Plus" @click="openAddDialog">{{ $t('tunnel.add') }}</el-button>
-          <el-button :icon="Refresh" @click="loadData(pagination.currentPage)">{{ $t('common.refresh') }}</el-button>
+          <el-button :icon="Refresh" :loading="loading" @click="loadData(pagination.currentPage)">{{ $t('common.refresh') }}</el-button>
           <el-button text @click="clearSearch">{{ $t('common.all') }}</el-button>
         </div>
         <el-input
@@ -35,6 +35,13 @@
         style="width: 100%; margin-top: 16px;"
         :default-sort="{ prop: 'id', order: 'ascending' }"
       >
+        <template #empty>
+          <el-empty :description="loadError || '暂无隧道数据'">
+            <el-button v-if="loadError" type="primary" :icon="Refresh" @click="loadData(pagination.currentPage)">
+              重试
+            </el-button>
+          </el-empty>
+        </template>
         <el-table-column prop="id" :label="$t('tunnel.table.id')" width="70" sortable />
 
         <el-table-column :label="$t('tunnel.table.source')" min-width="150">
@@ -329,10 +336,12 @@ function canManageTunnel(tunnel: Tunnel): boolean {
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const loading    = ref(false)
+const loadError  = ref('')
 const tunnels    = ref<Tunnel[]>([])
 const searchText = ref('')
 const toggling   = ref<Set<number>>(new Set())
 const diagnosing = ref(false)
+let loadSeq = 0
 const diagnoseResult = reactive<TunnelDiagnoseResponse>({
   ok: false,
   items: [],
@@ -365,14 +374,20 @@ const displayedTunnels = computed(() => {
 
 // ── Data ──────────────────────────────────────────────────────────────────────
 async function loadData(page = 1) {
+  const seq = ++loadSeq
   loading.value = true
+  loadError.value = ''
   pagination.currentPage = page
   try {
     const res = await tunnelApi.list({ page_number: page - 1, page_size: pagination.pageSize })
+    if (seq !== loadSeq) return
     tunnels.value    = res.data.tunnels ?? []
     pagination.total = res.data.total_count ?? 0
+  } catch {
+    if (seq !== loadSeq) return
+    loadError.value = '数据加载失败，请稍后刷新重试'
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
 }
 

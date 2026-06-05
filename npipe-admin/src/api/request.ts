@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 
 const request: AxiosInstance = axios.create({
   baseURL: '/',
-  timeout: 15000,
+  timeout: 8000,
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
@@ -42,6 +42,14 @@ request.interceptors.response.use(
   },
   (error) => {
     const status = error.response?.status
+    if (error.code === 'ECONNABORTED') {
+      ElMessage.error('请求超时，请检查网络后重试')
+      return Promise.reject(error)
+    }
+    if (!error.response) {
+      ElMessage.error('网络连接异常，请稍后重试')
+      return Promise.reject(error)
+    }
     if (status === 401) {
       handleSessionExpired()
       return Promise.reject(error)

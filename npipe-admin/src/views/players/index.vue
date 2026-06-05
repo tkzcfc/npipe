@@ -12,7 +12,7 @@
       <div class="table-toolbar">
         <div style="display: flex; gap: 8px;">
           <el-button v-if="authStore.isAdmin" type="primary" :icon="Plus" @click="openAddDialog">{{ $t('player.add') }}</el-button>
-          <el-button :icon="Refresh" @click="loadData(pagination.currentPage)">{{ $t('common.refresh') }}</el-button>
+          <el-button :icon="Refresh" :loading="loading" @click="loadData(pagination.currentPage)">{{ $t('common.refresh') }}</el-button>
         </div>
         <el-input
           v-model="searchText"
@@ -33,6 +33,13 @@
         row-key="id"
         style="width: 100%; margin-top: 16px;"
       >
+        <template #empty>
+          <el-empty :description="loadError || '暂无用户数据'">
+            <el-button v-if="loadError" type="primary" :icon="Refresh" @click="loadData(pagination.currentPage)">
+              重试
+            </el-button>
+          </el-empty>
+        </template>
         <el-table-column prop="id" :label="$t('player.table.id')" width="80" />
         <el-table-column prop="username" :label="$t('player.table.username')" min-width="160">
           <template #default="{ row }">
@@ -175,8 +182,10 @@ const authStore = useAuthStore()
 
 // ── State ───────────────────────────────────────────────────────────────────
 const loading = ref(false)
+const loadError = ref('')
 const players = ref<Player[]>([])
 const searchText = ref('')
+let loadSeq = 0
 
 const pagination = reactive({
   currentPage: 1,
@@ -193,14 +202,20 @@ const displayedPlayers = computed(() => {
 
 // ── Data ─────────────────────────────────────────────────────────────────────
 async function loadData(page = 1) {
+  const seq = ++loadSeq
   loading.value = true
+  loadError.value = ''
   pagination.currentPage = page
   try {
     const res = await playerApi.list({ page_number: page - 1, page_size: pagination.pageSize })
+    if (seq !== loadSeq) return
     players.value          = res.data.players ?? []
     pagination.total       = res.data.total_count ?? 0
+  } catch {
+    if (seq !== loadSeq) return
+    loadError.value = '数据加载失败，请稍后刷新重试'
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
 }
 
