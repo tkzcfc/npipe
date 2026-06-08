@@ -10,6 +10,7 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter};
 use std::sync::Arc;
 
 use crate::global::manager::GLOBAL_MANAGER;
+use std::time::Duration;
 use tokio::sync::RwLock;
 
 pub struct PlayerManager {
@@ -39,6 +40,26 @@ impl PlayerManager {
     /// 纯 DashMap 查询，无需 async。
     pub fn get_player(&self, player_id: PlayerId) -> Option<Arc<RwLock<Player>>> {
         self.player_map.get(&player_id).map(|r| r.clone())
+    }
+
+    pub async fn get_player_by_transport_token(&self, token: &str) -> Option<Arc<RwLock<Player>>> {
+        if token.is_empty() {
+            return None;
+        }
+
+        let players = self
+            .player_map
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect::<Vec<_>>();
+
+        for player in players {
+            if player.read().await.is_valid_transport_token(token) {
+                return Some(player);
+            }
+        }
+
+        None
     }
 
     /// 纯 DashMap 插入，无需 async。
@@ -216,4 +237,23 @@ impl PlayerManager {
 
         Ok(())
     }
+}
+
+pub(crate) fn start_transport_idle_cleanup_loop() {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            let now = Utc::now().timestamp();
+            let players = GLOBAL_MANAGER
+                .player_manager
+                .player_map
+                .iter()
+                .map(|entry| entry.value().clone())
+                .collect::<Vec<_>>();
+
+            for player in players {
+                player.write().await.close_idle_forward_connections(now);
+            }
+        }
+    });
 }

@@ -216,15 +216,15 @@ impl ProxyManager {
         }
 
         if let Some(player) = GLOBAL_MANAGER.player_manager.get_player(to_player_id) {
-            // 合并为单次读锁：同时检查 is_online 与发送，避免两次 read().await
-            let p = player.read().await;
+            // 合并为单次写锁：同时检查在线状态、更新转发路由并发送消息。
+            let mut p = player.write().await;
             if p.is_online() {
                 let message = message_bridge::proxy_message_2_pb(proxy_message, tunnel_id);
                 if !message.is_none() {
                     // 统计出站代理流量
                     let tx_bytes = get_message_size(&message) as u64 + 13;
                     p.traffic_tx.fetch_add(tx_bytes, Ordering::Relaxed);
-                    let _ = p.send_push(&message);
+                    let _ = p.send_proxy_push(&message);
                 }
                 return;
             }
@@ -272,11 +272,11 @@ impl ProxyManager {
 
 async fn push_message_to_player(player_id: PlayerId, message: &MessageType) {
     if let Some(player) = GLOBAL_MANAGER.player_manager.get_player(player_id) {
-        let p = player.read().await;
+        let mut p = player.write().await;
         // 统计出站代理流量
         let tx_bytes = get_message_size(message) as u64 + 13;
         p.traffic_tx.fetch_add(tx_bytes, Ordering::Relaxed);
-        let _ = p.send_push(message);
+        let _ = p.send_proxy_push(message);
     }
 }
 

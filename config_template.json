@@ -13,6 +13,8 @@
 	"web_tls_key": "./web-key.pem",
 	"web_tls_auto_self_signed": false,
 	"web_cookie_secure": false,
+	"transport_max_connections_per_player": 0,
+	"transport_idle_timeout_secs": 60,
 	"web_username": "admin",
 	"web_password": "admin@1234"
 }

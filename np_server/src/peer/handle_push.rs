@@ -1,4 +1,4 @@
-use super::Peer;
+use super::{Peer, PeerConnectionKind};
 use crate::global::manager::proxy::ProxyManager;
 use crate::global::manager::GLOBAL_MANAGER;
 use np_proto::message_map::{get_message_size, MessageType};
@@ -11,10 +11,27 @@ impl Peer {
         // 在 message 被 move 之前计算代理流量大小
         let proxy_bytes = get_message_size(&message) as u64 + 13;
 
+        let proxy_session_id = message_bridge::pb_proxy_session_id(&message);
+        let proxy_is_disconnect = message_bridge::pb_proxy_is_disconnect(&message);
+
         if let Some((msg, tunnel_id)) = message_bridge::pb_2_proxy_message(message) {
+            if self.player.is_none() {
+                return Ok(());
+            }
+
             // 统计入站代理流量
             if let Some(ref rx) = self.traffic_rx {
                 rx.fetch_add(proxy_bytes, Ordering::Relaxed);
+            }
+            if self.connection_kind == PeerConnectionKind::Forward {
+                if let (Some(player), Some(session_id)) = (&self.player, proxy_session_id) {
+                    let mut player = player.write().await;
+                    if proxy_is_disconnect {
+                        player.unbind_forward_session(session_id);
+                    } else {
+                        player.bind_forward_session(session_id, self.connection_id);
+                    }
+                }
             }
             // 先提取需要的数据，立即 drop 读锁，再调用 send_proxy_message
             // 原代码在持有 tunnels.read() Guard 时调用 send_proxy_message，该函数内部

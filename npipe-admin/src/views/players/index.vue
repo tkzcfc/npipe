@@ -77,6 +77,14 @@
             <span class="font-mono">{{ row.online ? row.ip_addr : '-' }}</span>
           </template>
         </el-table-column>
+        <el-table-column :label="$t('player.table.protocol')" width="100">
+          <template #default="{ row }">
+            <el-tag v-if="row.online && row.connection_protocol" size="small" effect="plain">
+              {{ row.connection_protocol.toUpperCase() }}
+            </el-tag>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column :label="$t('player.table.onlineTime')" min-width="170">
           <template #default="{ row }">
             <span>{{ row.online && row.online_time ? formatTime(row.online_time) : '-' }}</span>

@@ -55,7 +55,7 @@ async fn run_tcp_server(addr: String) -> anyhow::Result<()> {
     info!("TCP Server listening: {}", addr);
     let mut builder =
         np_base::net::tcp_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
-            Box::new(Peer::new())
+            Box::new(Peer::new("tcp"))
         }));
 
     if GLOBAL_CONFIG.enable_tls {
@@ -70,7 +70,7 @@ async fn run_kcp_server(addr: String) -> anyhow::Result<()> {
     info!("KCP Server listening: {}", addr);
     let mut builder =
         np_base::net::kcp_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
-            Box::new(Peer::new())
+            Box::new(Peer::new("kcp"))
         }))
         .set_kcp_config(tokio_kcp::KcpConfig {
             mtu: 1400,
@@ -95,7 +95,7 @@ async fn run_ws_server(addr: String) -> anyhow::Result<()> {
     info!("Websocket Server listening: {}", addr);
     let mut builder =
         np_base::net::ws_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
-            Box::new(Peer::new())
+            Box::new(Peer::new("ws"))
         }));
 
     if GLOBAL_CONFIG.enable_tls {
@@ -110,7 +110,7 @@ async fn run_quic_server(addr: String) -> anyhow::Result<()> {
     info!("QUIC Server listening: {}", addr);
     let mut builder =
         np_base::net::quic_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
-            Box::new(Peer::new())
+            Box::new(Peer::new("quic"))
         }));
 
     if GLOBAL_CONFIG.enable_tls {

@@ -11,6 +11,15 @@ pub struct LoginAck {
     /// 通道列表
     #[prost(message, repeated, tag = "2")]
     pub tunnel_list: ::prost::alloc::vec::Vec<super::class_def::Tunnel>,
+    /// 转发连接绑定使用的临时 token
+    #[prost(string, tag = "3")]
+    pub transport_token: ::prost::alloc::string::String,
+    /// 服务端允许的最大转发连接数，0 表示单连接模式
+    #[prost(uint32, tag = "4")]
+    pub transport_max_connections: u32,
+    /// 转发连接空闲关闭时间（秒）
+    #[prost(uint32, tag = "5")]
+    pub transport_idle_timeout_secs: u32,
 }
 /// 管理员登录回复
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]
@@ -34,4 +43,20 @@ pub struct ModifyTunnelNtf {
     /// 通道信息
     #[prost(message, optional, tag = "2")]
     pub tunnel: ::core::option::Option<super::class_def::Tunnel>,
+}
+/// 转发连接快速绑定回复
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BindTransportAck {
+    /// @build_automatically_generate_message_id@  enum MsgId {None = 0; Id = 1012;}
+    /// 绑定成功的玩家 ID
+    #[prost(uint32, tag = "1")]
+    pub player_id: u32,
+    /// 服务端确认的连接 ID
+    #[prost(uint64, tag = "2")]
+    pub connection_id: u64,
+    /// 转发连接空闲关闭时间（秒）
+    #[prost(uint32, tag = "3")]
+    pub transport_idle_timeout_secs: u32,
 }

@@ -278,6 +278,7 @@ export default {
       webAccess: 'Console Access',
       status: 'Status',
       ip: 'IP Address',
+      protocol: 'Protocol',
       onlineTime: 'Online Time',
       actions: 'Actions',
     },

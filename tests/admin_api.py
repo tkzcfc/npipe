@@ -128,3 +128,15 @@ class AdminAPI:
         )
         return result.get("players", [])
 
+    def find_player_by_username(self, username: str) -> Optional[Dict]:
+        players = self.list_players()
+        for player in players:
+            if player.get("username") == username:
+                return player
+        return None
+
+    def add_player(self, username: str, password: str) -> Dict[str, Any]:
+        return self._post(
+            "/api/add_player",
+            {"username": username, "password": password},
+        )

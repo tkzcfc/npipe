@@ -278,6 +278,7 @@ export default {
       webAccess: '后台权限',
       status: '在线状态',
       ip: 'IP 地址',
+      protocol: '接入协议',
       onlineTime: '上线时间',
       actions: '操作',
     },

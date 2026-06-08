@@ -11,6 +11,10 @@ message LoginReq {
   string username = 2;
   // 密码
   string password = 3;
+  // 客户端请求的最大转发连接数，0 表示单连接模式
+  uint32 transport_max_connections = 4;
+  // 客户端请求的转发连接空闲关闭时间（秒）
+  uint32 transport_idle_timeout_secs = 5;
 }
 
 // 注册请求
@@ -30,4 +34,15 @@ message ManagementLoginReq {
   string username = 1;
   // 密码
   string password = 2;
+}
+
+// 转发连接快速绑定请求
+message BindTransportReq {
+  enum MsgId {None = 0; Id = 1011;}
+  // 登录成功后服务端下发的临时 token
+  string transport_token = 1;
+  // 客户端生成的连接 ID
+  uint64 connection_id = 2;
+  // 连接类型：1 = 转发连接
+  uint32 connection_type = 3;
 }

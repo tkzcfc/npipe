@@ -11,6 +11,12 @@ message LoginAck {
   uint32 player_id = 1;
   // 通道列表
   repeated PB.ClassDef.Tunnel tunnel_list = 2;
+  // 转发连接绑定使用的临时 token
+  string transport_token = 3;
+  // 服务端允许的最大转发连接数，0 表示单连接模式
+  uint32 transport_max_connections = 4;
+  // 转发连接空闲关闭时间（秒）
+  uint32 transport_idle_timeout_secs = 5;
 }
 
 // 管理员登录回复
@@ -27,4 +33,15 @@ message ModifyTunnelNtf {
   bool is_delete = 1;
   // 通道信息
   PB.ClassDef.Tunnel tunnel = 2;
+}
+
+// 转发连接快速绑定回复
+message BindTransportAck {
+  enum MsgId {None = 0; Id = 1012;}
+  // 绑定成功的玩家 ID
+  uint32 player_id = 1;
+  // 服务端确认的连接 ID
+  uint64 connection_id = 2;
+  // 转发连接空闲关闭时间（秒）
+  uint32 transport_idle_timeout_secs = 3;
 }

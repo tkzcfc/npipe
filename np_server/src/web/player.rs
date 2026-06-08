@@ -63,19 +63,20 @@ pub(super) async fn player_list(
     let mut players: Vec<proto::PlayerListItem> = Vec::new();
 
     for data in users {
-        let (online, ip_addr, online_time, bytes_in, bytes_out) =
+        let (online, ip_addr, connection_protocol, online_time, bytes_in, bytes_out) =
             if let Some(p) = GLOBAL_MANAGER.player_manager.get_player(data.id) {
                 let player = p.read().await;
                 let (rx, tx) = player.get_traffic();
                 (
                     player.is_online(),
                     player.get_addr().to_string(),
+                    player.get_connection_protocol().to_string(),
                     player.get_online_time(),
                     rx as i64,
                     tx as i64,
                 )
             } else {
-                (false, String::new(), 0, 0, 0)
+                (false, String::new(), String::new(), 0, 0, 0)
             };
 
         players.push(proto::PlayerListItem {
@@ -85,6 +86,7 @@ pub(super) async fn player_list(
             web_access: data.web_access == 1,
             online,
             ip_addr,
+            connection_protocol,
             online_time,
             bytes_in,
             bytes_out,
@@ -472,19 +474,20 @@ pub(super) async fn player_detail(
         return Ok(HttpResponse::Ok().json(proto::PlayerDetailResponse { player: None }));
     };
 
-    let (online, ip_addr, online_time, bytes_in, bytes_out) =
+    let (online, ip_addr, connection_protocol, online_time, bytes_in, bytes_out) =
         if let Some(p) = GLOBAL_MANAGER.player_manager.get_player(user.id) {
             let player = p.read().await;
             let (rx, tx) = player.get_traffic();
             (
                 player.is_online(),
                 player.get_addr().to_string(),
+                player.get_connection_protocol().to_string(),
                 player.get_online_time(),
                 rx as i64,
                 tx as i64,
             )
         } else {
-            (false, String::new(), 0, 0, 0)
+            (false, String::new(), String::new(), 0, 0, 0)
         };
 
     let tunnel_models = GLOBAL_MANAGER.tunnel_manager.tunnels.read().await.clone();
@@ -555,6 +558,7 @@ pub(super) async fn player_detail(
             create_time: user.create_time.format("%Y-%m-%d %H:%M:%S").to_string(),
             online,
             ip_addr,
+            connection_protocol,
             online_time,
             bytes_in,
             bytes_out,

@@ -71,6 +71,12 @@
             <el-descriptions-item :label="$t('player.table.ip')">
               <span class="font-mono">{{ player.online ? player.ip_addr : '-' }}</span>
             </el-descriptions-item>
+            <el-descriptions-item :label="$t('player.table.protocol')">
+              <el-tag v-if="player.online && player.connection_protocol" size="small" effect="plain">
+                {{ player.connection_protocol.toUpperCase() }}
+              </el-tag>
+              <span v-else>-</span>
+            </el-descriptions-item>
             <el-descriptions-item :label="$t('player.table.onlineTime')">
               {{ player.online ? formatDuration(player.online_time) : '-' }}
             </el-descriptions-item>

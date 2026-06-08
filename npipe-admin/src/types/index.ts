@@ -64,6 +64,7 @@ export interface Player {
   web_access: boolean
   online: boolean
   ip_addr: string
+  connection_protocol: string
   online_time: number
   bytes_in: number
   bytes_out: number
@@ -227,6 +228,7 @@ export interface PlayerDetail {
   create_time: string
   online: boolean
   ip_addr: string
+  connection_protocol: string
   online_time: number
   bytes_in: number
   bytes_out: number

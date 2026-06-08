@@ -122,6 +122,28 @@ pub fn is_i2o_message(proxy_message: &ProxyMessage) -> bool {
     }
 }
 
+/// 从 PB 代理消息中提取代理会话 ID。
+pub fn pb_proxy_session_id(message: &MessageType) -> Option<u32> {
+    match message {
+        MessageType::GenericI2oConnect(msg) => Some(msg.session_id),
+        MessageType::GenericO2iConnect(msg) => Some(msg.session_id),
+        MessageType::GenericI2oSendData(msg) => Some(msg.session_id),
+        MessageType::GenericO2iRecvData(msg) => Some(msg.session_id),
+        MessageType::GenericI2oDisconnect(msg) => Some(msg.session_id),
+        MessageType::GenericO2iDisconnect(msg) => Some(msg.session_id),
+        MessageType::GenericO2iSendDataResult(msg) => Some(msg.session_id),
+        MessageType::GenericI2oRecvDataResult(msg) => Some(msg.session_id),
+        MessageType::GenericI2oSendToData(msg) => Some(msg.session_id),
+        MessageType::GenericO2iRecvDataFrom(msg) => Some(msg.session_id),
+        _ => None,
+    }
+}
+
+/// 判断 PB 代理消息是否表示会话断开。
+pub fn pb_proxy_is_disconnect(message: &MessageType) -> bool {
+    matches!(message, MessageType::GenericI2oDisconnect(_) | MessageType::GenericO2iDisconnect(_))
+}
+
 impl From<generic::I2oConnect> for ProxyMessage {
     fn from(msg: generic::I2oConnect) -> Self {
         ProxyMessage::I2oConnect(

@@ -1,5 +1,6 @@
 use crate::global::database::{init_database, start_traffic_flush_loop};
 use crate::global::logger::init_logger;
+use crate::global::manager::player::start_transport_idle_cleanup_loop;
 use crate::global::manager::GLOBAL_MANAGER;
 
 pub mod config;
@@ -25,6 +26,9 @@ pub(crate) async fn init_global() -> anyhow::Result<()> {
 
     // 启动流量定期刷库任务
     start_traffic_flush_loop();
+
+    // 启动转发连接空闲清理任务
+    start_transport_idle_cleanup_loop();
 
     Ok(())
 }

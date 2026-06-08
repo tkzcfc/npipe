@@ -14,6 +14,12 @@ pub struct LoginReq {
     /// 密码
     #[prost(string, tag = "3")]
     pub password: ::prost::alloc::string::String,
+    /// 客户端请求的最大转发连接数，0 表示单连接模式
+    #[prost(uint32, tag = "4")]
+    pub transport_max_connections: u32,
+    /// 客户端请求的转发连接空闲关闭时间（秒）
+    #[prost(uint32, tag = "5")]
+    pub transport_idle_timeout_secs: u32,
 }
 /// 注册请求
 /// return Success | Error
@@ -41,4 +47,20 @@ pub struct ManagementLoginReq {
     /// 密码
     #[prost(string, tag = "2")]
     pub password: ::prost::alloc::string::String,
+}
+/// 转发连接快速绑定请求
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BindTransportReq {
+    /// @build_automatically_generate_message_id@  enum MsgId {None = 0; Id = 1011;}
+    /// 登录成功后服务端下发的临时 token
+    #[prost(string, tag = "1")]
+    pub transport_token: ::prost::alloc::string::String,
+    /// 客户端生成的连接 ID
+    #[prost(uint64, tag = "2")]
+    pub connection_id: u64,
+    /// 连接类型：1 = 转发连接
+    #[prost(uint32, tag = "3")]
+    pub connection_type: u32,
 }

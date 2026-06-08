@@ -11,57 +11,67 @@ use std::{env, panic};
 use tokio::time::sleep;
 
 mod client;
-mod tls_danger;
 #[cfg(windows)]
 mod winservice;
 
+/// Common runtime arguments shared by process mode and Windows service mode.
+///
+/// Transport options live here so interactive startup and service startup use the same pool behavior.
 #[derive(Args)]
 pub(crate) struct CommonArgs {
-    /// print backtracking information
+    /// Print backtracking information.
     #[arg(long, default_value_t = false, action = clap::ArgAction::Set)]
     pub backtrace: bool,
 
-    /// server address
+    /// Server address.
     #[arg(short, long)]
     pub server: String,
 
-    /// username
+    /// Username.
     #[arg(short, long)]
     pub username: String,
 
-    /// password
+    /// Password.
     #[arg(short, long)]
     pub password: String,
 
-    /// enable tls
+    /// Enable TLS.
     #[arg(long, default_value = "false")]
     pub enable_tls: bool,
 
-    /// tls servername
+    /// TLS server name. If empty, the host from the server address is used.
     #[arg(long, default_value = "")]
     pub tls_server_name: String,
 
-    /// if true, the validity of the SSL certificate is not verified.
+    /// Skip server certificate verification.
     #[arg(long, default_value = "false")]
     pub insecure: bool,
 
-    /// Quiet mode. Do not print logs
+    /// Quiet mode. Do not print logs.
     #[arg(long, default_value = "false")]
     pub quiet: bool,
 
-    /// ca file path (optional), if not provided, the client’s certificate will not be verified.
+    /// Custom CA certificate path. If empty, system roots are used.
     #[arg(long, default_value = "")]
     pub ca_cert: String,
 
-    /// set log level
+    /// Maximum number of forward connections/streams. 0 keeps legacy single-connection mode.
+    #[arg(long, default_value_t = 0)]
+    pub transport_max_connections: u32,
+
+    /// Idle timeout for forward connections, in seconds.
+    #[arg(long, default_value_t = 60)]
+    pub transport_idle_timeout_secs: u32,
+
+    /// Client log level.
     #[arg(long, default_value = "info")]
     pub log_level: String,
 
-    /// set log level
+    /// Base library log level.
     #[arg(long, default_value = "error")]
     pub base_log_level: String,
 
-    /// set log directory
+    /// Log directory.
     #[arg(long, default_value = "logs")]
     pub log_dir: String,
 }
@@ -82,7 +92,7 @@ pub struct Opts {
 #[cfg(not(windows))]
 #[derive(Subcommand)]
 enum Commands {
-    /// Run
+    /// Run.
     Run {
         #[command(flatten)]
         common_args: CommonArgs,
@@ -92,21 +102,21 @@ enum Commands {
 #[cfg(windows)]
 #[derive(Subcommand)]
 enum Commands {
-    /// Installs service
+    /// Installs service.
     Install {
         #[command(flatten)]
         common_args: CommonArgs,
     },
-    /// Uninstalls service
+    /// Uninstalls service.
     Uninstall,
 
-    /// Run as windows service
+    /// Run as Windows service.
     RunService {
         #[command(flatten)]
         common_args: CommonArgs,
     },
 
-    /// Run
+    /// Run.
     Run {
         #[command(flatten)]
         common_args: CommonArgs,

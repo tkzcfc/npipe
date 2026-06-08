@@ -93,6 +93,9 @@ cargo build --release --no-default-features --features tcp
     "web_cookie_secure": false,
     "web_username": "admin",
     "web_password": "admin@1234",
+    "transport_max_connections_per_player": 0,
+    "transport_idle_timeout_secs": 60,
+    "transport_token_ttl_secs": 300,
     "quiet": false,
     "log_dir": "logs"
 }
@@ -116,6 +119,9 @@ cargo build --release --no-default-features --features tcp
 | `web_cookie_secure`       | 是否强制 Web 管理后台 Session Cookie 使用 Secure；外部 Nginx/HTTPS 反代时建议设为 `true` | `true` / `false`                                                    |
 | `web_username`            | Web 管理员账号（留空则禁用 Web 管理）                                | `admin`                                                             |
 | `web_password`            | Web 管理员密码（留空则禁用 Web 管理）                                | `admin@1234`                                                        |
+| `transport_max_connections_per_player` | 每个用户允许的最大转发连接/流数量，`0` 表示保持单连接模式 | `0` / `4` / `8`                                                     |
+| `transport_idle_timeout_secs` | 转发连接/流空闲关闭时间（秒），`0` 表示不因空闲主动关闭              | `60`                                                                |
+| `transport_token_ttl_secs` | 登录后下发的转发连接临时 token 有效期（秒）                           | `300`                                                               |
 | `illegal_traffic_forward` | 非 npipe 流量转发地址，可对接 Nginx 等（留空则丢弃）                 | `127.0.0.1:80`                                                      |
 | `illegal_traffic_forward_rules` | 非法流量转发规则数组，支持按流量类型匹配转发（见下方详细说明） | 见示例                                                               |
 | `quiet`                   | 安静模式，不输出日志                                                 | `true` / `false`                                                    |
@@ -124,6 +130,7 @@ cargo build --release --no-default-features --features tcp
 #### ⚠️ 注意事项
 
 - **QUIC 协议必须启用 TLS**：QUIC 协议在设计上强制要求加密，若 `listen_addr` 中包含 `quic://` 地址，必须同时将 `enable_tls` 设为 `true` 并提供有效的 `tls_cert` 和 `tls_key`，否则服务端将无法正常启动 QUIC 监听。
+- **传输多连接默认关闭**：服务端 `transport_max_connections_per_player` 默认为 `0`，客户端 `--transport-max-connections` 默认为 `0`。任意一侧为 `0` 时都会保持单连接模式；两侧都大于 `0` 时，最终数量取较小值。QUIC 使用同一条 QUIC 连接上的多 stream，TCP / KCP / WebSocket 使用多条转发连接。
 - **多协议混用**：TCP / KCP / WebSocket 可以在不启用 TLS 的情况下运行，但建议生产环境统一开启 TLS 以保障传输安全。
 - **Web 管理 HTTPS**：`web_enable_tls` 只控制 Web 管理后台是否直接启用 HTTPS，和隧道服务的 `enable_tls` 相互独立；启用时必须配置 `web_tls_cert` 和 `web_tls_key`。
 - **临时自签名证书**：如果 `web_enable_tls` 为 `true` 且未配置 `web_tls_cert` / `web_tls_key`，可将 `web_tls_auto_self_signed` 设为 `true` 自动生成临时自签名证书；浏览器会提示证书不受信任，仅建议临时测试使用。
@@ -221,6 +228,8 @@ np_client run \
   --server "tcp://server1:8118,kcp://server2:8118" \
   --username user1 \
   --password pass123 \
+  --transport-max-connections 4 \
+  --transport-idle-timeout-secs 60 \
   --enable-tls \
   --ca-cert ./root-ca.pem
 ```
@@ -236,6 +245,8 @@ Options:
       --tls-server-name <NAME>             TLS SNI 服务器名（可选）
       --insecure                           不验证服务器证书（不推荐生产使用）
       --ca-cert <CA_CERT>                  CA 证书文件路径
+      --transport-max-connections <N>      最大转发连接/流数量，0 保持单连接模式 [default: 0]
+      --transport-idle-timeout-secs <SECS> 转发连接/流空闲关闭时间（秒） [default: 60]
       --log-level <LOG_LEVEL>              日志级别 [default: info]
       --base-log-level <BASE_LOG_LEVEL>    基础库日志级别 [default: error]
       --log-dir <LOG_DIR>                  日志目录 [default: logs]

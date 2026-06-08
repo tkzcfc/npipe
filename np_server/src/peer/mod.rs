@@ -29,25 +29,58 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 
+/// `Peer` 当前承载的连接角色。
+///
+/// `Control` 是完整登录后的控制连接，负责账号在线状态和控制消息。
+/// `Forward` 是通过临时令牌绑定的转发连接或 QUIC 流，只承载代理流量，不记录登录历史，也不顶掉控制连接。
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PeerConnectionKind {
+    /// 尚未完成登录或临时令牌绑定。
+    Unknown,
+    /// 完整登录后的控制连接。
+    Control,
+    /// 临时令牌绑定后的转发连接。
+    Forward,
+}
+
+/// 服务端接收到的一条套接字连接或 QUIC 流的运行状态。
+///
+/// `Peer` 初始为 `Unknown`，完整登录后变为 `Control`，通过临时令牌绑定后变为 `Forward`。
+/// 显式区分角色可以避免转发连接被误当作新的用户登录。
 pub struct Peer {
+    /// 当前连接所在监听器的协议名。
+    connection_protocol: &'static str,
+    /// 当前连接的写消息通道。
     tx: Option<UnboundedSender<WriterMessage>>,
+    /// 当前连接绑定的在线用户；未登录或未完成令牌绑定时为空。
     player: Option<Arc<RwLock<Player>>>,
+    /// `net_session` 分配的会话 ID。
     session_id: u32,
+    /// 转发连接 ID；控制连接默认使用 `session_id` 派生。
+    connection_id: u64,
+    /// 当前连接角色，用于区分控制连接和转发连接。
+    connection_kind: PeerConnectionKind,
+    /// 非 npipe 协议流量命中转发规则后使用的原始 TCP 转发写半边。
     traffic_forward_writer: Option<WriteHalf<TcpStream>>,
+    /// 当前连接的远端地址。
     addr: SocketAddr,
-    // 流量计数 — 从 Player 克隆的 Arc 引用，无锁直接操作
+    /// 入站流量计数器，从 `Player` 克隆的共享引用，用于无锁累加。
     traffic_rx: Option<Arc<AtomicU64>>,
+    /// 出站流量计数器，从 `Player` 克隆的共享引用，用于无锁累加。
     traffic_tx: Option<Arc<AtomicU64>>,
-    // 登录历史记录 ID，用于登出时更新
+    /// 登录历史记录 ID，用于登出时更新记录。
     login_record_id: u32,
 }
 
 impl Peer {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(connection_protocol: &'static str) -> Self {
         Peer {
+            connection_protocol,
             tx: None,
             player: None,
             session_id: 0,
+            connection_id: 0,
+            connection_kind: PeerConnectionKind::Unknown,
             traffic_forward_writer: None,
             addr: SocketAddr::from(([0, 0, 0, 0], 0)),
             traffic_rx: None,
@@ -64,10 +97,44 @@ impl Peer {
     ) -> anyhow::Result<()> {
         assert!(serial < 0);
         // 委托给 Player::send_response，统一统计出站流量
-        if let Some(ref player) = self.player {
-            return player.read().await.send_response(serial, message);
+        if self.connection_kind == PeerConnectionKind::Control {
+            if let Some(ref player) = self.player {
+                return player.read().await.send_response(serial, message);
+            }
         }
         package_and_send_message(&self.tx, -serial, message, true)
+    }
+
+    #[inline]
+    pub(crate) fn mark_control_connection(&mut self) {
+        self.connection_kind = PeerConnectionKind::Control;
+        self.connection_id = u64::from(self.session_id);
+    }
+
+    #[inline]
+    pub(crate) fn mark_forward_connection(&mut self, connection_id: u64) {
+        self.connection_kind = PeerConnectionKind::Forward;
+        self.connection_id = connection_id;
+    }
+
+    #[inline]
+    pub(crate) fn tx(&self) -> Option<UnboundedSender<WriterMessage>> {
+        self.tx.clone()
+    }
+
+    #[inline]
+    pub(crate) fn addr(&self) -> SocketAddr {
+        self.addr
+    }
+
+    #[inline]
+    pub(crate) fn session_id(&self) -> u32 {
+        self.session_id
+    }
+
+    #[inline]
+    pub(crate) fn connection_protocol(&self) -> &'static str {
+        self.connection_protocol
     }
 
     // #[inline]
@@ -79,8 +146,10 @@ impl Peer {
     #[allow(dead_code)]
     pub(crate) async fn send_push(&self, message: &MessageType) -> anyhow::Result<()> {
         // 委托给 Player::send_push，统一统计出站流量
-        if let Some(ref player) = self.player {
-            return player.read().await.send_push(message);
+        if self.connection_kind == PeerConnectionKind::Control {
+            if let Some(ref player) = self.player {
+                return player.read().await.send_push(message);
+            }
         }
         package_and_send_message(&self.tx, 0, message, true)
     }
@@ -147,7 +216,7 @@ impl Peer {
             let addr = target.ok_or(anyhow!("No forward rule matched"))?;
             let stream = TcpStream::connect(addr).await?;
 
-            // set tcp keepalive
+            // 设置 TCP 保活。
             let ka = TcpKeepalive::new().with_time(Duration::from_secs(30));
             let sf = SockRef::from(&stream);
             sf.set_tcp_keepalive(&ka)?;
@@ -220,8 +289,15 @@ impl SessionDelegate for Peer {
         // 合并为单次写锁，避免 read-check → write-act 的 TOCTOU 窗口
         if let Some(player) = self.player.take() {
             let mut p = player.write().await;
-            if p.get_session_id() == self.session_id {
-                p.on_disconnect_session();
+            match self.connection_kind {
+                PeerConnectionKind::Control | PeerConnectionKind::Unknown => {
+                    if p.get_session_id() == self.session_id {
+                        p.on_disconnect_session();
+                    }
+                }
+                PeerConnectionKind::Forward => {
+                    p.remove_forward_connection(self.connection_id);
+                }
             }
         }
         // 关闭流量转发通道
@@ -342,17 +418,17 @@ impl SessionDelegate for Peer {
             }
             Err(err) => {
                 debug!("decode message error: {err}");
-                self.send_http_404_response().await?;
+                // self.send_http_404_response().await?;
 
-                // // 消息解码失败
-                // self.send_response(
-                //     serial,
-                //     &MessageType::GenericError(generic::Error {
-                //         number: generic::ErrorCode::InternalError.into(),
-                //         message: format!("{}", err),
-                //     }),
-                // )
-                // .await?;
+                // 消息解码失败
+                self.send_response(
+                    serial,
+                    &MessageType::GenericError(generic::Error {
+                        number: generic::ErrorCode::InternalError.into(),
+                        message: format!("decode message error: {}", err),
+                    }),
+                )
+                .await?;
 
                 return Err(anyhow!(err));
             }
@@ -381,11 +457,12 @@ pub(crate) fn package_and_send_message(
             encode_raw_message(message, &mut buf);
 
             if let Err(error) = tx.send(WriterMessage::Send(Bytes::from(buf), flush)) {
-                error!("Send message error: {}", error);
+                error!("Failed to send message: {}", error);
+                return Err(anyhow!("Failed to send message: {}", error));
             }
         }
     } else {
-        debug!("Send message error: tx is None");
+        debug!("tx is none, cannot send message");
     }
     Ok(())
 }

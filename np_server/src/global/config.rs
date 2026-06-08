@@ -61,7 +61,12 @@ pub struct Config {
     /// 日志保存路径
     #[serde(default = "default_config_log_dir_function")]
     pub log_dir: String,
-
+    /// 每个用户允许的最大转发连接数，0 表示只使用单连接模式
+    #[serde(default = "default_config_transport_max_connections_function")]
+    pub transport_max_connections_per_player: u32,
+    /// 转发连接空闲关闭时间（秒）
+    #[serde(default = "default_config_transport_idle_timeout_secs_function")]
+    pub transport_idle_timeout_secs: u32,
     #[serde(skip)]
     pub forward_rules: Vec<ForwardRule>,
 }
@@ -78,7 +83,12 @@ fn default_config_false_function() -> bool {
 fn default_config_log_dir_function() -> String {
     "logs".to_string()
 }
-
+fn default_config_transport_max_connections_function() -> u32 {
+    0
+}
+fn default_config_transport_idle_timeout_secs_function() -> u32 {
+    60
+}
 pub static GLOBAL_CONFIG: Lazy<Config> = Lazy::new(|| {
     let file = match File::open(&GLOBAL_OPTS.config_file) {
         Ok(file) => file,
