@@ -320,7 +320,10 @@ where
 
                 let inlet_proxy_type = InletProxyType::from_u32(tunnel.tunnel_type as u32);
                 if matches!(inlet_proxy_type, InletProxyType::UNKNOWN) {
-                    error!("unsupported tunnel type {} for {}", tunnel.tunnel_type, source);
+                    error!(
+                        "unsupported tunnel type {} for {}",
+                        tunnel.tunnel_type, source
+                    );
                 } else {
                     let mut inlet = Inlet::new(inlet_output, inlet_description(tunnel));
                     if let Err(err) = inlet
