@@ -249,6 +249,15 @@
         </el-form-item>
       </el-form>
 
+      <el-alert
+        v-if="formDialog.error"
+        class="submit-alert"
+        type="error"
+        :title="formDialog.error"
+        show-icon
+        :closable="false"
+      />
+
       <div v-if="diagnoseResult.items.length" class="diagnose-panel">
         <div class="diagnose-title">
           <span>{{ $t('tunnel.diagnoseResult') }}</span>
@@ -420,9 +429,9 @@ const defaultForm = (): TunnelForm => ({
 
 const tunnelFormRef  = ref<FormInstance>()
 const formDialog = reactive<{
-  visible: boolean; isEdit: boolean; loading: boolean; form: TunnelForm
+  visible: boolean; isEdit: boolean; loading: boolean; error: string; form: TunnelForm
 }>({
-  visible: false, isEdit: false, loading: false, form: defaultForm(),
+  visible: false, isEdit: false, loading: false, error: '', form: defaultForm(),
 })
 
 const isProxyType = computed(() =>
@@ -446,6 +455,7 @@ const tunnelRules: FormRules = {
 }
 
 function onTypeChange() {
+  formDialog.error = ''
   if (isProxyType.value) {
     formDialog.form.endpoint = ''
   } else {
@@ -456,6 +466,7 @@ function onTypeChange() {
 
 function openAddDialog() {
   formDialog.form   = defaultForm()
+  formDialog.error  = ''
   if (!authStore.isAdmin) {
     formDialog.form.sender = authStore.currentUserId
     formDialog.form.receiver = 0
@@ -498,6 +509,7 @@ async function openEditDialog(tunnel: Tunnel) {
 
   formDialog.form = formFromTunnel(detail)
   formDialog.isEdit  = true
+  formDialog.error   = ''
   clearDiagnoseResult()
   formDialog.visible = true
 }
@@ -521,6 +533,7 @@ async function openCloneDialog(tunnel: Tunnel) {
     description: detail.description ? `${detail.description} copy` : '',
   }
   formDialog.isEdit = false
+  formDialog.error = ''
   clearDiagnoseResult()
   formDialog.visible = true
 }
@@ -545,9 +558,20 @@ function buildRequest(form: TunnelForm): TunnelMutateRequest {
   }
 }
 
+function submitFailedMessage(error: unknown): string {
+  const responseData = typeof error === 'object' && error !== null && 'response' in error
+    ? (error as { response?: { data?: { msg?: unknown } } }).response?.data
+    : undefined
+  return typeof responseData?.msg === 'string' && responseData.msg
+    ? responseData.msg
+    : t('tunnel.submitFailed')
+}
+
 async function handleSubmit() {
   const valid = await tunnelFormRef.value?.validate().catch(() => false)
   if (!valid) return
+  formDialog.error = ''
+  clearDiagnoseResult()
   formDialog.loading = true
   try {
     const req = buildRequest(formDialog.form)
@@ -559,8 +583,14 @@ async function handleSubmit() {
       formDialog.visible = false
       loadData(pagination.currentPage)
     } else {
-      ElMessage.error(res.data.msg || t('common.failed'))
+      formDialog.error = res.data.msg || t('tunnel.submitFailed')
+      ElMessage.error(formDialog.error)
+      await runDiagnose()
     }
+  } catch (error) {
+    formDialog.error = submitFailedMessage(error)
+    ElMessage.error(formDialog.error)
+    await runDiagnose()
   } finally {
     formDialog.loading = false
   }
@@ -571,10 +601,7 @@ function clearDiagnoseResult() {
   diagnoseResult.items = []
 }
 
-async function handleDiagnose() {
-  const valid = await tunnelFormRef.value?.validate().catch(() => false)
-  if (!valid) return
-
+async function runDiagnose() {
   diagnosing.value = true
   try {
     const res = await tunnelApi.diagnose({
@@ -587,9 +614,17 @@ async function handleDiagnose() {
     })
     diagnoseResult.ok = res.data.ok
     diagnoseResult.items = res.data.items ?? []
+  } catch {
+    clearDiagnoseResult()
   } finally {
     diagnosing.value = false
   }
+}
+
+async function handleDiagnose() {
+  const valid = await tunnelFormRef.value?.validate().catch(() => false)
+  if (!valid) return
+  await runDiagnose()
 }
 
 function diagnoseTagType(level: TunnelDiagnoseItem['level']): TagType {
@@ -686,6 +721,10 @@ onMounted(() => loadData(1))
   font-size: 12px;
   color: var(--text-muted);
   margin-top: 4px;
+}
+
+.submit-alert {
+  margin-top: 12px;
 }
 
 .diagnose-panel {

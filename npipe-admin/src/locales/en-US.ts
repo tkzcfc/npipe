@@ -315,6 +315,7 @@ export default {
     diagnoseFailed: 'Issues Found',
     addSuccess: 'Tunnel added successfully',
     saveSuccess: 'Saved successfully',
+    submitFailed: 'Failed to save tunnel. Check the form and try again.',
     toggleSuccess: 'Status updated',
     notFound: 'Tunnel not found',
     deleteConfirm: 'Are you sure you want to delete "{desc}"? This cannot be undone.',

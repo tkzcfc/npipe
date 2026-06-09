@@ -315,6 +315,7 @@ export default {
     diagnoseFailed: '存在问题',
     addSuccess: '添加成功',
     saveSuccess: '保存成功',
+    submitFailed: '隧道保存失败，请检查填写内容后重试',
     toggleSuccess: '状态已更新',
     notFound: '隧道不存在',
     deleteConfirm: '确定要删除隧道 "{desc}" 吗？此操作不可恢复。',
