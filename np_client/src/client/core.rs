@@ -172,7 +172,7 @@ where
     }
 
     pub(super) async fn sync_tunnels(&mut self, tunnels: &[Tunnel]) {
-        // 收集无效的出口 (DashMap 替代 RwLock<HashMap>)
+        // 收集无效的出口
         let keys_to_remove: Vec<u32> = self
             .outlets
             .iter()
@@ -191,10 +191,9 @@ where
 
         for key in keys_to_remove {
             if let Some((_, outlet)) = self.outlets.remove(&key) {
-                let description = outlet.description().to_owned();
-                debug!("start deleting the outlet({description})");
+                debug!("- outlet({}) stopping", outlet.description());
                 outlet.stop().await;
-                debug!("delete outlet({description}) end");
+                debug!("- outlet({}) stopped", outlet.description());
             }
         }
 
@@ -217,10 +216,9 @@ where
 
         for key in keys_to_remove {
             if let Some((_, mut inlet)) = self.inlets.remove(&key) {
-                let description = inlet.description().to_owned();
-                debug!("start deleting the inlet({description})");
+                debug!("- inlet({}) stopping", inlet.description());
                 inlet.stop().await;
-                debug!("delete inlet({description}) end");
+                debug!("- inlet({}) stopped", inlet.description());
             }
         }
 
@@ -263,7 +261,7 @@ where
                         }
                     })
                 });
-                debug!("start outlet({})", outlet_description(tunnel));
+                debug!("+ outlet({})", outlet_description(tunnel));
                 self.outlets.insert(
                     tunnel_id,
                     Outlet::new(outlet_output, outlet_description(tunnel)),
@@ -322,10 +320,7 @@ where
 
                 let inlet_proxy_type = InletProxyType::from_u32(tunnel.tunnel_type as u32);
                 if matches!(inlet_proxy_type, InletProxyType::UNKNOWN) {
-                    error!(
-                        "inlet({}) unknown tunnel type: {}",
-                        source, tunnel.tunnel_type
-                    );
+                    error!("unsupported tunnel type {} for {}", tunnel.tunnel_type, source);
                 } else {
                     let mut inlet = Inlet::new(inlet_output, inlet_description(tunnel));
                     if let Err(err) = inlet
@@ -339,9 +334,9 @@ where
                         )
                         .await
                     {
-                        error!("inlet({}) start error: {}", source, err);
+                        error!("inlet listen failed on {}: {}", source, err);
                     } else {
-                        debug!("start inlet({})", inlet.description());
+                        debug!("+ inlet({})", inlet.description());
                         self.inlets.insert(tunnel.id, inlet);
                     }
                 }
@@ -434,34 +429,46 @@ fn fmt_point(point: &Option<TunnelPoint>) -> String {
 
 fn outlet_description(tunnel: &Tunnel) -> String {
     format!(
-        "id:{}-sender:{}-enabled:{}",
+        "tunnel#{} sender:{} enabled:{}",
         tunnel.id, tunnel.sender, tunnel.enabled
     )
 }
 
+fn fmt_tunnel_type(t: i32) -> &'static str {
+    match t {
+        0 => "tcp",
+        1 => "udp",
+        2 => "socks5",
+        3 => "http",
+        _ => "unknown",
+    }
+}
+
 fn inlet_description(tunnel: &Tunnel) -> String {
-    let custom_mapping: String =
+    let custom_mapping: String = if tunnel.custom_mapping.is_empty() {
+        String::new()
+    } else {
         tunnel
             .custom_mapping
             .iter()
-            .fold(String::with_capacity(1024), |mut acc, (key, value)| {
-                acc.push_str(&format!("{}:{}\n", key, value));
-                acc
-            });
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
 
     format!(
-        "id:{}-source:{}-endpoint:{}-sender:{}-receiver:{}-tunnel_type:{}-username:{}-password:{}-enabled:{}-is_compressed:{}-encryption_method:{}-custom_mapping:[{}]",
+        "tunnel#{}[{}] {} -> {} sender:{} receiver:{} enabled:{} compressed:{} encrypt:{} auth:{}:{} mapping:[{}]",
         tunnel.id,
+        fmt_tunnel_type(tunnel.tunnel_type),
         fmt_point(&tunnel.source),
         fmt_point(&tunnel.endpoint),
         tunnel.sender,
         tunnel.receiver,
-        tunnel.tunnel_type,
-        tunnel.username,
-        tunnel.password,
         tunnel.enabled,
         tunnel.is_compressed,
-        tunnel.encryption_method,
+        if tunnel.encryption_method.is_empty() { "none" } else { &tunnel.encryption_method },
+        tunnel.username,
+        tunnel.password,
         custom_mapping,
     )
 }

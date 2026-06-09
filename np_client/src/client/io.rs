@@ -89,7 +89,7 @@ where
                     path_id,
                     reason: "disconnect from the server".to_string(),
                 });
-                return Ok(());
+                return Err(anyhow!("disconnect from the server"));
             }
             Ok(_) => {
                 let now = now_secs();

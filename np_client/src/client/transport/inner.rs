@@ -82,7 +82,7 @@ where
     pub tunnels: HashMap<u32, Tunnel>,
 }
 
-/// 客户端传输层门面，负责发送控制消息和代理消息。
+/// 客户端传输层，负责发送控制消息和代理消息。
 ///
 /// 屏蔽底层单连接、连接池、QUIC 多流的差异，使客户端核心无需感知具体传输实现。
 pub struct ClientTransport<S>

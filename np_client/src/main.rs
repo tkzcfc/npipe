@@ -3,7 +3,7 @@ use flexi_logger::{
     Age, Cleanup, Criterion, Duplicate, FileSpec, Logger, LoggerHandle, Naming, WriteMode,
 };
 use http::Uri;
-use log::error;
+use log::{error, info};
 use once_cell::sync::OnceCell;
 use std::str::FromStr;
 use std::time::Duration;
@@ -56,7 +56,7 @@ pub(crate) struct CommonArgs {
     pub ca_cert: String,
 
     /// Maximum number of forward connections/streams. 0 keeps legacy single-connection mode.
-    #[arg(long, default_value_t = 0)]
+    #[arg(long, default_value_t = 16)]
     pub transport_max_connections: u32,
 
     /// Idle timeout for forward connections, in seconds.
@@ -186,10 +186,12 @@ pub(crate) async fn run_with_args(common_args: CommonArgs) -> anyhow::Result<()>
 
     loop {
         if let Some(uri) = uri_cycle_iter.next() {
+            info!("Starting client with server URI: {}", uri);
             if let Err(err) = client::run(&common_args, uri).await {
-                error!("{err}");
+                error!("Client run error: {}", err);
                 sleep(Duration::from_secs(5)).await;
             } else {
+                info!("Client exited normally, restarting...");
                 sleep(Duration::from_secs(1)).await;
             }
         } else {

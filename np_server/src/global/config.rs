@@ -84,7 +84,7 @@ fn default_config_log_dir_function() -> String {
     "logs".to_string()
 }
 fn default_config_transport_max_connections_function() -> u32 {
-    0
+    16
 }
 fn default_config_transport_idle_timeout_secs_function() -> u32 {
     60

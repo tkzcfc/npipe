@@ -40,6 +40,38 @@ python tests/transport_smoke.py
 python tests/transport_smoke.py --build
 ```
 
+### 0.1 代理多连接压力测试
+
+自动启动临时 `np_server` + `np_client` + TCP Echo Server，创建 TCP 隧道，并发连接进行回显验证和压力统计。
+
+```bash
+# 基本用法（自动构建二进制）
+python tests/proxy_stress.py --build
+
+# 自定义参数
+python tests/proxy_stress.py --build \
+  --max-connections 8 \
+  --concurrency 50 \
+  --rounds 20 \
+  --payload-size 16384
+
+# 保留临时文件以便排查
+python tests/proxy_stress.py --build --keep-temp
+```
+
+参数说明：
+
+| 参数                    | 默认值  | 说明                          |
+|-----------------------|------|-----------------------------|
+| `--max-connections`   | 4    | transport 连接池大小              |
+| `--concurrency`       | 20   | 每轮并发连接数                     |
+| `--rounds`            | 10   | 测试轮次                        |
+| `--payload-size`      | 4096 | 每次请求发送的数据量（字节）              |
+| `--idle-timeout-secs` | 30   | transport 空闲超时               |
+| `--keep-temp`         | -    | 保留临时日志和数据库                   |
+
+测试输出包含吞吐量、延迟分位数（p50/p95/p99）和成功率。失败率超过 5% 会判定为测试失败。
+
 ### 1. 确保 npipe 服务端已启动
 
 ```bash
@@ -151,6 +183,7 @@ python proxy_tester.py -v
 | `echo_server.py`  | 本地 TCP/UDP 回显服务器           |
 | `admin_api.py`    | npipe Admin REST API 客户端   |
 | `transport_smoke.py` | 启动临时服务端/客户端，验证登录和传输协商 |
+| `proxy_stress.py` | 代理多连接压力测试（自动启动全套环境）    |
 | `tester_tcp.py`   | TCP 隧道测试逻辑                 |
 | `tester_udp.py`   | UDP 隧道测试逻辑                 |
 | `tester_socks5.py`| SOCKS5 代理测试逻辑（手动实现协议握手）   |
