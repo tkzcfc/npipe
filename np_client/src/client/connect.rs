@@ -330,11 +330,6 @@ async fn run_quic_client(
 
     info!("QUIC connected to {}:{}", host, port);
 
-    // 打开控制流
-    let control_stream = connection.open_bidirectional_stream().await?;
-    let (reader, writer) = tokio::io::split(control_stream);
-    let writer = Arc::new(Mutex::new(writer));
-
     // 构建 connector 闭包：在同一 QUIC 连接上打开新的双向流
     let handle = Arc::new(Mutex::new(connection.handle()));
     let connector: ForwardConnector<_> = Arc::new(move || {
@@ -346,34 +341,7 @@ async fn run_quic_client(
         })
     });
 
-    let (event_tx, event_rx) = mpsc::unbounded_channel();
-    let last_active_secs = Arc::new(AtomicU64::new(now_secs()));
-    let last_read_secs = Arc::new(AtomicU64::new(now_secs()));
-
-    let transport = ClientTransport::new(
-        writer,
-        connector,
-        event_tx.clone(),
-        last_active_secs.clone(),
-        last_read_secs.clone(),
-        common_args.transport_min_connections,
-    );
-
-    let mut session = ClientSession {
-        transport,
-        username: common_args.username.clone(),
-        password: common_args.password.clone(),
-        transport_max_connections: common_args.transport_max_connections,
-        transport_idle_timeout_secs: common_args.transport_idle_timeout_secs,
-        player_id: 0,
-        outlets: Arc::new(DashMap::new()),
-        inlets: Arc::new(DashMap::new()),
-        tunnels: HashMap::new(),
-    };
-
-    session
-        .run(reader, event_tx, event_rx, last_active_secs, last_read_secs)
-        .await
+    run_client(common_args, connector).await
 }
 
 // ─── 通用客户端启动 ──────────────────────────────────────────────────────────

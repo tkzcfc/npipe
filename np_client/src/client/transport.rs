@@ -8,6 +8,7 @@ use bytes::Bytes;
 use dashmap::DashMap;
 use log::{debug, info, warn};
 use np_proto::client_server::BindTransportReq;
+use np_proto::generic;
 use np_proto::message_map::{get_message_size, MessageType};
 use np_proto::utils::message_bridge;
 use np_proto::utils::transport::TRANSPORT_CONNECTION_TYPE_FORWARD;
@@ -70,6 +71,8 @@ where
     pub inflight_bytes: AtomicUsize,
     /// 最后一次使用时间（Unix 秒），用于空闲超时判断。
     pub last_used_secs: AtomicU64,
+    /// 最后一次收到数据的时间（Unix 秒），用于 ping/pong 检活。
+    pub last_recv_secs: AtomicU64,
 }
 
 impl<S> PooledForwardPath<S>
@@ -210,6 +213,15 @@ where
         result
     }
 
+    /// 更新转发路径的最后收数据时间（ping/pong 检活依赖）。
+    pub fn touch_path_recv(&self, path_id: Option<u64>) {
+        if let Some(id) = path_id {
+            if let Some(path) = self.forward_paths.get(&id) {
+                path.last_recv_secs.store(now_secs(), Ordering::Relaxed);
+            }
+        }
+    }
+
     /// 将收到的消息绑定到其来源路径，用于回复路由。
     pub fn bind_incoming_message_path(&self, message: &MessageType, path_id: Option<u64>) {
         let (Some(path_id), Some(session_id)) =
@@ -283,6 +295,7 @@ where
                 if Arc::strong_count(&state) <= 1 {
                     break;
                 }
+                state.ping_idle_forward_paths().await;
                 state.close_idle_forward_paths().await;
             }
         });
@@ -374,6 +387,7 @@ where
             active_sessions: AtomicUsize::new(0),
             inflight_bytes: AtomicUsize::new(0),
             last_used_secs: AtomicU64::new(now_secs()),
+            last_recv_secs: AtomicU64::new(now_secs()),
         });
 
         self.forward_paths.insert(connection_id, path.clone());
@@ -405,6 +419,68 @@ where
     fn unbind_session_path(&self, session_id: u32) {
         if let Some((_, path)) = self.session_paths.remove(&session_id) {
             path.unbind_session();
+        }
+    }
+
+    /// 对空闲转发路径发送 ping 探测，检测连接活性。
+    ///
+    /// 只要路径超过 PING_IDLE_SECS 秒没有收到数据，就发 ping 检活。
+    /// 如果发送失败或超过 PONG_TIMEOUT_SECS 未收到任何回复，移除该路径。
+    async fn ping_idle_forward_paths(&self) {
+        /// 超过此时长没有收到数据即发 ping 探测（秒）。
+        const PING_IDLE_SECS: u64 = 10;
+        /// 发出 ping 后超过此时长仍无回复则判定死连接（秒）。
+        const PONG_TIMEOUT_SECS: u64 = 15;
+
+        let now = now_secs();
+        let mut dead_ids: Vec<u64> = Vec::new();
+        let mut ping_targets: Vec<(u64, Arc<PooledForwardPath<S>>)> = Vec::new();
+
+        for entry in self.forward_paths.iter() {
+            let path = entry.value();
+            let last_recv = path.last_recv_secs.load(Ordering::Relaxed);
+            let elapsed = now.saturating_sub(last_recv);
+
+            if elapsed >= PING_IDLE_SECS + PONG_TIMEOUT_SECS {
+                // 上次收到数据已超过 ping 间隔 + pong 超时，判定死连接
+                dead_ids.push(*entry.key());
+            } else if elapsed >= PING_IDLE_SECS {
+                // 超过 ping 间隔但还在 pong 等待窗口内，发 ping
+                ping_targets.push((*entry.key(), path.clone()));
+            }
+        }
+
+        // 移除死连接
+        for connection_id in dead_ids {
+            if self.forward_paths.remove(&connection_id).is_some() {
+                self.session_paths
+                    .retain(|_, p| p.connection_id != connection_id);
+                info!(
+                    "dead forward path removed (pong timeout): connection_id={}, remaining={}",
+                    connection_id,
+                    self.forward_paths.len()
+                );
+            }
+        }
+
+        // 对需要探测的路径发 ping
+        for (connection_id, path) in ping_targets {
+            let result = package_and_send_message(
+                path.writer.clone(),
+                -2,
+                &MessageType::GenericPing(generic::Ping { ticks: 0 }),
+            )
+            .await;
+            if result.is_err() {
+                self.forward_paths.remove(&connection_id);
+                self.session_paths
+                    .retain(|_, p| p.connection_id != connection_id);
+                info!(
+                    "dead forward path removed (ping write failed): connection_id={}, remaining={}",
+                    connection_id,
+                    self.forward_paths.len()
+                );
+            }
         }
     }
 
@@ -526,6 +602,7 @@ where
 
     /// 绑定收到消息的来源路径。
     pub fn bind_incoming_message_path(&self, message: &MessageType, path_id: Option<u64>) {
+        self.state.touch_path_recv(path_id);
         self.state.bind_incoming_message_path(message, path_id);
     }
 
