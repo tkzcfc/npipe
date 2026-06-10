@@ -534,6 +534,8 @@ pub(super) async fn player_detail(
             login_time: r.login_time.and_utc().timestamp(),
             logout_time: r.logout_time.map(|t| t.and_utc().timestamp()).unwrap_or(0),
             duration_secs: r.duration_secs.unwrap_or(0),
+            login_source: r.login_source.clone(),
+            success: r.success == 1,
         })
         .collect();
 

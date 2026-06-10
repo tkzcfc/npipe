@@ -15,6 +15,10 @@ pub struct Model {
     pub logout_time: Option<DateTime>,
     /// 在线时长（秒）
     pub duration_secs: Option<i32>,
+    /// 登录来源："client" 表示客户端，"web" 表示后台管理界面
+    pub login_source: String,
+    /// 是否登录成功：1 成功，0 失败
+    pub success: u8,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

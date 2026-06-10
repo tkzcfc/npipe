@@ -3,12 +3,16 @@ use super::support::{
     auth_context, bool_text, forbidden_response, player_online, record_operation, AuthContext,
 };
 use crate::global::manager::GLOBAL_MANAGER;
+use crate::global::GLOBAL_DB_POOL;
+use crate::orm_entity::prelude::User;
 use crate::orm_entity::tunnel;
+use crate::orm_entity::user;
 use crate::utils::str::{
     get_tunnel_address_port, is_valid_tunnel_endpoint_address, is_valid_tunnel_source_address,
 };
 use actix_identity::Identity;
 use actix_web::{HttpResponse, Responder};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use std::collections::HashMap;
 
 pub(super) async fn tunnel_list(
@@ -52,6 +56,32 @@ pub(super) async fn tunnel_list(
         (vec![], 0)
     };
 
+    // 收集所有涉及的用户 ID（排除 0 代表服务器），批量查一次用户名
+    let user_ids: Vec<u32> = {
+        let mut ids: std::collections::HashSet<u32> = std::collections::HashSet::new();
+        for data in &tunnel_list {
+            if data.sender != 0 {
+                ids.insert(data.sender);
+            }
+            if data.receiver != 0 {
+                ids.insert(data.receiver);
+            }
+        }
+        ids.into_iter().collect()
+    };
+    let user_name_map: HashMap<u32, String> = if user_ids.is_empty() {
+        HashMap::new()
+    } else {
+        User::find()
+            .filter(user::Column::Id.is_in(user_ids))
+            .all(GLOBAL_DB_POOL.get().unwrap())
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|u| (u.id, u.username))
+            .collect()
+    };
+
     let mut tunnels: Vec<proto::TunnelListItem> = Vec::new();
 
     for data in tunnel_list {
@@ -60,6 +90,8 @@ pub(super) async fn tunnel_list(
         let sender_online = player_online(data.sender).await;
         let receiver_online = player_online(data.receiver).await;
         let available = data.enabled == 1 && sender_online && receiver_online;
+        let sender_name = user_name_map.get(&data.sender).cloned().unwrap_or_default();
+        let receiver_name = user_name_map.get(&data.receiver).cloned().unwrap_or_default();
 
         tunnels.push(proto::TunnelListItem {
             id: data.id,
@@ -68,6 +100,8 @@ pub(super) async fn tunnel_list(
             enabled: data.enabled == 1,
             sender: data.sender,
             receiver: data.receiver,
+            sender_name,
+            receiver_name,
             description: data.description,
             tunnel_type: data.tunnel_type,
             username: data.username,

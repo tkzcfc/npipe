@@ -13,7 +13,7 @@ use sea_orm::{
 use std::time::Duration;
 use tokio::sync::OnceCell;
 
-const CURRENT_SCHEMA_VERSION: i32 = 1;
+const CURRENT_SCHEMA_VERSION: i32 = 2;
 
 pub(crate) static GLOBAL_DB_POOL: OnceCell<DatabaseConnection> = OnceCell::const_new();
 
@@ -212,6 +212,11 @@ async fn run_schema_migrations(db: &DatabaseConnection, backend: DbBackend) -> a
     if version < 1 {
         ensure_indexes(db, backend).await?;
         ensure_user_columns(db, backend).await?;
+        set_schema_version(db, 1).await?;
+    }
+
+    if version < 2 {
+        ensure_login_history_columns(db, backend).await?;
         set_schema_version(db, CURRENT_SCHEMA_VERSION).await?;
     }
 
@@ -286,6 +291,40 @@ async fn ensure_user_columns(db: &DatabaseConnection, backend: DbBackend) -> any
         DbBackend::Sqlite => vec![
             "ALTER TABLE user ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1",
             "ALTER TABLE user ADD COLUMN web_access INTEGER NOT NULL DEFAULT 0",
+        ],
+    };
+
+    for sql in columns {
+        if let Err(err) = db.execute(Statement::from_string(backend, sql)).await {
+            let msg = err.to_string().to_lowercase();
+            if !(msg.contains("duplicate")
+                || msg.contains("exists")
+                || msg.contains("duplicate column"))
+            {
+                return Err(err.into());
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn ensure_login_history_columns(
+    db: &DatabaseConnection,
+    backend: DbBackend,
+) -> anyhow::Result<()> {
+    let columns = match backend {
+        DbBackend::MySql => vec![
+            "ALTER TABLE login_history ADD COLUMN login_source VARCHAR(16) NOT NULL DEFAULT 'client'",
+            "ALTER TABLE login_history ADD COLUMN success TINYINT NOT NULL DEFAULT 1",
+        ],
+        DbBackend::Postgres => vec![
+            "ALTER TABLE login_history ADD COLUMN IF NOT EXISTS login_source VARCHAR(16) NOT NULL DEFAULT 'client'",
+            "ALTER TABLE login_history ADD COLUMN IF NOT EXISTS success SMALLINT NOT NULL DEFAULT 1",
+        ],
+        DbBackend::Sqlite => vec![
+            "ALTER TABLE login_history ADD COLUMN login_source TEXT NOT NULL DEFAULT 'client'",
+            "ALTER TABLE login_history ADD COLUMN success INTEGER NOT NULL DEFAULT 1",
         ],
     };
 

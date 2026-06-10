@@ -60,3 +60,13 @@ pub struct BindTransportAck {
     #[prost(uint32, tag = "3")]
     pub transport_idle_timeout_secs: u32,
 }
+/// 服务端主动断开连接通知
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DisconnectNtf {
+    /// @build_automatically_generate_message_id@  enum MsgId {None = 0; Id = 1014;}
+    /// 断开原因
+    #[prost(string, tag = "1")]
+    pub reason: ::prost::alloc::string::String,
+}

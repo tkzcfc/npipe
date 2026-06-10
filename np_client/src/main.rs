@@ -18,7 +18,7 @@ mod winservice;
 ///
 /// Transport options live here so interactive startup and service startup use the same pool behavior.
 #[derive(Args)]
-pub(crate) struct CommonArgs {
+struct CommonArgs {
     /// Print backtracking information.
     #[arg(long, default_value_t = false, action = clap::ArgAction::Set)]
     pub backtrace: bool,
@@ -59,6 +59,10 @@ pub(crate) struct CommonArgs {
     #[arg(long, default_value_t = 16)]
     pub transport_max_connections: u32,
 
+    /// Minimum number of forward connections to keep alive (pre-warmed). 0 disables warm-up.
+    #[arg(long, default_value_t = 4)]
+    pub transport_min_connections: u32,
+
     /// Idle timeout for forward connections, in seconds.
     #[arg(long, default_value_t = 60)]
     pub transport_idle_timeout_secs: u32,
@@ -84,7 +88,7 @@ const VERSION: &str = match option_env!("BIN_VERSION") {
 
 #[derive(Parser)]
 #[command(author = "https://github.com/tkzcfc/npipe", version = VERSION, about, long_about = None)]
-pub struct Opts {
+struct Opts {
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -126,7 +130,7 @@ enum Commands {
 // 全局日志记录器
 static LOGGER: OnceCell<LoggerHandle> = OnceCell::new();
 
-pub(crate) fn init_logger(common_args: &CommonArgs) -> anyhow::Result<()> {
+fn init_logger(common_args: &CommonArgs) -> anyhow::Result<()> {
     if common_args.backtrace {
         unsafe { env::set_var("RUST_BACKTRACE", "1") }
     }
@@ -168,7 +172,7 @@ pub(crate) fn init_logger(common_args: &CommonArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub(crate) async fn run_with_args(common_args: CommonArgs) -> anyhow::Result<()> {
+async fn run_with_args(common_args: CommonArgs) -> anyhow::Result<()> {
     let mut uri_cycle_iter = common_args
         .server
         .split(",")

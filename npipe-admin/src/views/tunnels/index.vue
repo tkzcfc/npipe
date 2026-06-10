@@ -65,17 +65,23 @@
           </template>
         </el-table-column>
 
-        <el-table-column :label="$t('tunnel.table.sender')" width="80">
+        <el-table-column :label="$t('tunnel.table.sender')" width="120">
           <template #default="{ row }">
             <span v-if="row.sender === 0" class="text-muted" style="font-size:12px;">{{ $t('common.server') }}</span>
-            <span v-else class="font-mono">{{ row.sender }}</span>
+            <span v-else>
+              <span v-if="row.sender_name" class="font-mono">{{ row.sender_name }}</span>
+              <span class="text-muted" style="font-size:11px; margin-left:2px;">#{{ row.sender }}</span>
+            </span>
           </template>
         </el-table-column>
 
-        <el-table-column :label="$t('tunnel.table.receiver')" width="80">
+        <el-table-column :label="$t('tunnel.table.receiver')" width="120">
           <template #default="{ row }">
             <span v-if="row.receiver === 0" class="text-muted" style="font-size:12px;">{{ $t('common.server') }}</span>
-            <span v-else class="font-mono">{{ row.receiver }}</span>
+            <span v-else>
+              <span v-if="row.receiver_name" class="font-mono">{{ row.receiver_name }}</span>
+              <span class="text-muted" style="font-size:11px; margin-left:2px;">#{{ row.receiver }}</span>
+            </span>
           </template>
         </el-table-column>
 

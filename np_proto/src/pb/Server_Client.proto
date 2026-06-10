@@ -45,3 +45,10 @@ message BindTransportAck {
   // 转发连接空闲关闭时间（秒）
   uint32 transport_idle_timeout_secs = 3;
 }
+
+// 服务端主动断开连接通知
+message DisconnectNtf {
+  enum MsgId {None = 0; Id = 1014;}
+  // 断开原因
+  string reason = 1;
+}

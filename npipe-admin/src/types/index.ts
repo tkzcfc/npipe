@@ -103,6 +103,10 @@ export interface LoginHistoryItem {
   /** Unix 时间戳（秒），0 表示仍在在线 */
   logout_time: number
   duration_secs: number
+  /** 登录来源："client" 客户端 | "web" 后台管理 */
+  login_source: string
+  /** 是否登录成功 */
+  success: boolean
 }
 
 export interface LoginHistoryResponse {
@@ -253,6 +257,8 @@ export interface Tunnel {
   enabled: boolean
   sender: number
   receiver: number
+  sender_name: string
+  receiver_name: string
   description: string
   tunnel_type: TunnelType
   username: string

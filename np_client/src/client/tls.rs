@@ -7,10 +7,12 @@ use tokio_rustls::rustls::crypto::CryptoProvider;
 use tokio_rustls::rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use tokio_rustls::rustls::DigitallySignedStruct;
 
+/// 跳过服务端证书验证的验证器。
+///
+/// **安全警告**：仅用于开发/测试或显式设置 `--insecure` 时。
 #[derive(Debug)]
 pub struct NoCertificateVerification(CryptoProvider);
 
-// https://github.com/rustls/rustls/blob/76cc2cabbe8b47dc3399115e1a8d4b5cc74681c8/examples/src/bin/tlsclient-mio.rs#L354
 impl NoCertificateVerification {
     pub fn new(provider: CryptoProvider) -> Self {
         Self(provider)

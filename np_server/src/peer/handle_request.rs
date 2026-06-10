@@ -116,6 +116,8 @@ impl Peer {
                 login_time: Set(Utc::now().naive_utc()),
                 logout_time: Set(None),
                 duration_secs: Set(None),
+                login_source: Set("client".to_owned()),
+                success: Set(1),
             };
             let login_record = login_record.insert(db).await?;
             let record_id = login_record.id;

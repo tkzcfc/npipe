@@ -26,6 +26,20 @@
       <el-table v-loading="loading" :data="items" row-key="id" style="width:100%; margin-top: 14px;">
         <el-table-column prop="id" label="ID" width="90" />
         <el-table-column prop="user_id" :label="$t('loginLog.userId')" width="100" />
+        <el-table-column :label="$t('loginLog.source')" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.login_source === 'web' ? 'warning' : 'info'" size="small">
+              {{ row.login_source === 'web' ? $t('loginLog.sourceWeb') : $t('loginLog.sourceClient') }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column :label="$t('loginLog.result')" width="90">
+          <template #default="{ row }">
+            <el-tag :type="row.success ? 'success' : 'danger'" size="small">
+              {{ row.success ? $t('loginLog.success') : $t('loginLog.failed') }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="ip_addr" label="IP" min-width="150">
           <template #default="{ row }">
             <span class="font-mono">{{ row.ip_addr }}</span>
@@ -39,7 +53,8 @@
         <el-table-column :label="$t('loginLog.logoutTime')" min-width="170">
           <template #default="{ row }">
             <span v-if="row.logout_time">{{ formatTime(row.logout_time) }}</span>
-            <el-tag v-else type="success" size="small">{{ $t('loginLog.online') }}</el-tag>
+            <el-tag v-else-if="row.success && row.login_source !== 'web'" type="success" size="small">{{ $t('loginLog.online') }}</el-tag>
+            <span v-else class="text-muted">—</span>
           </template>
         </el-table-column>
         <el-table-column :label="$t('loginLog.duration')" width="130" align="right">

@@ -20,6 +20,10 @@ pub struct LoginHistoryItem {
     /// Unix 时间戳（秒），0 表示仍在在线
     pub logout_time: i64,
     pub duration_secs: i32,
+    /// 登录来源："client" 或 "web"
+    pub login_source: String,
+    /// 是否成功：true 成功，false 失败
+    pub success: bool,
 }
 
 /// 登录历史响应

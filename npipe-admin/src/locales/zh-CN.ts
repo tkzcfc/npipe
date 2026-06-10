@@ -117,6 +117,12 @@ export default {
     logoutTime: '登出时间',
     duration: '在线时长',
     online: '在线中',
+    source: '来源',
+    sourceClient: '客户端',
+    sourceWeb: '后台管理',
+    result: '结果',
+    success: '成功',
+    failed: '失败',
   },
 
   operationLog: {

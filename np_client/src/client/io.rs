@@ -1,5 +1,7 @@
+//! 底层帧读写、心跳与消息编解码。
+
+use super::now_secs;
 use super::transport::{ClientTransport, IncomingFrame, TransportEvent};
-use crate::client::now_secs;
 use anyhow::anyhow;
 use byteorder::{BigEndian, ByteOrder};
 use bytes::{Bytes, BytesMut};
@@ -14,6 +16,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, Wr
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::sleep;
 
+/// 心跳循环：定期发送 ping，检测连接活性。
 pub(super) async fn ping_forever<S>(
     transport: ClientTransport<S>,
     last_active_secs: Arc<AtomicU64>,
@@ -22,9 +25,11 @@ pub(super) async fn ping_forever<S>(
 where
     S: AsyncRead + AsyncWrite + Send + 'static,
 {
+    /// 心跳间隔（秒）。
     const PING_INTERVAL_SECS: u64 = 5;
+    /// 软超时（秒）：写方向能通说明连接大概率活着。
     const PING_TIMEOUT_SECS: u64 = 15;
-    /// 纯读方向的硬超时：即使写方向通畅（如 KCP/UDP sendto 永不断错），
+    /// 纯读方向的硬超时（秒）：即使写方向通畅（如 KCP/UDP sendto 永不断错），
     /// 超过此时间没有收到任何字节也判定连接已死。
     const HARD_READ_TIMEOUT_SECS: u64 = 60;
     loop {
@@ -64,12 +69,12 @@ where
             )
             .await?;
 
-        // 能成功发出 ping，说明写方向通畅，连接大概率还活着。
-        // 更新活跃时间，避免在 拥塞链路上收不到 pong 时误判超时。
+        // 成功发出 ping 说明写方向通畅，更新活跃时间避免拥塞链路上误判超时
         last_active_secs.store(now_secs(), Ordering::Relaxed);
     }
 }
 
+/// 持续读取传输路径上的帧，通过事件通道发送给客户端会话。
 pub(super) async fn read_transport_events<S>(
     mut reader: ReadHalf<S>,
     path_id: Option<u64>,
@@ -132,6 +137,9 @@ where
     }
 }
 
+/// 将消息编码为协议帧并写入指定的写半边。
+///
+/// 每次写入后立即 flush，确保 KCP 等基于 UDP 的传输及时发包。
 #[inline]
 pub(super) async fn package_and_send_message<S>(
     writer: Arc<Mutex<WriteHalf<S>>>,
@@ -160,7 +168,7 @@ where
     }
 }
 
-/// 数据粘包处理，返回 `Bytes`（零拷贝）替代 `Vec<u8>`
+/// 粘包拆帧：从缓冲区中提取一帧完整消息，返回 `Bytes`（零拷贝）。
 pub(super) fn try_extract_frame(buffer: &mut BytesMut) -> anyhow::Result<Option<Bytes>> {
     if !buffer.is_empty() && buffer[0] != 33u8 {
         return Err(anyhow!("Bad flag"));

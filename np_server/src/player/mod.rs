@@ -4,6 +4,7 @@ use log::{debug, info, trace};
 use np_base::net::WriterMessage;
 use np_proto::generic;
 use np_proto::message_map::MessageType;
+use np_proto::server_client;
 use np_proto::utils::message_bridge;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -455,6 +456,11 @@ impl Player {
     // 玩家被顶号，需要对旧的会话发送一些消息
     pub fn on_terminate_old_session(&mut self) {
         trace!("on_terminate_old_session, player_id: {}", self.player_id);
+        let _ = self.send_push(&MessageType::ServerClientDisconnectNtf(
+            server_client::DisconnectNtf {
+                reason: "session replaced by new login".into(),
+            },
+        ));
         self.close_session();
 
         // 重置会话信息
@@ -464,6 +470,11 @@ impl Player {
     // 管理员主动将玩家踢下线
     pub fn kick_offline(&mut self) {
         trace!("kick_offline, player_id: {}", self.player_id);
+        let _ = self.send_push(&MessageType::ServerClientDisconnectNtf(
+            server_client::DisconnectNtf {
+                reason: "kicked by admin".into(),
+            },
+        ));
         self.close_session();
         self.reset_session_info();
     }

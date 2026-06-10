@@ -117,6 +117,12 @@ export default {
     logoutTime: 'Logout Time',
     duration: 'Duration',
     online: 'Online',
+    source: 'Source',
+    sourceClient: 'Client',
+    sourceWeb: 'Web Admin',
+    result: 'Result',
+    success: 'Success',
+    failed: 'Failed',
   },
 
   operationLog: {

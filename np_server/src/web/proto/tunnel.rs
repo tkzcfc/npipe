@@ -18,6 +18,8 @@ pub struct TunnelListItem {
     pub enabled: bool,
     pub sender: u32,
     pub receiver: u32,
+    pub sender_name: String,
+    pub receiver_name: String,
     pub description: String,
     pub tunnel_type: u32,
     pub username: String,
