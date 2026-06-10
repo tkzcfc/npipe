@@ -91,7 +91,10 @@ pub(super) async fn tunnel_list(
         let receiver_online = player_online(data.receiver).await;
         let available = data.enabled == 1 && sender_online && receiver_online;
         let sender_name = user_name_map.get(&data.sender).cloned().unwrap_or_default();
-        let receiver_name = user_name_map.get(&data.receiver).cloned().unwrap_or_default();
+        let receiver_name = user_name_map
+            .get(&data.receiver)
+            .cloned()
+            .unwrap_or_default();
 
         tunnels.push(proto::TunnelListItem {
             id: data.id,
