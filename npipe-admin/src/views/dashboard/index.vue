@@ -8,51 +8,22 @@
       <el-button :icon="Refresh" @click="loadData(false)" :loading="loading">{{ $t('common.refresh') }}</el-button>
     </div>
 
-    <div class="overview-layout">
-      <section class="panel status-panel">
-        <div class="panel-head">
-          <h2>{{ $t('dashboard.userAndTunnel') }}</h2>
-        </div>
-        <div class="metric-grid">
-          <button v-for="card in statCards" :key="card.key" class="metric-card" @click="router.push(card.path)">
-            <span class="metric-icon" :style="{ color: card.color, background: card.bg }">
-              <el-icon><component :is="card.icon" /></el-icon>
-            </span>
-            <span class="metric-label">{{ card.label }}</span>
-            <strong class="metric-value">{{ card.value }}</strong>
-            <span class="metric-note">{{ card.note }}</span>
-          </button>
-        </div>
-      </section>
+    <!-- 统计卡片 -->
+    <section class="panel stat-panel">
+      <div class="stat-grid">
+        <button v-for="card in statCards" :key="card.key" class="metric-card" @click="router.push(card.path)">
+          <span class="metric-icon" :style="{ color: card.color, background: card.bg }">
+            <el-icon><component :is="card.icon" /></el-icon>
+          </span>
+          <span class="metric-label">{{ card.label }}</span>
+          <strong class="metric-value">{{ card.value }}</strong>
+          <span class="metric-note">{{ card.note }}</span>
+        </button>
+      </div>
+    </section>
 
-      <section class="panel resource-panel">
-        <div class="panel-head">
-          <h2>{{ $t('dashboard.serverStatus') }}</h2>
-        </div>
-        <div class="resource-grid" v-loading="loading">
-          <div class="resource-card">
-            <div class="resource-head">
-              <span>{{ $t('dashboard.system.cpuUsage') }}</span>
-              <strong>{{ formatPercent(system.cpu_usage) }}</strong>
-            </div>
-            <el-progress :percentage="normalizePercent(system.cpu_usage)" :stroke-width="10" />
-            <div class="resource-meta">{{ system.cpu_cores }} {{ $t('dashboard.system.cpuCores') }}</div>
-          </div>
-          <div class="resource-card">
-            <div class="resource-head">
-              <span>{{ $t('dashboard.system.memoryUsage') }}</span>
-              <strong>{{ formatPercent(system.memory_usage) }}</strong>
-            </div>
-            <el-progress :percentage="normalizePercent(system.memory_usage)" :stroke-width="10" />
-            <div class="resource-meta">
-              {{ formatBytes(system.used_memory) }} / {{ formatBytes(system.total_memory) }}
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
-
-    <div class="info-grid">
+    <!-- 机器信息 + 服务配置 -->
+    <div class="main-grid">
       <section class="panel machine-panel">
         <div class="panel-head">
           <h2>{{ $t('dashboard.machineInfo') }}</h2>
@@ -63,10 +34,28 @@
             <strong>{{ system.host_name || '-' }}</strong>
             <span>{{ $t('dashboard.system.uptime') }} {{ formatDuration(system.uptime_secs) || '-' }}</span>
           </div>
+          <div class="resource-row">
+            <div class="resource-card">
+              <div class="resource-head">
+                <span>{{ $t('dashboard.system.cpuUsage') }}</span>
+                <strong>{{ formatPercent(system.cpu_usage) }}</strong>
+              </div>
+              <el-progress :percentage="normalizePercent(system.cpu_usage)" :stroke-width="8" />
+              <div class="resource-meta">{{ system.cpu_cores }} {{ $t('dashboard.system.cpuCores') }}</div>
+            </div>
+            <div class="resource-card">
+              <div class="resource-head">
+                <span>{{ $t('dashboard.system.memoryUsage') }}</span>
+                <strong>{{ formatPercent(system.memory_usage) }}</strong>
+              </div>
+              <el-progress :percentage="normalizePercent(system.memory_usage)" :stroke-width="8" />
+              <div class="resource-meta">{{ formatBytes(system.used_memory) }} / {{ formatBytes(system.total_memory) }}</div>
+            </div>
+          </div>
           <div class="machine-facts">
-            <div v-for="item in systemItems" :key="item.label" class="fact-item">
-              <span>{{ item.label }}</span>
-              <strong :class="{ muted: !item.value }">{{ item.value || '-' }}</strong>
+            <div class="fact-item">
+              <span>{{ $t('dashboard.system.kernelVersion') }}</span>
+              <strong>{{ system.kernel_version || '-' }}</strong>
             </div>
           </div>
         </div>
@@ -77,24 +66,16 @@
           <h2>{{ $t('dashboard.serverConfig') }}</h2>
         </div>
         <div class="service-layout" v-loading="loading">
-          <div class="service-status-grid">
-            <div v-for="item in serviceStatusItems" :key="item.label" class="service-status" :class="{ enabled: item.enabled }">
+          <div class="service-toggle-grid">
+            <div v-for="item in serviceStatusItems" :key="item.label" class="service-toggle" :class="{ enabled: item.enabled }">
               <span>{{ item.label }}</span>
               <strong>{{ item.enabled ? $t('common.enable') : $t('common.disable') }}</strong>
             </div>
           </div>
-
-          <div class="service-path-list">
-            <div v-for="item in servicePathItems" :key="item.label" class="service-path">
-              <span>{{ item.label }}</span>
-              <code :class="{ muted: !item.value }">{{ item.value || '-' }}</code>
-            </div>
-          </div>
-
-          <div class="service-extra-grid">
-            <div v-for="item in serviceExtraItems" :key="item.label" class="mini-config">
-              <span>{{ item.label }}</span>
-              <strong :class="{ muted: !item.value }">{{ item.value || '-' }}</strong>
+          <div class="config-table">
+            <div v-for="item in configTableItems" :key="item.label" class="config-row">
+              <span class="config-label">{{ item.label }}</span>
+              <code class="config-value" :class="{ muted: !item.value }">{{ item.value || '-' }}</code>
             </div>
           </div>
         </div>
@@ -127,6 +108,8 @@ const config = ref<DashboardConfigInfo>({
   tls_cert: '',
   web_base_dir: '',
   illegal_traffic_forward: '',
+  transport_max_connections_per_player: 0,
+  transport_idle_timeout_secs: 0,
   quiet: false,
   log_dir: '',
   database: '',
@@ -158,25 +141,17 @@ const serviceStatusItems = computed(() => [
   { label: t('dashboard.config.quiet'), enabled: config.value.quiet },
 ])
 
-const servicePathItems = computed(() => [
+const configTableItems = computed(() => [
   { label: t('dashboard.config.listenAddr'), value: config.value.listen_addr },
   { label: t('dashboard.config.webAddr'), value: config.value.web_addr },
   { label: t('dashboard.config.database'), value: config.value.database },
   { label: t('dashboard.config.webBaseDir'), value: config.value.web_base_dir },
   { label: t('dashboard.config.logDir'), value: config.value.log_dir },
-])
-
-const serviceExtraItems = computed(() => [
   { label: t('dashboard.config.forward'), value: config.value.illegal_traffic_forward },
   { label: t('dashboard.config.tunnelTlsCert'), value: config.value.tls_cert },
   { label: t('dashboard.config.webTlsCert'), value: config.value.web_tls_cert },
-])
-
-const systemItems = computed(() => [
-  { label: t('dashboard.system.kernelVersion'), value: system.value.kernel_version },
-  { label: t('dashboard.system.cpuCores'), value: String(system.value.cpu_cores || '') },
-  { label: t('dashboard.system.totalMemory'), value: formatBytes(system.value.total_memory) },
-  { label: t('dashboard.system.memoryUsage'), value: formatPercent(system.value.memory_usage) },
+  { label: t('dashboard.config.transportMaxConnections'), value: String(config.value.transport_max_connections_per_player) },
+  { label: t('dashboard.config.transportIdleTimeout'), value: `${config.value.transport_idle_timeout_secs}s` },
 ])
 
 let refreshing = false
@@ -244,21 +219,14 @@ onUnmounted(() => {
 </script>
 
 <style scoped lang="scss">
-.overview-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(360px, .95fr);
-  gap: 16px;
+/* ─── 统计卡片（横排4个） ─── */
+.stat-panel {
   margin-bottom: 16px;
 }
 
-.status-panel,
-.resource-panel {
-  min-height: 236px;
-}
-
-.metric-grid {
+.stat-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -316,69 +284,35 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-.resource-grid {
+/* ─── 主体两栏布局 ─── */
+.main-grid {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-}
-
-.resource-card {
-  border: 1px solid var(--border-color);
-  border-radius: 7px;
-  background: var(--bg-primary);
-  padding: 16px 16px 14px;
-}
-
-.resource-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-  color: var(--text-secondary);
-
-  strong {
-    color: var(--text-primary);
-    font-size: 18px;
-  }
-}
-
-.resource-meta {
-  margin-top: 10px;
-  color: var(--text-muted);
-  font-size: 12px;
-  font-family: 'JetBrains Mono','Fira Code','Cascadia Code',Consolas,monospace;
-}
-
-.info-grid {
-  display: grid;
-  grid-template-columns: minmax(360px, .82fr) minmax(0, 1.18fr);
+  grid-template-columns: 380px minmax(0, 1fr);
   gap: 16px;
-  margin-top: 16px;
 }
 
-.machine-layout,
-.service-layout {
+/* ─── 机器信息 ─── */
+.machine-layout {
   display: grid;
   gap: 12px;
 }
 
 .machine-hero {
-  min-height: 142px;
-  border: 1px solid rgba(91,143,249,.28);
+  border: 1px solid rgba(91, 143, 249, .28);
   border-radius: 8px;
   padding: 18px;
+  min-height: 120px;
   background:
-    linear-gradient(135deg, rgba(91,143,249,.16), rgba(22,163,74,.07) 52%, rgba(217,119,6,.08)),
+    linear-gradient(135deg, rgba(91, 143, 249, .16), rgba(22, 163, 74, .07) 52%, rgba(217, 119, 6, .08)),
     var(--bg-primary);
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 6px;
 
   strong {
     color: var(--text-primary);
-    font-size: 24px;
+    font-size: 22px;
     line-height: 1.15;
     word-break: break-word;
   }
@@ -391,31 +325,64 @@ onUnmounted(() => {
 
 .machine-kicker {
   width: fit-content;
-  padding: 4px 8px;
-  border-radius: 6px;
-  background: rgba(255,255,255,.06);
-  border: 1px solid rgba(255,255,255,.08);
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, .06);
+  border: 1px solid rgba(255, 255, 255, .08);
   color: var(--text-primary) !important;
-  font-family: 'JetBrains Mono','Fira Code','Cascadia Code',Consolas,monospace;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+  font-size: 12px;
+}
+
+.resource-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.resource-card {
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  background: var(--bg-primary);
+  padding: 14px 14px 12px;
+}
+
+.resource-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+
+  strong {
+    color: var(--text-primary);
+    font-size: 16px;
+  }
+}
+
+.resource-meta {
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
 }
 
 .machine-facts {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
 }
 
-.fact-item,
-.mini-config {
-  min-height: 60px;
-  padding: 11px 12px;
+.fact-item {
+  padding: 10px 12px;
   border: 1px solid var(--border-color);
   border-radius: 7px;
   background: var(--bg-primary);
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 5px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 
   span {
     font-size: 12px;
@@ -423,46 +390,50 @@ onUnmounted(() => {
   }
 
   strong {
-    font-size: 13px;
+    font-size: 12px;
     color: var(--text-primary);
-    word-break: break-all;
-    font-family: 'JetBrains Mono','Fira Code','Cascadia Code',Consolas,monospace;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
   }
 }
 
-.service-status-grid {
+/* ─── 服务配置 ─── */
+.service-layout {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
+  gap: 14px;
 }
 
-.service-status {
-  min-height: 66px;
-  padding: 11px;
+.service-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.service-toggle {
+  padding: 10px;
   border: 1px solid var(--border-color);
   border-radius: 7px;
   background:
-    linear-gradient(180deg, rgba(148,163,184,.08), transparent),
+    linear-gradient(180deg, rgba(148, 163, 184, .06), transparent),
     var(--bg-primary);
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
 
   span {
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: 11px;
+    line-height: 1.3;
   }
 
   strong {
     color: var(--text-secondary);
-    font-size: 13px;
+    font-size: 12px;
   }
 
   &.enabled {
-    border-color: rgba(22,163,74,.32);
+    border-color: rgba(22, 163, 74, .32);
     background:
-      linear-gradient(180deg, rgba(22,163,74,.13), transparent),
+      linear-gradient(180deg, rgba(22, 163, 74, .10), transparent),
       var(--bg-primary);
 
     strong {
@@ -471,60 +442,70 @@ onUnmounted(() => {
   }
 }
 
-.service-path-list {
+.config-table {
   display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
 
-.service-path {
-  min-height: 42px;
-  display: grid;
-  grid-template-columns: 130px minmax(0, 1fr);
+.config-row {
+  display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding: 9px 12px;
   border: 1px solid var(--border-color);
   border-radius: 7px;
   background: var(--bg-primary);
+  min-height: 38px;
 
-  span {
+  .config-label {
+    flex-shrink: 0;
+    font-size: 11px;
     color: var(--text-muted);
-    font-size: 12px;
+    white-space: nowrap;
   }
 
-  code {
+  .config-value {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
     color: var(--text-primary);
-    font-family: 'JetBrains Mono','Fira Code','Cascadia Code',Consolas,monospace;
-    font-size: 12px;
-    line-height: 1.55;
-    word-break: break-all;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-}
-
-.service-extra-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
 }
 
 .muted {
   color: var(--text-muted) !important;
 }
 
-@media (max-width: 1100px) {
-  .overview-layout,
-  .info-grid { grid-template-columns: 1fr; }
-  .service-status-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* ─── 响应式 ─── */
+@media (max-width: 1200px) {
+  .main-grid {
+    grid-template-columns: 1fr;
+  }
+  .config-table {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .service-toggle-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
-  .overview-layout,
-  .metric-grid,
-  .resource-grid,
-  .info-grid,
-  .machine-facts,
-  .service-status-grid,
-  .service-extra-grid,
-  .service-path { grid-template-columns: 1fr; }
+  .stat-grid,
+  .resource-row,
+  .service-toggle-grid,
+  .config-table {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

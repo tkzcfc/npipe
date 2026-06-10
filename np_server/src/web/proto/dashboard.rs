@@ -24,6 +24,8 @@ pub struct DashboardConfigInfo {
     pub tls_cert: String,
     pub web_base_dir: String,
     pub illegal_traffic_forward: String,
+    pub transport_max_connections_per_player: u32,
+    pub transport_idle_timeout_secs: u32,
     pub quiet: bool,
     pub log_dir: String,
     pub database: String,

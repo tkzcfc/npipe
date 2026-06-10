@@ -1,5 +1,6 @@
 <template>
-  <div class="main-layout" :class="{ 'sidebar-collapsed': appStore.sidebarCollapsed }">
+  <div class="main-layout" :class="{ 'sidebar-collapsed': appStore.sidebarCollapsed, 'mobile-open': mobileOpen }">
+    <div class="mobile-backdrop" @click="mobileOpen = false" />
     <aside class="sidebar">
       <div class="sidebar-logo">
         <span class="logo-icon"><el-icon><Connection /></el-icon></span>
@@ -40,6 +41,9 @@
     <div class="main-wrapper">
       <header class="header">
         <div class="header-left">
+          <button class="mobile-menu-btn" @click="mobileOpen = !mobileOpen">
+            <el-icon><Expand /></el-icon>
+          </button>
           <div class="route-title">{{ route.meta.title }}</div>
         </div>
         <div class="header-right">
@@ -94,7 +98,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -124,10 +128,18 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 const pendingPath = ref('')
 const isRouteLoading = ref(false)
+const mobileOpen = ref(false)
 const logoutDialog = ref({
   visible: false,
   loading: false,
 })
+
+const isMobile = () => window.innerWidth <= 768
+function onResize() {
+  if (!isMobile()) mobileOpen.value = false
+}
+onMounted(() => window.addEventListener('resize', onResize))
+onUnmounted(() => window.removeEventListener('resize', onResize))
 
 watch(
   () => route.fullPath,
@@ -156,6 +168,7 @@ async function navigateTo(path: string) {
   if (path === route.path || pendingPath.value === path) return
   pendingPath.value = path
   isRouteLoading.value = true
+  mobileOpen.value = false
   try {
     await router.push(path)
   } catch {
@@ -408,5 +421,84 @@ async function handleLogoutConfirm() {
 @keyframes route-loading {
   0% { left: -35%; }
   100% { left: 100%; }
+}
+
+// ── Mobile ───────────────────────────────────────────────────────────────────
+.mobile-menu-btn {
+  display: none;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  width: 32px; height: 32px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  align-items: center;
+  justify-content: center;
+  transition: all .2s;
+  flex-shrink: 0;
+
+  &:hover { border-color: var(--accent); color: var(--accent); }
+}
+
+.mobile-backdrop {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .main-layout {
+    --sidebar-w: 0px;
+
+    &.sidebar-collapsed {
+      --sidebar-w: 0px;
+    }
+  }
+
+  .sidebar {
+    position: fixed;
+    left: 0; top: 0;
+    width: 220px !important;
+    min-width: 220px !important;
+    transform: translateX(-100%);
+    transition: transform .25s ease;
+    z-index: 1000;
+  }
+
+  .sidebar-footer {
+    display: none;
+  }
+
+  .mobile-open {
+    .sidebar {
+      transform: translateX(0);
+    }
+
+    .mobile-backdrop {
+      display: block;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, .5);
+      z-index: 999;
+    }
+  }
+
+  .mobile-menu-btn {
+    display: flex;
+  }
+
+  .header {
+    padding: 0 12px;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .user-avatar {
+    .username, .role-badge, .arrow {
+      display: none;
+    }
+  }
 }
 </style>

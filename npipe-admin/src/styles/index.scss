@@ -293,3 +293,22 @@ html, body {
   to   { opacity: 1; transform: translateY(0); }
 }
 .fade-in-up { animation: fadeInUp .3s ease both; }
+
+// ── Mobile responsive ─────────────────────────────────────────────────────────
+@media (max-width: 768px) {
+  .page-container { padding: 14px; }
+
+  .page-head {
+    flex-direction: column;
+    gap: 10px;
+
+    h1 { font-size: 18px; }
+  }
+
+  .panel { padding: 12px; }
+
+  .table-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

@@ -30,6 +30,8 @@
         <el-form-item prop="username">
           <el-input
             v-model="form.username"
+            name="username"
+            autocomplete="username"
             :placeholder="$t('login.usernamePlaceholder')"
             :prefix-icon="User"
             autofocus
@@ -40,17 +42,15 @@
         <el-form-item prop="password">
           <el-input
             v-model="form.password"
+            name="password"
             type="password"
+            autocomplete="current-password"
             :placeholder="$t('login.passwordPlaceholder')"
             :prefix-icon="Lock"
             show-password
             @keyup.enter="onSubmit"
           />
         </el-form-item>
-
-        <div class="remember-row">
-          <el-checkbox v-model="autoLogin">{{ $t('login.autoLogin') }}</el-checkbox>
-        </div>
 
         <el-button
           type="primary"
@@ -83,10 +83,9 @@ const authStore = useAuthStore()
 const formRef   = ref<FormInstance>()
 const loading   = ref(false)
 const errorMsg  = ref('')
-const autoLogin = ref(localStorage.getItem('autoLogin') === 'true')
 
 const form = reactive({
-  username: localStorage.getItem('savedUser') ?? '',
+  username: '',
   password: '',
 })
 
@@ -105,21 +104,18 @@ async function onSubmit() {
   try {
     const { ok, msg } = await authStore.login(form.username, form.password)
     if (ok) {
-      if (autoLogin.value) {
-        localStorage.setItem('autoLogin', 'true')
-        localStorage.setItem('savedUser', form.username)
-      } else {
-        localStorage.removeItem('autoLogin')
-        localStorage.removeItem('savedUser')
-      }
       ElMessage.success(t('login.success'))
       const redirect = (route.query.redirect as string) ?? '/dashboard'
       await router.push(redirect)
     } else {
       errorMsg.value = msg || t('login.error')
     }
-  } catch {
-    // errors handled by interceptor
+  } catch (e: any) {
+    if (!e?.response) {
+      errorMsg.value = t('login.networkError')
+    } else {
+      errorMsg.value = t('login.error')
+    }
   } finally {
     loading.value = false
   }

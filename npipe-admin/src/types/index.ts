@@ -30,6 +30,8 @@ export interface DashboardConfigInfo {
   tls_cert: string
   web_base_dir: string
   illegal_traffic_forward: string
+  transport_max_connections_per_player: number
+  transport_idle_timeout_secs: number
   quiet: boolean
   log_dir: string
   database: string
