@@ -132,6 +132,7 @@ impl Peer {
                 let (rx, tx) = player.clone_traffic_counters();
                 self.traffic_rx = Some(rx);
                 self.traffic_tx = Some(tx);
+                self.last_recv_time = Some(player.clone_last_recv_time());
                 player.on_connect_session(
                     self.session_id,
                     self.tx.clone().unwrap(),
@@ -245,6 +246,7 @@ impl Peer {
             let (rx, tx) = p.clone_traffic_counters();
             self.traffic_rx = Some(rx);
             self.traffic_tx = Some(tx);
+            self.last_recv_time = Some(p.clone_last_recv_time());
         }
 
         self.player = Some(player.clone());

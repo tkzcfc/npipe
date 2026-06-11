@@ -8,7 +8,7 @@ use np_proto::server_client;
 use np_proto::utils::message_bridge;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
@@ -67,6 +67,8 @@ pub struct Player {
     transport_max_connections: u32,
     /// 转发连接空闲关闭时间（秒），超过该时间未使用的转发路径可以被关闭。
     transport_idle_timeout_secs: u32,
+    /// 控制连接最后一次收到客户端消息的时间（Unix 时间戳，秒），使用原子操作避免写锁竞争。
+    last_recv_time: Arc<AtomicI64>,
 }
 
 impl Player {
@@ -85,6 +87,7 @@ impl Player {
             transport_token: String::new(),
             transport_max_connections: 0,
             transport_idle_timeout_secs: 0,
+            last_recv_time: Arc::new(AtomicI64::new(0)),
         }))
     }
 
@@ -149,6 +152,25 @@ impl Player {
     #[inline]
     pub fn is_online(&self) -> bool {
         self.session_id > 0
+    }
+
+    /// 更新最后收到客户端消息的时间（无锁操作）
+    #[inline]
+    #[allow(dead_code)]
+    pub fn update_last_recv_time(&self) {
+        self.last_recv_time.store(Utc::now().timestamp(), Ordering::Relaxed);
+    }
+
+    /// 获取最后收到客户端消息的时间
+    #[inline]
+    pub fn get_last_recv_time(&self) -> i64 {
+        self.last_recv_time.load(Ordering::Relaxed)
+    }
+
+    /// 克隆 last_recv_time 的原子引用，供 Peer 无锁更新
+    #[inline]
+    pub fn clone_last_recv_time(&self) -> Arc<AtomicI64> {
+        self.last_recv_time.clone()
     }
 
     pub fn is_valid_transport_token(&self, token: &str) -> bool {
@@ -427,6 +449,7 @@ impl Player {
         self.transport_token.clear();
         self.transport_max_connections = 0;
         self.transport_idle_timeout_secs = 0;
+        self.last_recv_time.store(0, Ordering::Relaxed);
     }
 
     // 玩家上线
@@ -443,6 +466,7 @@ impl Player {
         self.tx = Some(tx);
         self.addr = addr.to_string();
         self.online_time = Utc::now().timestamp();
+        self.last_recv_time.store(self.online_time, Ordering::Relaxed);
         self.connection_protocol = connection_protocol.to_string();
     }
 
@@ -467,12 +491,12 @@ impl Player {
         self.reset_session_info();
     }
 
-    // 管理员主动将玩家踢下线
-    pub fn kick_offline(&mut self) {
-        trace!("kick_offline, player_id: {}", self.player_id);
+    // 主动将玩家踢下线
+    pub fn kick_offline(&mut self, reason: &str) {
+        trace!("kick_offline, player_id: {}, reason: {}", self.player_id, reason);
         let _ = self.send_push(&MessageType::ServerClientDisconnectNtf(
             server_client::DisconnectNtf {
-                reason: "kicked by admin".into(),
+                reason: reason.into(),
             },
         ));
         self.close_session();
@@ -520,6 +544,7 @@ mod tests {
             transport_token: String::new(),
             transport_max_connections: max_connections,
             transport_idle_timeout_secs: idle_timeout_secs,
+            last_recv_time: Arc::new(AtomicI64::new(Utc::now().timestamp())),
         }
     }
 

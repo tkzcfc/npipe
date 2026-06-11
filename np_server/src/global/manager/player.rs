@@ -213,7 +213,7 @@ impl PlayerManager {
 
         if enabled == 0 {
             if let Some(player) = self.get_player(player_id) {
-                player.write().await.kick_offline();
+                player.write().await.kick_offline("account disabled");
             }
         }
 
@@ -241,6 +241,9 @@ impl PlayerManager {
 
 pub(crate) fn start_transport_idle_cleanup_loop() {
     tokio::spawn(async move {
+        /// 控制连接空闲超时时间（秒），超过该时间未收到客户端消息则踢下线
+        const SESSION_IDLE_TIMEOUT_SECS: i64 = 120;
+
         loop {
             tokio::time::sleep(Duration::from_secs(10)).await;
             let now = Utc::now().timestamp();
@@ -252,7 +255,16 @@ pub(crate) fn start_transport_idle_cleanup_loop() {
                 .collect::<Vec<_>>();
 
             for player in players {
-                player.write().await.close_idle_forward_connections(now);
+                let mut p = player.write().await;
+                p.close_idle_forward_connections(now);
+
+                // 检测控制连接空闲超时
+                if p.is_online()
+                    && p.get_last_recv_time() > 0
+                    && now.saturating_sub(p.get_last_recv_time()) >= SESSION_IDLE_TIMEOUT_SECS
+                {
+                    p.kick_offline("session idle timeout");
+                }
             }
         }
     });

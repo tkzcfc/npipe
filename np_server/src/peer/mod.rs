@@ -20,7 +20,7 @@ use sea_orm::ActiveValue::Set;
 use sea_orm::{ActiveModelTrait, EntityTrait};
 use socket2::{SockRef, TcpKeepalive};
 use std::net::SocketAddr;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicI64, AtomicU64};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, WriteHalf};
@@ -68,6 +68,8 @@ pub struct Peer {
     traffic_rx: Option<Arc<AtomicU64>>,
     /// 出站流量计数器，从 `Player` 克隆的共享引用，用于无锁累加。
     traffic_tx: Option<Arc<AtomicU64>>,
+    /// 最后收到客户端消息的时间，从 `Player` 克隆的共享引用，无锁更新。
+    last_recv_time: Option<Arc<AtomicI64>>,
     /// 登录历史记录 ID，用于登出时更新记录。
     login_record_id: u32,
 }
@@ -85,6 +87,7 @@ impl Peer {
             addr: SocketAddr::from(([0, 0, 0, 0], 0)),
             traffic_rx: None,
             traffic_tx: None,
+            last_recv_time: None,
             login_record_id: 0,
         }
     }
@@ -370,6 +373,11 @@ impl SessionDelegate for Peer {
         let serial: i32 = BigEndian::read_i32(&frame[0..4]);
         // 消息类型id
         let msg_id: u32 = BigEndian::read_u32(&frame[4..8]);
+
+        // 无锁更新玩家最后收到消息时间
+        if let Some(ref last_recv_time) = self.last_recv_time {
+            last_recv_time.store(Utc::now().timestamp(), std::sync::atomic::Ordering::Relaxed);
+        }
 
         match message_map::decode_message(msg_id, &frame[8..]) {
             Ok(message) => {

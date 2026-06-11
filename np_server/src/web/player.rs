@@ -416,7 +416,7 @@ async fn kick_player_session(player_id: u32) {
     if let Some(p) = GLOBAL_MANAGER.player_manager.get_player(player_id) {
         let mut player = p.write().await;
         if player.is_online() {
-            player.kick_offline();
+            player.kick_offline("kicked by admin");
         }
     }
 }
@@ -434,7 +434,7 @@ pub(super) async fn kick_player(
     if let Some(p) = GLOBAL_MANAGER.player_manager.get_player(req.id) {
         let mut player = p.write().await;
         if player.is_online() {
-            player.kick_offline();
+            player.kick_offline("kicked by admin");
             let name = player_name(req.id).await;
             record_operation("kick_player", "player", req.id, &name, "kicked offline").await;
             Ok(HttpResponse::Ok().json(proto::GeneralResponse {
