@@ -42,7 +42,8 @@ pub(super) async fn dashboard_overview(
             tls_cert: GLOBAL_CONFIG.tls_cert.clone(),
             web_base_dir: GLOBAL_CONFIG.web_base_dir.clone(),
             illegal_traffic_forward: GLOBAL_CONFIG.illegal_traffic_forward.clone(),
-            transport_max_connections_per_player: GLOBAL_CONFIG.transport_max_connections_per_player,
+            transport_max_connections_per_player: GLOBAL_CONFIG
+                .transport_max_connections_per_player,
             transport_idle_timeout_secs: GLOBAL_CONFIG.transport_idle_timeout_secs,
             quiet: GLOBAL_CONFIG.quiet,
             log_dir: GLOBAL_CONFIG.log_dir.clone(),

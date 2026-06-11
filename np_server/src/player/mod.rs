@@ -158,7 +158,8 @@ impl Player {
     #[inline]
     #[allow(dead_code)]
     pub fn update_last_recv_time(&self) {
-        self.last_recv_time.store(Utc::now().timestamp(), Ordering::Relaxed);
+        self.last_recv_time
+            .store(Utc::now().timestamp(), Ordering::Relaxed);
     }
 
     /// 获取最后收到客户端消息的时间
@@ -466,7 +467,8 @@ impl Player {
         self.tx = Some(tx);
         self.addr = addr.to_string();
         self.online_time = Utc::now().timestamp();
-        self.last_recv_time.store(self.online_time, Ordering::Relaxed);
+        self.last_recv_time
+            .store(self.online_time, Ordering::Relaxed);
         self.connection_protocol = connection_protocol.to_string();
     }
 
@@ -493,7 +495,11 @@ impl Player {
 
     // 主动将玩家踢下线
     pub fn kick_offline(&mut self, reason: &str) {
-        trace!("kick_offline, player_id: {}, reason: {}", self.player_id, reason);
+        trace!(
+            "kick_offline, player_id: {}, reason: {}",
+            self.player_id,
+            reason
+        );
         let _ = self.send_push(&MessageType::ServerClientDisconnectNtf(
             server_client::DisconnectNtf {
                 reason: reason.into(),

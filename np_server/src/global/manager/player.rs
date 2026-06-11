@@ -242,12 +242,12 @@ impl PlayerManager {
 pub(crate) fn start_transport_idle_cleanup_loop() {
     tokio::spawn(async move {
         /// 控制连接空闲超时时间（秒），超过该时间未收到客户端消息则踢下线
-        const SESSION_IDLE_TIMEOUT_SECS: i64 = 120;
+        const SESSION_IDLE_TIMEOUT_SECS: i64 = 180;
 
         loop {
             tokio::time::sleep(Duration::from_secs(10)).await;
             let now = Utc::now().timestamp();
-            let players = GLOBAL_MANAGER
+            let players: Vec<Arc<RwLock<Player>>> = GLOBAL_MANAGER
                 .player_manager
                 .player_map
                 .iter()
