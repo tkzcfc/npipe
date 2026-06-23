@@ -17,6 +17,7 @@ use std::future::Future;
 use std::str::FromStr;
 use tokio::signal;
 use tokio::task::JoinSet;
+use tokio_util::sync::CancellationToken;
 
 struct ServerExit {
     name: String,
@@ -51,7 +52,7 @@ fn uri_to_socket_addr(uri: &Uri) -> anyhow::Result<String> {
     Ok(format!("{}:{}", host, port))
 }
 
-async fn run_tcp_server(addr: String) -> anyhow::Result<()> {
+async fn run_tcp_server(addr: String, shutdown: CancellationToken) -> anyhow::Result<()> {
     info!("TCP Server listening: {}", addr);
     let mut builder =
         np_base::net::tcp_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
@@ -62,11 +63,11 @@ async fn run_tcp_server(addr: String) -> anyhow::Result<()> {
         builder = builder.set_tls_configuration(&GLOBAL_CONFIG.tls_cert, &GLOBAL_CONFIG.tls_key);
     }
 
-    builder.build(addr, shutdown_signal()).await
+    builder.build(addr, shutdown.cancelled_owned()).await
 }
 
 #[cfg(feature = "kcp")]
-async fn run_kcp_server(addr: String) -> anyhow::Result<()> {
+async fn run_kcp_server(addr: String, shutdown: CancellationToken) -> anyhow::Result<()> {
     info!("KCP Server listening: {}", addr);
     let mut builder =
         np_base::net::kcp_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
@@ -87,11 +88,11 @@ async fn run_kcp_server(addr: String) -> anyhow::Result<()> {
         builder = builder.set_tls_configuration(&GLOBAL_CONFIG.tls_cert, &GLOBAL_CONFIG.tls_key);
     }
 
-    builder.build(addr, shutdown_signal()).await
+    builder.build(addr, shutdown.cancelled_owned()).await
 }
 
 #[cfg(feature = "ws")]
-async fn run_ws_server(addr: String) -> anyhow::Result<()> {
+async fn run_ws_server(addr: String, shutdown: CancellationToken) -> anyhow::Result<()> {
     info!("Websocket Server listening: {}", addr);
     let mut builder =
         np_base::net::ws_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
@@ -102,11 +103,11 @@ async fn run_ws_server(addr: String) -> anyhow::Result<()> {
         builder = builder.set_tls_configuration(&GLOBAL_CONFIG.tls_cert, &GLOBAL_CONFIG.tls_key);
     }
 
-    builder.build(addr, shutdown_signal()).await
+    builder.build(addr, shutdown.cancelled_owned()).await
 }
 
 #[cfg(feature = "quic")]
-async fn run_quic_server(addr: String) -> anyhow::Result<()> {
+async fn run_quic_server(addr: String, shutdown: CancellationToken) -> anyhow::Result<()> {
     info!("QUIC Server listening: {}", addr);
     let mut builder =
         np_base::net::quic_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
@@ -117,7 +118,7 @@ async fn run_quic_server(addr: String) -> anyhow::Result<()> {
         builder = builder.set_tls_configuration(&GLOBAL_CONFIG.tls_cert, &GLOBAL_CONFIG.tls_key);
     }
 
-    builder.build(&addr, shutdown_signal()).await
+    builder.build(&addr, shutdown.cancelled_owned()).await
 }
 
 /// 同时监听 SIGTERM（systemctl stop）和 SIGINT（Ctrl+C）
@@ -147,6 +148,7 @@ pub async fn main() -> anyhow::Result<()> {
     global::init_global().await?;
 
     let mut set = JoinSet::new();
+    let shutdown = CancellationToken::new();
 
     if !GLOBAL_CONFIG.web_password.is_empty()
         && !GLOBAL_CONFIG.web_username.is_empty()
@@ -161,7 +163,11 @@ pub async fn main() -> anyhow::Result<()> {
             &mut set,
             name,
             GLOBAL_CONFIG.web_addr.clone(),
-            web::run_http_server(&GLOBAL_CONFIG.web_addr, &GLOBAL_CONFIG.web_base_dir),
+            web::run_http_server(
+                &GLOBAL_CONFIG.web_addr,
+                &GLOBAL_CONFIG.web_base_dir,
+                shutdown.clone().cancelled_owned(),
+            ),
         );
     }
 
@@ -184,22 +190,42 @@ pub async fn main() -> anyhow::Result<()> {
         .into_iter()
         .for_each(|request| match request.scheme_str() {
             Some("tcp") => match uri_to_socket_addr(&request) {
-                Ok(addr) => spawn_server(&mut set, "TCP", addr.clone(), run_tcp_server(addr)),
+                Ok(addr) => spawn_server(
+                    &mut set,
+                    "TCP",
+                    addr.clone(),
+                    run_tcp_server(addr, shutdown.clone()),
+                ),
                 Err(err) => error!("Invalid TCP listen address '{}': {}", request, err),
             },
             #[cfg(feature = "kcp")]
             Some("kcp") => match uri_to_socket_addr(&request) {
-                Ok(addr) => spawn_server(&mut set, "KCP", addr.clone(), run_kcp_server(addr)),
+                Ok(addr) => spawn_server(
+                    &mut set,
+                    "KCP",
+                    addr.clone(),
+                    run_kcp_server(addr, shutdown.clone()),
+                ),
                 Err(err) => error!("Invalid KCP listen address '{}': {}", request, err),
             },
             #[cfg(feature = "ws")]
             Some("ws") => match uri_to_socket_addr(&request) {
-                Ok(addr) => spawn_server(&mut set, "WebSocket", addr.clone(), run_ws_server(addr)),
+                Ok(addr) => spawn_server(
+                    &mut set,
+                    "WebSocket",
+                    addr.clone(),
+                    run_ws_server(addr, shutdown.clone()),
+                ),
                 Err(err) => error!("Invalid WebSocket listen address '{}': {}", request, err),
             },
             #[cfg(feature = "quic")]
             Some("quic") => match uri_to_socket_addr(&request) {
-                Ok(addr) => spawn_server(&mut set, "QUIC", addr.clone(), run_quic_server(addr)),
+                Ok(addr) => spawn_server(
+                    &mut set,
+                    "QUIC",
+                    addr.clone(),
+                    run_quic_server(addr, shutdown.clone()),
+                ),
                 Err(err) => error!("Invalid QUIC listen address '{}': {}", request, err),
             },
             _ => error!("Unsupported URL scheme: {}", request),
@@ -209,6 +235,12 @@ pub async fn main() -> anyhow::Result<()> {
         error!("No listening address configured");
         return Ok(());
     }
+
+    tokio::spawn(async move {
+        shutdown_signal().await;
+        info!("Shutdown signal received");
+        shutdown.cancel();
+    });
 
     while let Some(res) = set.join_next().await {
         match res {

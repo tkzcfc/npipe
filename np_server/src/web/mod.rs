@@ -20,6 +20,7 @@ use log::warn;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use std::collections::BTreeSet;
 use std::fs::File;
+use std::future::Future;
 use std::io::BufReader;
 
 fn load_web_tls_config() -> anyhow::Result<rustls::ServerConfig> {
@@ -84,7 +85,11 @@ fn web_tls_subject_name() -> String {
 }
 
 /// http server
-pub async fn run_http_server(addr: &str, web_base_dir: &str) -> anyhow::Result<()> {
+pub async fn run_http_server(
+    addr: &str,
+    web_base_dir: &str,
+    shutdown: impl Future<Output = ()> + Send + 'static,
+) -> anyhow::Result<()> {
     let secret_key = Key::generate();
     let web_base_dir = web_base_dir.to_string();
 
@@ -178,7 +183,8 @@ pub async fn run_http_server(addr: &str, web_base_dir: &str) -> anyhow::Result<(
                     .build(),
             )
             .wrap(middleware::NormalizePath::trim())
-    });
+    })
+    .disable_signals();
 
     let server = if GLOBAL_CONFIG.web_enable_tls {
         server.bind_rustls_0_23(addr, load_web_tls_config()?)?
@@ -186,6 +192,12 @@ pub async fn run_http_server(addr: &str, web_base_dir: &str) -> anyhow::Result<(
         server.bind(addr)?
     }
     .run();
+
+    let handle = server.handle();
+    tokio::spawn(async move {
+        shutdown.await;
+        handle.stop(true).await;
+    });
 
     server.await?;
     Ok(())

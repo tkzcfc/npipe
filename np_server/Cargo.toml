@@ -16,6 +16,7 @@ quic = ["np_base/quic"]
 np_base = { path = "../np_base", default-features = false, features = []  }
 np_proto = { path = "../np_proto", default-features = false }
 tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
 log = "0.4"
 flexi_logger = { version = "0.31", features = ["async"] }
 bytes = { version = "1", features = [] }
