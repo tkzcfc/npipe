@@ -53,7 +53,6 @@ fn uri_to_socket_addr(uri: &Uri) -> anyhow::Result<String> {
 }
 
 async fn run_tcp_server(addr: String, shutdown: CancellationToken) -> anyhow::Result<()> {
-    info!("TCP Server listening: {}", addr);
     let mut builder =
         np_base::net::tcp_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
             Box::new(Peer::new("tcp"))
@@ -68,7 +67,6 @@ async fn run_tcp_server(addr: String, shutdown: CancellationToken) -> anyhow::Re
 
 #[cfg(feature = "kcp")]
 async fn run_kcp_server(addr: String, shutdown: CancellationToken) -> anyhow::Result<()> {
-    info!("KCP Server listening: {}", addr);
     let mut builder =
         np_base::net::kcp_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
             Box::new(Peer::new("kcp"))
@@ -93,7 +91,6 @@ async fn run_kcp_server(addr: String, shutdown: CancellationToken) -> anyhow::Re
 
 #[cfg(feature = "ws")]
 async fn run_ws_server(addr: String, shutdown: CancellationToken) -> anyhow::Result<()> {
-    info!("Websocket Server listening: {}", addr);
     let mut builder =
         np_base::net::ws_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
             Box::new(Peer::new("ws"))
@@ -108,7 +105,6 @@ async fn run_ws_server(addr: String, shutdown: CancellationToken) -> anyhow::Res
 
 #[cfg(feature = "quic")]
 async fn run_quic_server(addr: String, shutdown: CancellationToken) -> anyhow::Result<()> {
-    info!("QUIC Server listening: {}", addr);
     let mut builder =
         np_base::net::quic_server::Builder::new(Box::new(|| -> Box<dyn SessionDelegate> {
             Box::new(Peer::new("quic"))
