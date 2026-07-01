@@ -8,12 +8,12 @@ use sea_orm::sea_query::{Index, MysqlQueryBuilder, PostgresQueryBuilder, SqliteQ
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
-    DbBackend, EntityTrait, QueryFilter, Schema, Statement,
+    DbBackend, EntityTrait, QueryFilter, Schema, Statement, TransactionTrait,
 };
 use std::time::Duration;
 use tokio::sync::OnceCell;
 
-const CURRENT_SCHEMA_VERSION: i32 = 2;
+const CURRENT_SCHEMA_VERSION: i32 = 3;
 
 pub(crate) static GLOBAL_DB_POOL: OnceCell<DatabaseConnection> = OnceCell::const_new();
 
@@ -217,6 +217,12 @@ async fn run_schema_migrations(db: &DatabaseConnection, backend: DbBackend) -> a
 
     if version < 2 {
         ensure_login_history_columns(db, backend).await?;
+        set_schema_version(db, 2).await?;
+    }
+
+    if version < 3 {
+        ensure_total_traffic_columns(db, backend).await?;
+        backfill_total_traffic(db, backend).await?;
         set_schema_version(db, CURRENT_SCHEMA_VERSION).await?;
     }
 
@@ -343,6 +349,57 @@ async fn ensure_login_history_columns(
     Ok(())
 }
 
+async fn ensure_total_traffic_columns(
+    db: &DatabaseConnection,
+    backend: DbBackend,
+) -> anyhow::Result<()> {
+    let columns = match backend {
+        DbBackend::MySql => vec![
+            "ALTER TABLE user ADD COLUMN total_bytes_in BIGINT NOT NULL DEFAULT 0",
+            "ALTER TABLE user ADD COLUMN total_bytes_out BIGINT NOT NULL DEFAULT 0",
+        ],
+        DbBackend::Postgres => vec![
+            "ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS total_bytes_in BIGINT NOT NULL DEFAULT 0",
+            "ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS total_bytes_out BIGINT NOT NULL DEFAULT 0",
+        ],
+        DbBackend::Sqlite => vec![
+            "ALTER TABLE user ADD COLUMN total_bytes_in INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE user ADD COLUMN total_bytes_out INTEGER NOT NULL DEFAULT 0",
+        ],
+    };
+
+    for sql in columns {
+        if let Err(err) = db.execute(Statement::from_string(backend, sql)).await {
+            let msg = err.to_string().to_lowercase();
+            if !(msg.contains("duplicate")
+                || msg.contains("exists")
+                || msg.contains("duplicate column"))
+            {
+                return Err(err.into());
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn backfill_total_traffic(db: &DatabaseConnection, backend: DbBackend) -> anyhow::Result<()> {
+    let sql = match backend {
+        DbBackend::MySql => {
+            "UPDATE user u SET total_bytes_in = COALESCE((SELECT SUM(t.bytes_in) FROM traffic_hourly t WHERE t.user_id = u.id), 0), total_bytes_out = COALESCE((SELECT SUM(t.bytes_out) FROM traffic_hourly t WHERE t.user_id = u.id), 0)"
+        }
+        DbBackend::Postgres => {
+            "UPDATE \"user\" u SET total_bytes_in = COALESCE((SELECT SUM(t.bytes_in) FROM traffic_hourly t WHERE t.user_id = u.id), 0), total_bytes_out = COALESCE((SELECT SUM(t.bytes_out) FROM traffic_hourly t WHERE t.user_id = u.id), 0)"
+        }
+        DbBackend::Sqlite => {
+            "UPDATE user SET total_bytes_in = COALESCE((SELECT SUM(t.bytes_in) FROM traffic_hourly t WHERE t.user_id = user.id), 0), total_bytes_out = COALESCE((SELECT SUM(t.bytes_out) FROM traffic_hourly t WHERE t.user_id = user.id), 0)"
+        }
+    };
+
+    db.execute(Statement::from_string(backend, sql)).await?;
+    Ok(())
+}
+
 pub(crate) fn start_traffic_flush_loop() {
     tokio::spawn(async move {
         traffic_flush_loop().await;
@@ -369,22 +426,21 @@ async fn traffic_flush_loop() {
             }
 
             // 查找当前小时的记录
-            let existing = traffic_hourly::Entity::find()
-                .filter(traffic_hourly::Column::UserId.eq(player_id))
-                .filter(traffic_hourly::Column::Hour.eq(&hour))
-                .one(db)
-                .await;
+            let save_result = async {
+                let txn = db.begin().await?;
 
-            let save_result = match existing {
-                Ok(Some(model)) => {
-                    // 累加
+                let existing = traffic_hourly::Entity::find()
+                    .filter(traffic_hourly::Column::UserId.eq(player_id))
+                    .filter(traffic_hourly::Column::Hour.eq(&hour))
+                    .one(&txn)
+                    .await?;
+
+                if let Some(model) = existing {
                     let mut active: traffic_hourly::ActiveModel = model.into();
                     active.bytes_in = Set(active.bytes_in.unwrap() + rx as i64);
                     active.bytes_out = Set(active.bytes_out.unwrap() + tx as i64);
-                    active.update(db).await.map(|_| ())
-                }
-                Ok(None) => {
-                    // 新建
+                    active.update(&txn).await?;
+                } else {
                     let new_row = traffic_hourly::ActiveModel {
                         id: NotSet,
                         user_id: Set(player_id),
@@ -392,13 +448,19 @@ async fn traffic_flush_loop() {
                         bytes_out: Set(tx as i64),
                         hour: Set(hour.clone()),
                     };
-                    new_row.insert(db).await.map(|_| ())
+                    new_row.insert(&txn).await?;
                 }
-                Err(e) => {
-                    log::error!("traffic flush query error: {}", e);
-                    Err(e)
+
+                if let Some(model) = user::Entity::find_by_id(player_id).one(&txn).await? {
+                    let mut active: user::ActiveModel = model.into();
+                    active.total_bytes_in = Set(active.total_bytes_in.unwrap() + rx as i64);
+                    active.total_bytes_out = Set(active.total_bytes_out.unwrap() + tx as i64);
+                    active.update(&txn).await?;
                 }
-            };
+
+                txn.commit().await
+            }
+            .await;
 
             if let Err(e) = save_result {
                 let player = player.read().await;

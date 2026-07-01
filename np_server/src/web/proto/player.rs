@@ -20,8 +20,8 @@ pub struct PlayerListItem {
     pub ip_addr: String,
     pub connection_protocol: String,
     pub online_time: i64,
-    pub bytes_in: i64,
-    pub bytes_out: i64,
+    pub total_bytes_in: i64,
+    pub total_bytes_out: i64,
 }
 
 /// 玩家列表回复
@@ -117,10 +117,8 @@ pub struct PlayerDetailItem {
     pub ip_addr: String,
     pub connection_protocol: String,
     pub online_time: i64,
-    pub bytes_in: i64,
-    pub bytes_out: i64,
-    pub traffic_24h_in: i64,
-    pub traffic_24h_out: i64,
+    pub total_bytes_in: i64,
+    pub total_bytes_out: i64,
     pub tunnels: Vec<PlayerTunnelItem>,
     pub recent_logins: Vec<LoginHistoryItem>,
 }

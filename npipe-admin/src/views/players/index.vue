@@ -90,14 +90,14 @@
             <span>{{ row.online && row.online_time ? formatTime(row.online_time) : '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="↓ 入站" min-width="100" align="right">
+        <el-table-column :label="$t('player.table.totalTrafficIn')" min-width="120" align="right">
           <template #default="{ row }">
-            <span class="font-mono">{{ formatBytes(row.bytes_in) }}</span>
+            <span class="font-mono">{{ formatBytes(row.total_bytes_in) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="↑ 出站" min-width="100" align="right">
+        <el-table-column :label="$t('player.table.totalTrafficOut')" min-width="120" align="right">
           <template #default="{ row }">
-            <span class="font-mono">{{ formatBytes(row.bytes_out) }}</span>
+            <span class="font-mono">{{ formatBytes(row.total_bytes_out) }}</span>
           </template>
         </el-table-column>
         <el-table-column :label="$t('player.table.actions')" width="240" fixed="right">

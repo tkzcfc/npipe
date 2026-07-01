@@ -10,8 +10,15 @@ use crate::orm_entity::prelude::User;
 use crate::orm_entity::traffic_hourly;
 use actix_identity::Identity;
 use actix_web::{error, HttpResponse, Responder};
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
+
+fn traffic_start_hour(hours: u32) -> String {
+    let hours = hours.max(1);
+    (Utc::now() - Duration::hours(hours.saturating_sub(1) as i64))
+        .format("%Y-%m-%d %H")
+        .to_string()
+}
 
 pub(super) async fn player_list(
     identity: Option<Identity>,
@@ -88,8 +95,8 @@ pub(super) async fn player_list(
             ip_addr,
             connection_protocol,
             online_time,
-            bytes_in,
-            bytes_out,
+            total_bytes_in: data.total_bytes_in + bytes_in,
+            total_bytes_out: data.total_bytes_out + bytes_out,
         })
     }
 
@@ -539,18 +546,6 @@ pub(super) async fn player_detail(
         })
         .collect();
 
-    let traffic_rows = traffic_hourly::Entity::find()
-        .filter(traffic_hourly::Column::UserId.eq(user.id))
-        .order_by_desc(traffic_hourly::Column::Hour)
-        .limit(24)
-        .all(db)
-        .await
-        .map_err(|err| error::ErrorInternalServerError(format!("sql error:{}", err)))?;
-    let mut traffic_24h_in: i64 = traffic_rows.iter().map(|item| item.bytes_in).sum();
-    let mut traffic_24h_out: i64 = traffic_rows.iter().map(|item| item.bytes_out).sum();
-    traffic_24h_in += bytes_in;
-    traffic_24h_out += bytes_out;
-
     Ok(HttpResponse::Ok().json(proto::PlayerDetailResponse {
         player: Some(proto::PlayerDetailItem {
             id: user.id,
@@ -562,10 +557,8 @@ pub(super) async fn player_detail(
             ip_addr,
             connection_protocol,
             online_time,
-            bytes_in,
-            bytes_out,
-            traffic_24h_in,
-            traffic_24h_out,
+            total_bytes_in: user.total_bytes_in + bytes_in,
+            total_bytes_out: user.total_bytes_out + bytes_out,
             tunnels,
             recent_logins,
         }),
@@ -582,11 +575,13 @@ pub(super) async fn traffic_stats(
     if auth.role != "admin" && auth.user_id != Some(req.user_id) {
         return Ok(forbidden_response());
     }
-    let hours = req.hours.unwrap_or(24).min(720);
+    let hours = req.hours.unwrap_or(24).clamp(1, 720);
+    let start_hour = traffic_start_hour(hours);
 
     let db = GLOBAL_DB_POOL.get().unwrap();
     let rows = traffic_hourly::Entity::find()
         .filter(traffic_hourly::Column::UserId.eq(req.user_id))
+        .filter(traffic_hourly::Column::Hour.gte(start_hour))
         .order_by_desc(traffic_hourly::Column::Hour)
         .limit(hours as u64)
         .all(db)

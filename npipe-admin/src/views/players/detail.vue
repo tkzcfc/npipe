@@ -23,8 +23,8 @@
             </strong>
           </div>
           <div class="summary-card">
-            <span>{{ $t('player.detailTraffic24h') }}</span>
-            <strong>{{ formatBytes(player.traffic_24h_in + player.traffic_24h_out) }}</strong>
+            <span>{{ $t('player.totalTraffic') }}</span>
+            <strong>{{ formatBytes(player.total_bytes_in + player.total_bytes_out) }}</strong>
           </div>
           <div class="summary-card">
             <span>{{ $t('player.detailTunnels') }}</span>
@@ -81,8 +81,8 @@
               {{ player.online ? formatDuration(player.online_time) : '-' }}
             </el-descriptions-item>
             <el-descriptions-item :label="$t('player.createTime')">{{ player.create_time }}</el-descriptions-item>
-            <el-descriptions-item :label="$t('player.currentTraffic')">
-              ↓ {{ formatBytes(player.bytes_in) }} / ↑ {{ formatBytes(player.bytes_out) }}
+            <el-descriptions-item :label="$t('player.totalTransferTraffic')">
+              ↓ {{ formatBytes(player.total_bytes_in) }} / ↑ {{ formatBytes(player.total_bytes_out) }}
             </el-descriptions-item>
           </el-descriptions>
         </section>

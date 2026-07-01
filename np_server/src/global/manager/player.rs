@@ -147,6 +147,8 @@ impl PlayerManager {
                 create_time: Set(Utc::now().naive_utc()),
                 enabled: Set(1),
                 web_access: Set(0),
+                total_bytes_in: Set(0),
+                total_bytes_out: Set(0),
             };
 
             let _ = new_user.insert(GLOBAL_DB_POOL.get().unwrap()).await?;

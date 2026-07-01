@@ -68,8 +68,8 @@ export interface Player {
   ip_addr: string
   connection_protocol: string
   online_time: number
-  bytes_in: number
-  bytes_out: number
+  total_bytes_in: number
+  total_bytes_out: number
 }
 
 export interface TrafficStatsRequest {
@@ -236,10 +236,8 @@ export interface PlayerDetail {
   ip_addr: string
   connection_protocol: string
   online_time: number
-  bytes_in: number
-  bytes_out: number
-  traffic_24h_in: number
-  traffic_24h_out: number
+  total_bytes_in: number
+  total_bytes_out: number
   tunnels: PlayerTunnelItem[]
   recent_logins: LoginHistoryItem[]
 }

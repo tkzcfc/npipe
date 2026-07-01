@@ -12,6 +12,8 @@ pub struct Model {
     pub create_time: DateTime,
     pub enabled: u8,
     pub web_access: u8,
+    pub total_bytes_in: i64,
+    pub total_bytes_out: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
