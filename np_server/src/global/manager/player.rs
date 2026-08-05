@@ -143,7 +143,7 @@ impl PlayerManager {
             let new_user = user::ActiveModel {
                 id: Set(id),
                 username: Set(username.to_owned()),
-                password: Set(password.to_owned()),
+                password: Set(crate::utils::password::hash_password(password)?),
                 create_time: Set(Utc::now().naive_utc()),
                 enabled: Set(1),
                 web_access: Set(0),
@@ -195,7 +195,7 @@ impl PlayerManager {
         anyhow::ensure!(user.is_some(), "can't find user: {}", player_id);
 
         let mut user: user::ActiveModel = user.unwrap().into();
-        user.password = Set(password.to_owned());
+        user.password = Set(crate::utils::password::hash_password(password)?);
         user.web_access = Set(0);
 
         let _ = user.update(GLOBAL_DB_POOL.get().unwrap()).await?;

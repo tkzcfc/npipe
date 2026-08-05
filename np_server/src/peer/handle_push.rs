@@ -1,6 +1,7 @@
 use super::{Peer, PeerConnectionKind};
 use crate::global::manager::proxy::ProxyManager;
 use crate::global::manager::GLOBAL_MANAGER;
+use log::warn;
 use np_proto::message_map::{get_message_size, MessageType};
 use np_proto::utils::message_bridge;
 use std::sync::atomic::Ordering;
@@ -33,6 +34,9 @@ impl Peer {
                     }
                 }
             }
+            // 当前推送连接所属的玩家 ID，用于租户校验
+            let my_player_id = self.player.as_ref().unwrap().read().await.get_player_id();
+
             // 先提取需要的数据，立即 drop 读锁，再调用 send_proxy_message
             // 原代码在持有 tunnels.read() Guard 时调用 send_proxy_message，该函数内部
             // 有 player_manager 查找和 await，导致读锁被跨 await 持有。
@@ -49,6 +53,14 @@ impl Peer {
             }; // ← 读锁在此 drop
 
             if let Some((from_player_id, to_player_id, id)) = found {
+                // 租户校验：推送方必须是该隧道当前方向的合法发起端，否则丢弃，
+                // 防止任意登录用户伪造 tunnel_id 让服务端出口连接内网地址（跨租户 SSRF/注入）。
+                if from_player_id != my_player_id {
+                    warn!(
+                        "reject cross-tenant proxy push: player={my_player_id}, tunnel={id}, expected_owner={from_player_id}"
+                    );
+                    return Ok(());
+                }
                 ProxyManager::send_proxy_message(from_player_id, to_player_id, id, msg).await;
             }
         }

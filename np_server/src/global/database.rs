@@ -13,7 +13,7 @@ use sea_orm::{
 use std::time::Duration;
 use tokio::sync::OnceCell;
 
-const CURRENT_SCHEMA_VERSION: i32 = 3;
+const CURRENT_SCHEMA_VERSION: i32 = 4;
 
 pub(crate) static GLOBAL_DB_POOL: OnceCell<DatabaseConnection> = OnceCell::const_new();
 
@@ -223,6 +223,11 @@ async fn run_schema_migrations(db: &DatabaseConnection, backend: DbBackend) -> a
     if version < 3 {
         ensure_total_traffic_columns(db, backend).await?;
         backfill_total_traffic(db, backend).await?;
+        set_schema_version(db, 3).await?;
+    }
+
+    if version < 4 {
+        hash_existing_passwords(db).await?;
         set_schema_version(db, CURRENT_SCHEMA_VERSION).await?;
     }
 
@@ -254,6 +259,21 @@ async fn set_schema_version(db: &DatabaseConnection, version: i32) -> anyhow::Re
         model.insert(db).await?;
     }
 
+    Ok(())
+}
+
+/// 将历史明文密码一次性升级为 PBKDF2 哈希（已是哈希的跳过，幂等）
+async fn hash_existing_passwords(db: &DatabaseConnection) -> anyhow::Result<()> {
+    let users = user::Entity::find().all(db).await?;
+    for u in users {
+        if crate::utils::password::is_hashed(&u.password) {
+            continue;
+        }
+        let hashed = crate::utils::password::hash_password(&u.password)?;
+        let mut active: user::ActiveModel = u.into();
+        active.password = Set(hashed);
+        active.update(db).await?;
+    }
     Ok(())
 }
 

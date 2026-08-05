@@ -1,4 +1,5 @@
 use super::proto;
+use super::rate_limit;
 use super::support::auth_context;
 use crate::global::config::GLOBAL_CONFIG;
 use crate::global::GLOBAL_DB_POOL;
@@ -67,12 +68,25 @@ pub(super) async fn login(
         .unwrap_or("")
         .to_owned();
 
+    // 登录限速：同一 IP+用户名短时间内失败过多则锁定，抵御在线爆破
+    let rl_key = format!("{ip_addr}|{}", req.username);
+    if let Some(secs) = rate_limit::locked_secs_remaining(&rl_key) {
+        return Ok(HttpResponse::TooManyRequests().json(proto::LoginResponse {
+            code: -5,
+            msg: format!("Too many failed attempts, try again in {secs}s"),
+            role: None,
+            user_id: None,
+            username: None,
+        }));
+    }
+
     // 管理员登录（配置文件中的账号）
     if !GLOBAL_CONFIG.web_username.is_empty()
         && GLOBAL_CONFIG.web_username == req.username
-        && GLOBAL_CONFIG.web_password == req.password
+        && crate::utils::password::constant_time_eq(&GLOBAL_CONFIG.web_password, &req.password)
     {
         Identity::login(&request.extensions(), "admin".to_owned())?;
+        rate_limit::record_success(&rl_key);
         record_web_login(0, ip_addr, 1).await;
 
         return Ok(HttpResponse::Ok().json(proto::LoginResponse {
@@ -86,10 +100,10 @@ pub(super) async fn login(
 
     if let Some(user) = User::find()
         .filter(crate::orm_entity::user::Column::Username.eq(&req.username))
-        .filter(crate::orm_entity::user::Column::Password.eq(&req.password))
         .one(GLOBAL_DB_POOL.get().unwrap())
         .await
         .map_err(|err| error::ErrorInternalServerError(format!("sql error:{}", err)))?
+        .filter(|user| crate::utils::password::verify_password(&req.password, &user.password))
     {
         if user.enabled != 1 {
             record_web_login(user.id, ip_addr, 0).await;
@@ -113,6 +127,7 @@ pub(super) async fn login(
         }
 
         Identity::login(&request.extensions(), format!("user:{}", user.id))?;
+        rate_limit::record_success(&rl_key);
         record_web_login(user.id, ip_addr, 1).await;
 
         return Ok(HttpResponse::Ok().json(proto::LoginResponse {
@@ -125,6 +140,7 @@ pub(super) async fn login(
     }
 
     // 用户名或密码错误（找不到匹配的用户），以 user_id=0 记录
+    rate_limit::record_failure(&rl_key);
     record_web_login(0, ip_addr, 0).await;
     Ok(HttpResponse::Ok().json(proto::LoginResponse {
         code: -2,

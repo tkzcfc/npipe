@@ -49,6 +49,9 @@ pub struct Config {
     pub web_password: String,
     /// web目录
     pub web_base_dir: String,
+    /// Web 管理后台允许的跨域 Origin 白名单（为空表示仅允许同源）
+    #[serde(default)]
+    pub web_allowed_origins: Vec<String>,
     /// 非法流量转发地址
     #[serde(default = "default_config_empty_string_function")]
     pub illegal_traffic_forward: String,

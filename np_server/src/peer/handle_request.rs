@@ -25,9 +25,6 @@ impl Peer {
             MessageType::ClientServerBindTransportReq(msg) => {
                 return self.on_bind_transport_request(msg).await
             }
-            MessageType::ClientServerRegisterReq(msg) => {
-                return self.on_register_request(msg).await
-            }
             _ => {
                 if let Some(ref player) = self.player {
                     return player.write().await.handle_request(message).await;
@@ -67,18 +64,22 @@ impl Peer {
 
         let user_result = User::find()
             .filter(user::Column::Username.eq(username))
-            .filter(user::Column::Password.eq(password))
             .one(GLOBAL_DB_POOL.get().unwrap())
             .await?;
 
-        if user_result.is_none() {
-            return Ok(MessageType::GenericError(generic::Error {
-                number: -2,
-                message: "Incorrect username or password".into(),
-            }));
-        }
-
-        let user = user_result.unwrap();
+        let user = match user_result {
+            Some(user)
+                if crate::utils::password::verify_password(&password, &user.password) =>
+            {
+                user
+            }
+            _ => {
+                return Ok(MessageType::GenericError(generic::Error {
+                    number: -2,
+                    message: "Incorrect username or password".into(),
+                }));
+            }
+        };
         if user.enabled != 1 {
             return Ok(MessageType::GenericError(generic::Error {
                 number: -3,
@@ -267,24 +268,6 @@ impl Peer {
                 transport_idle_timeout_secs: GLOBAL_CONFIG.transport_idle_timeout_secs,
             },
         ))
-    }
-
-    async fn on_register_request(
-        &self,
-        message: client_server::RegisterReq,
-    ) -> anyhow::Result<MessageType> {
-        let (code, msg) = GLOBAL_MANAGER
-            .player_manager
-            .add_player(&message.username, &message.password)
-            .await?;
-        if code == 0 {
-            Ok(MessageType::GenericSuccess(generic::Success {}))
-        } else {
-            Ok(MessageType::GenericError(generic::Error {
-                number: code,
-                message: msg,
-            }))
-        }
     }
 }
 

@@ -46,5 +46,8 @@ dashmap = "6"
 sysinfo = "0.38.4"
 regex = "1.12.2"
 hex = "0.4.3"
+pbkdf2 = { version = "0.12", features = ["simple"] }
+subtle = "2"
+getrandom = "0.2"
 
 [dev-dependencies]

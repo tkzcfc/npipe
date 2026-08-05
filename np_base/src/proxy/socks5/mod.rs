@@ -267,8 +267,16 @@ impl Socks5Context {
         }
         let ver = self.buffer[0];
         let unl: usize = self.buffer[1] as usize;
+        // 读 PWL(buffer[2+unl]) 前先确保该字节已到达，避免越界 panic
+        if self.buffer.len() < 2 + unl + 1 {
+            return Ok(());
+        }
         let pwl: usize = self.buffer[2 + unl] as usize;
         let num_of_package = unl + pwl + 3;
+        // 完整认证报文需要 unl+pwl+3 字节，不足则等待后续数据，切勿越界读取
+        if self.buffer.len() < num_of_package {
+            return Ok(());
+        }
 
         let unm = &self.buffer[2..(2 + unl)];
         let pwd = &self.buffer[(3 + unl)..(3 + unl + pwl)];

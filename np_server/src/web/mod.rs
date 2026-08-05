@@ -4,6 +4,7 @@ mod logs;
 mod maintenance;
 mod player;
 mod proto;
+mod rate_limit;
 mod support;
 mod tunnel;
 
@@ -96,12 +97,18 @@ pub async fn run_http_server(
     let cookie_secure = GLOBAL_CONFIG.web_enable_tls || GLOBAL_CONFIG.web_cookie_secure;
     let server = HttpServer::new(move || {
         App::new()
-            // 添加 Cors 中间件，并允许所有跨域请求
+            // Cors 中间件：仅回显 web_allowed_origins 白名单内的 Origin，为空时仅同源
             .wrap(
                 Cors::default()
-                    .allow_any_origin()
+                    .allowed_origin_fn(|origin, _req_head| {
+                        GLOBAL_CONFIG
+                            .web_allowed_origins
+                            .iter()
+                            .any(|allowed| origin.as_bytes() == allowed.as_bytes())
+                    })
                     .allow_any_method()
-                    .allow_any_header(),
+                    .allow_any_header()
+                    .supports_credentials(),
             )
             .service(web::resource("/api/login").route(web::post().to(auth::login)))
             .service(web::resource("/api/logout").route(web::post().to(auth::logout)))
