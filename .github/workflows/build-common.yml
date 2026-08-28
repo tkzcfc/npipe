@@ -1,0 +1,276 @@
+name: build-common
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: '版本号'
+        required: true
+        type: string
+      target_filter:
+        description: '目标过滤（留空则编译全部）'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            use-cross: true
+
+          - os: ubuntu-latest
+            target: armv7-unknown-linux-musleabihf
+            use-cross: true
+            
+          - os: ubuntu-latest
+            target: arm-unknown-linux-musleabihf
+            use-cross: true
+            
+          - os: ubuntu-latest
+            target: i686-unknown-linux-musl
+            use-cross: true
+            
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            use-cross: true
+
+          - os: ubuntu-latest
+            target: aarch64-linux-android
+            use-cross: true
+
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            use-cross: false
+          
+          - os: ubuntu-latest
+            target: arm-unknown-linux-gnueabihf
+            use-cross: true
+
+          - os: ubuntu-latest
+            target: armv7-unknown-linux-gnueabihf
+            use-cross: true
+
+          - os: windows-latest
+            target: x86_64-pc-windows-gnu
+            use-cross: false
+
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            use-cross: false
+
+          - os: windows-latest
+            target: x86_64-win7-windows-msvc
+            use-cross: false
+            
+          - os: windows-latest
+            target: i686-pc-windows-msvc
+            use-cross: false
+
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            use-cross: false
+          
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            use-cross: false
+
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            use-cross: false
+
+    steps:
+      - name: Check if should build this target
+        id: check
+        shell: bash
+        run: |
+          INPUT_TARGET="${{ inputs.target_filter }}"
+          if [ -z "$INPUT_TARGET" ] || [ "$INPUT_TARGET" = "${{ matrix.target }}" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout code
+        if: steps.check.outputs.should_build == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+            
+      - name: Set Version
+        if: steps.check.outputs.should_build == 'true'
+        shell: bash
+        run: |
+          echo "BIN_VERSION=${{ inputs.version }}" >> $GITHUB_ENV
+
+      # nightly-2023-12-28 = nightly1.75.0
+      - name: Install Rust
+        if: steps.check.outputs.should_build == 'true' && matrix.target == 'x86_64-win7-windows-msvc'
+        shell: bash
+        run: |
+          rustup install nightly
+          rustup toolchain install nightly
+          rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
+          cargo install --force --locked bindgen-cli
+
+      - name: Install Rust
+        if: steps.check.outputs.should_build == 'true' && matrix.target != 'x86_64-win7-windows-msvc'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # stable: 使用稳定版本的Rust。
+          # beta: 使用测试版本的Rust。
+          # nightly: 使用最新的夜间版本的Rust。
+          # 具体版本号: 如1.56.0，指定特定的Rust版本。
+          # toolchain: 1.84.1
+          toolchain: stable
+          target: ${{ matrix.target }}
+
+      - name: Setup native compilation
+        if: steps.check.outputs.should_build == 'true' && matrix.use-cross == false
+        shell: bash
+        run: |
+          if [ "${{ matrix.target }}" = "x86_64-win7-windows-msvc" ]; then
+            echo "CARGO=cargo +nightly" >> $GITHUB_ENV
+            echo "CARGO_BUILD_ARG=--release -Zbuild-std=std,panic_abort" >> $GITHUB_ENV
+          else
+            echo "CARGO=cargo" >> $GITHUB_ENV
+            echo "CARGO_BUILD_ARG=--release" >> $GITHUB_ENV
+          fi
+
+      - name: Install cross
+        if: steps.check.outputs.should_build == 'true' && matrix.use-cross
+        shell: bash
+        run: |
+          cargo install cross --locked --git https://github.com/cross-rs/cross
+          echo "CARGO=cross" >> $GITHUB_ENV
+          echo "CARGO_BUILD_ARG=--release" >> $GITHUB_ENV
+
+
+      # use Cross.toml
+      # references:
+      #   https://github.com/tweedegolf/mailcrab/blob/1375b930f1fd96261a7023ca8022bd471d12b758/backend/Cross.toml
+      #   https://github.com/tweedegolf/mailcrab/blob/1375b930f1fd96261a7023ca8022bd471d12b758/.github/workflows/build.yml
+      - name: Create Cross.toml
+        if: steps.check.outputs.should_build == 'true' && matrix.use-cross && matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          cat > Cross.toml <<EOF
+          [build]
+          pre-build = [
+              "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable",
+              ". \$HOME/.cargo/env",
+              "cargo install --force --locked bindgen-cli && mv \$HOME/.cargo/bin/bindgen /usr/bin",
+              "rm -rf \$HOME/.cargo"
+          ]
+
+          [build.env]
+          passthrough = [
+              "AWS_LC_SYS_CMAKE_BUILDER=1",
+              "BIN_VERSION"
+          ]
+          EOF
+          cat Cross.toml
+
+      - name: Create Cross.toml
+        if: steps.check.outputs.should_build == 'true' && matrix.use-cross && matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          cat > Cross.toml <<EOF
+          [build]
+          pre-build = [
+              "Set-ExecutionPolicy Bypass -Scope Process -Force",
+              "irm https://sh.rustup.rs | iex", # 安装 Rust
+              "\$env:Path += ';\$env:USERPROFILE\\\\.cargo\\\\bin'",
+              "cargo install --force --locked bindgen-cli"
+          ]
+
+          [build.env]
+          passthrough = [
+              "AWS_LC_SYS_CMAKE_BUILDER=1",
+              "BIN_VERSION"
+          ]
+          EOF
+          cat Cross.toml
+
+
+      # use Cross.toml build image
+      # references:
+      # https://github.com/cross-rs/cross/blob/main/docs/config_file.md
+      # https://aws.github.io/aws-lc-rs/requirements/linux.html
+      # # fix error: failed to run custom build command for `aws-lc-sys v0.30.0`
+      # - name: Create Cross.toml
+      #   if: matrix.use-cross && matrix.os == 'ubuntu-latest'
+      #   shell: bash
+      #   run: |
+      #     cat > Cross.toml <<EOF
+      #     [target.${{ matrix.target }}]
+      #     image = "my-custom-cross-image-${{ matrix.target }}"
+      #     dockerfile = "Dockerfile-${{ matrix.target }}.cross"
+      #     EOF
+      #     cat Cross.toml
+      #     cat > Dockerfile-${{ matrix.target }}.cross <<EOF
+      #     FROM ghcr.io/cross-rs/${{ matrix.target }}:latest
+      #     # 安装 Rust 工具链
+      #     RUN apt-get update && \
+      #         apt-get install -y curl && \
+      #         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+      #         . ~/.cargo/env && \
+      #         cargo install --force --locked bindgen-cli
+      #     # 设置环境变量
+      #     ENV PATH="/root/.cargo/bin:\${PATH}"
+      #     EOF
+      #     cat Dockerfile-${{ matrix.target }}.cross
+
+      - name: Build
+        if: steps.check.outputs.should_build == 'true'
+        shell: bash
+        env:
+          BIN_VERSION: ${{ env.BIN_VERSION }}
+        run: |
+          $CARGO build --bin np_client $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
+          $CARGO build --bin np_server $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
+      
+      - name: Download admin dist
+        if: steps.check.outputs.should_build == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: admin-dist
+          path: dist/
+
+      - name: Setup archive
+        if: steps.check.outputs.should_build == 'true'
+        shell: bash
+        run: |
+          staging="np-${{ env.BIN_VERSION }}-${{ matrix.target }}"
+          mkdir -p "$staging"
+
+          mkdir -p "$staging/dist"
+          cp -R dist/* "$staging/dist"
+
+          cp config_template.json "$staging/config.json"
+          cp generate-certificate.sh "$staging/generate-certificate.sh"
+
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp "target/${{ matrix.target }}/release/np_client.exe" "$staging/"
+            cp "target/${{ matrix.target }}/release/np_server.exe" "$staging/"
+            7z a "$staging.zip" "$staging"
+            echo "ASSET=$staging.zip" >> $GITHUB_ENV
+          else
+            cp "target/${{ matrix.target }}/release/np_client" "$staging/"
+            cp "target/${{ matrix.target }}/release/np_server" "$staging/"
+            tar czf "$staging.tar.gz" "$staging"
+            echo "ASSET=$staging.tar.gz" >> $GITHUB_ENV
+          fi
+
+      - name: Upload artifact
+        if: steps.check.outputs.should_build == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: ${{ env.ASSET }}
