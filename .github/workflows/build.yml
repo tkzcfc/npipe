@@ -72,6 +72,10 @@ jobs:
             use-cross: true
 
           - os: ubuntu-latest
+            target: aarch64-linux-android
+            use-cross: true
+
+          - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             use-cross: false
           
