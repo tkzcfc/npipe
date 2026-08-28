@@ -1,7 +1,6 @@
 name: build-manual
 
 on:
-  # 允许手动触发（在 Actions 页面点击 Run workflow）
   workflow_dispatch:
     inputs:
       target:
@@ -132,22 +131,32 @@ jobs:
             target: aarch64-apple-darwin
             use-cross: false
 
-    # 如果手动指定了目标，只编译对应目标
-    if: ${{ github.event.inputs.target == '' || github.event.inputs.target == matrix.target }}
-
     steps:
+    - name: Check if should build this target
+      id: check
+      shell: bash
+      run: |
+        INPUT_TARGET="${{ github.event.inputs.target }}"
+        if [ -z "$INPUT_TARGET" ] || [ "$INPUT_TARGET" = "${{ matrix.target }}" ]; then
+          echo "should_build=true" >> $GITHUB_OUTPUT
+        else
+          echo "should_build=false" >> $GITHUB_OUTPUT
+        fi
+
     - name: Checkout code
+      if: steps.check.outputs.should_build == 'true'
       uses: actions/checkout@v4
       with:
         fetch-depth: 1
             
     - name: Set Version
+      if: steps.check.outputs.should_build == 'true'
       shell: bash
       run: |
         echo "BIN_VERSION=manual-$(date +%Y%m%d)-$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
-    - name: Install Rust
-      if: matrix.target == 'x86_64-win7-windows-msvc'
+    - name: Install Rust (win7)
+      if: steps.check.outputs.should_build == 'true' && matrix.target == 'x86_64-win7-windows-msvc'
       shell: bash
       run: |
         rustup install nightly
@@ -156,14 +165,14 @@ jobs:
         cargo install --force --locked bindgen-cli
 
     - name: Install Rust
-      if: matrix.target != 'x86_64-win7-windows-msvc'
+      if: steps.check.outputs.should_build == 'true' && matrix.target != 'x86_64-win7-windows-msvc'
       uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: stable
         target: ${{ matrix.target }}
 
     - name: Setup native compilation
-      if: ${{ matrix.use-cross == false }}
+      if: steps.check.outputs.should_build == 'true' && matrix.use-cross == false
       shell: bash
       run: |
         if [ "${{ matrix.target }}" = "x86_64-win7-windows-msvc" ]; then
@@ -175,15 +184,15 @@ jobs:
         fi
 
     - name: Install cross
-      if: matrix.use-cross
+      if: steps.check.outputs.should_build == 'true' && matrix.use-cross
       shell: bash
       run: |
         cargo install cross --locked --git https://github.com/cross-rs/cross
         echo "CARGO=cross" >> $GITHUB_ENV
         echo "CARGO_BUILD_ARG=--release" >> $GITHUB_ENV
 
-    - name: Create Cross.toml
-      if: matrix.use-cross && matrix.os == 'ubuntu-latest'
+    - name: Create Cross.toml (Linux)
+      if: steps.check.outputs.should_build == 'true' && matrix.use-cross && matrix.os == 'ubuntu-latest'
       shell: bash
       run: |
         cat > Cross.toml <<EOF
@@ -203,8 +212,8 @@ jobs:
         EOF
         cat Cross.toml
 
-    - name: Create Cross.toml
-      if: matrix.use-cross && matrix.os == 'windows-latest'
+    - name: Create Cross.toml (Windows)
+      if: steps.check.outputs.should_build == 'true' && matrix.use-cross && matrix.os == 'windows-latest'
       shell: bash
       run: |
         cat > Cross.toml <<EOF
@@ -225,6 +234,7 @@ jobs:
         cat Cross.toml
 
     - name: Build
+      if: steps.check.outputs.should_build == 'true'
       shell: bash
       env:
         BIN_VERSION: ${{ env.BIN_VERSION }}
@@ -233,12 +243,14 @@ jobs:
         $CARGO build --bin np_server $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
       
     - name: Download admin dist
+      if: steps.check.outputs.should_build == 'true'
       uses: actions/download-artifact@v4
       with:
         name: admin-dist
         path: dist/
 
     - name: Setup archive
+      if: steps.check.outputs.should_build == 'true'
       shell: bash
       run: |
         staging="np-${{ env.BIN_VERSION }}-${{ matrix.target }}"
@@ -263,6 +275,7 @@ jobs:
         fi
 
     - name: Upload artifact
+      if: steps.check.outputs.should_build == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.target }}
