@@ -28,9 +28,6 @@ on:
           - aarch64-apple-darwin
 
 jobs:
-  # ─────────────────────────────────────────────
-  # 构建 npipe-admin 管理面板
-  # ─────────────────────────────────────────────
   build-admin:
     name: Build Admin Panel
     runs-on: ubuntu-latest
@@ -58,225 +55,24 @@ jobs:
           path: dist/
           retention-days: 1
 
-  build:
-    needs: build-admin
-    name: ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-            use-cross: true
-
-          - os: ubuntu-latest
-            target: armv7-unknown-linux-musleabihf
-            use-cross: true
-            
-          - os: ubuntu-latest
-            target: arm-unknown-linux-musleabihf
-            use-cross: true
-            
-          - os: ubuntu-latest
-            target: i686-unknown-linux-musl
-            use-cross: true
-            
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-musl
-            use-cross: true
-
-          # ⬇️ 新增 Android ARM64 目标
-          - os: ubuntu-latest
-            target: aarch64-linux-android
-            use-cross: true
-
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            use-cross: false
-          
-          - os: ubuntu-latest
-            target: arm-unknown-linux-gnueabihf
-            use-cross: true
-
-          - os: ubuntu-latest
-            target: armv7-unknown-linux-gnueabihf
-            use-cross: true
-
-          - os: windows-latest
-            target: x86_64-pc-windows-gnu
-            use-cross: false
-
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            use-cross: false
-
-          - os: windows-latest
-            target: x86_64-win7-windows-msvc
-            use-cross: false
-            
-          - os: windows-latest
-            target: i686-pc-windows-msvc
-            use-cross: false
-
-          - os: windows-latest
-            target: aarch64-pc-windows-msvc
-            use-cross: false
-          
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            use-cross: false
-
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            use-cross: false
-
+  set-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.set.outputs.version }}
     steps:
-    - name: Check if should build this target
-      id: check
-      shell: bash
-      run: |
-        INPUT_TARGET="${{ github.event.inputs.target }}"
-        if [ -z "$INPUT_TARGET" ] || [ "$INPUT_TARGET" = "${{ matrix.target }}" ]; then
-          echo "should_build=true" >> $GITHUB_OUTPUT
-        else
-          echo "should_build=false" >> $GITHUB_OUTPUT
-        fi
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Set Version
+        id: set
+        shell: bash
+        run: |
+          echo "version=manual-$(date +%Y%m%d)-$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-    - name: Checkout code
-      if: steps.check.outputs.should_build == 'true'
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 1
-            
-    - name: Set Version
-      if: steps.check.outputs.should_build == 'true'
-      shell: bash
-      run: |
-        echo "BIN_VERSION=manual-$(date +%Y%m%d)-$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-
-    - name: Install Rust (win7)
-      if: steps.check.outputs.should_build == 'true' && matrix.target == 'x86_64-win7-windows-msvc'
-      shell: bash
-      run: |
-        rustup install nightly
-        rustup toolchain install nightly
-        rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
-        cargo install --force --locked bindgen-cli
-
-    - name: Install Rust
-      if: steps.check.outputs.should_build == 'true' && matrix.target != 'x86_64-win7-windows-msvc'
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: stable
-        target: ${{ matrix.target }}
-
-    - name: Setup native compilation
-      if: steps.check.outputs.should_build == 'true' && matrix.use-cross == false
-      shell: bash
-      run: |
-        if [ "${{ matrix.target }}" = "x86_64-win7-windows-msvc" ]; then
-          echo "CARGO=cargo +nightly" >> $GITHUB_ENV
-          echo "CARGO_BUILD_ARG=--release -Zbuild-std=std,panic_abort" >> $GITHUB_ENV
-        else
-          echo "CARGO=cargo" >> $GITHUB_ENV
-          echo "CARGO_BUILD_ARG=--release" >> $GITHUB_ENV
-        fi
-
-    - name: Install cross
-      if: steps.check.outputs.should_build == 'true' && matrix.use-cross
-      shell: bash
-      run: |
-        cargo install cross --locked --git https://github.com/cross-rs/cross
-        echo "CARGO=cross" >> $GITHUB_ENV
-        echo "CARGO_BUILD_ARG=--release" >> $GITHUB_ENV
-
-    - name: Create Cross.toml (Linux)
-      if: steps.check.outputs.should_build == 'true' && matrix.use-cross && matrix.os == 'ubuntu-latest'
-      shell: bash
-      run: |
-        cat > Cross.toml <<EOF
-        [build]
-        pre-build = [
-            "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable",
-            ". \$HOME/.cargo/env",
-            "cargo install --force --locked bindgen-cli && mv \$HOME/.cargo/bin/bindgen /usr/bin",
-            "rm -rf \$HOME/.cargo"
-        ]
-
-        [build.env]
-        passthrough = [
-            "AWS_LC_SYS_CMAKE_BUILDER=1",
-            "BIN_VERSION"
-        ]
-        EOF
-        cat Cross.toml
-
-    - name: Create Cross.toml (Windows)
-      if: steps.check.outputs.should_build == 'true' && matrix.use-cross && matrix.os == 'windows-latest'
-      shell: bash
-      run: |
-        cat > Cross.toml <<EOF
-        [build]
-        pre-build = [
-            "Set-ExecutionPolicy Bypass -Scope Process -Force",
-            "irm https://sh.rustup.rs | iex",
-            "\$env:Path += ';\$env:USERPROFILE\\\\.cargo\\\\bin'",
-            "cargo install --force --locked bindgen-cli"
-        ]
-
-        [build.env]
-        passthrough = [
-            "AWS_LC_SYS_CMAKE_BUILDER=1",
-            "BIN_VERSION"
-        ]
-        EOF
-        cat Cross.toml
-
-    - name: Build
-      if: steps.check.outputs.should_build == 'true'
-      shell: bash
-      env:
-        BIN_VERSION: ${{ env.BIN_VERSION }}
-      run: |
-        $CARGO build --bin np_client $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
-        $CARGO build --bin np_server $CARGO_BUILD_ARG --locked --target ${{ matrix.target }}
-      
-    - name: Download admin dist
-      if: steps.check.outputs.should_build == 'true'
-      uses: actions/download-artifact@v4
-      with:
-        name: admin-dist
-        path: dist/
-
-    - name: Setup archive
-      if: steps.check.outputs.should_build == 'true'
-      shell: bash
-      run: |
-        staging="np-${{ env.BIN_VERSION }}-${{ matrix.target }}"
-        mkdir -p "$staging"
-
-        mkdir -p "$staging/dist"
-        cp -R dist/* "$staging/dist"
-
-        cp config_template.json "$staging/config.json"
-        cp generate-certificate.sh "$staging/generate-certificate.sh"
-
-        if [ "${{ matrix.os }}" = "windows-latest" ]; then
-          cp "target/${{ matrix.target }}/release/np_client.exe" "$staging/"
-          cp "target/${{ matrix.target }}/release/np_server.exe" "$staging/"
-          7z a "$staging.zip" "$staging"
-          echo "ASSET=$staging.zip" >> $GITHUB_ENV
-        else
-          cp "target/${{ matrix.target }}/release/np_client" "$staging/"
-          cp "target/${{ matrix.target }}/release/np_server" "$staging/"
-          tar czf "$staging.tar.gz" "$staging"
-          echo "ASSET=$staging.tar.gz" >> $GITHUB_ENV
-        fi
-
-    - name: Upload artifact
-      if: steps.check.outputs.should_build == 'true'
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ matrix.target }}
-        path: ${{ env.ASSET }}
+  build:
+    needs: [build-admin, set-version]
+    uses: ./.github/workflows/build-common.yml
+    with:
+      version: ${{ needs.set-version.outputs.version }}
+      target_filter: ${{ github.event.inputs.target }}
