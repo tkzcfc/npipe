@@ -69,7 +69,11 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: bin-*
           merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la artifacts/
 
       - name: Upload binaries to release
         uses: softprops/action-gh-release@v2
