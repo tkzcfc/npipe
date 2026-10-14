@@ -10,9 +10,27 @@ use np_proto::utils::message_bridge;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+/// 入口（监听端）运行时状态，仅保存在内存中
+#[derive(Clone, Debug)]
+#[allow(dead_code)]
+pub struct InletRuntimeStatus {
+    /// 是否正在监听
+    pub ok: bool,
+    /// 失败原因
+    pub error: String,
+    /// 监听地址
+    pub listen_addr: String,
+    /// 上报者：0 = 服务端自身，其它为客户端玩家 id
+    pub reporter: PlayerId,
+    /// 上报时间（Unix 秒，UTC）
+    pub updated_at: i64,
+}
+
 pub struct ProxyManager {
     outlets: Arc<DashMap<u32, Arc<Outlet>>>,
     inlets: Arc<DashMap<u32, Inlet>>,
+    /// tunnel_id -> 入口运行时状态
+    inlet_status: DashMap<u32, InletRuntimeStatus>,
 }
 
 impl ProxyManager {
@@ -20,6 +38,50 @@ impl ProxyManager {
         Self {
             outlets: Arc::new(DashMap::new()),
             inlets: Arc::new(DashMap::new()),
+            inlet_status: DashMap::new(),
+        }
+    }
+
+    /// 服务端自身是否有该隧道正在运行的入口
+    pub fn has_running_inlet(&self, tunnel_id: u32) -> bool {
+        self.inlets
+            .get(&tunnel_id)
+            .map(|inlet| inlet.running())
+            .unwrap_or(false)
+    }
+
+    pub fn set_inlet_status(
+        &self,
+        tunnel_id: u32,
+        reporter: PlayerId,
+        ok: bool,
+        error: String,
+        listen_addr: String,
+    ) {
+        self.inlet_status.insert(
+            tunnel_id,
+            InletRuntimeStatus {
+                ok,
+                error,
+                listen_addr,
+                reporter,
+                updated_at: chrono::Utc::now().timestamp(),
+            },
+        );
+    }
+
+    pub fn get_inlet_status(&self, tunnel_id: u32) -> Option<InletRuntimeStatus> {
+        self.inlet_status.get(&tunnel_id).map(|x| x.clone())
+    }
+
+    pub fn clear_inlet_status(&self, tunnel_id: u32) {
+        self.inlet_status.remove(&tunnel_id);
+    }
+
+    /// 玩家上线/离线时清理其上报的入口状态
+    pub fn clear_player_inlet_status(&self, player_id: PlayerId) {
+        if player_id != 0 {
+            self.inlet_status.retain(|_, s| s.reporter != player_id);
         }
     }
     pub async fn sync_tunnels(&self) {
@@ -120,6 +182,8 @@ impl ProxyManager {
                 let description = inlet.description().to_owned();
                 debug!("start deleting the inlet({description})");
                 inlet.stop().await;
+                // 只清理服务端自身上报的状态，避免误删客户端刚上报的状态（receiver 改为客户端的情况）
+                self.inlet_status.remove_if(&key, |_, s| s.reporter == 0);
                 debug!("delete inlet({description}) end");
             }
         }
@@ -188,6 +252,13 @@ impl ProxyManager {
             let inlet_proxy_type = InletProxyType::from_u32(tunnel_type);
             if matches!(inlet_proxy_type, InletProxyType::UNKNOWN) {
                 error!("inlet({source}) unknown tunnel type: {tunnel_type}");
+                self.set_inlet_status(
+                    tunnel_id,
+                    0,
+                    false,
+                    format!("unknown tunnel type: {tunnel_type}"),
+                    source.clone(),
+                );
             } else {
                 let mut inlet = Inlet::new(inlet_output, inlet_desc);
                 if let Err(err) = inlet
@@ -202,8 +273,10 @@ impl ProxyManager {
                     .await
                 {
                     error!("inlet({source}) start error: {err}");
+                    self.set_inlet_status(tunnel_id, 0, false, err.to_string(), source.clone());
                 } else {
                     debug!("start inlet({})", inlet.description());
+                    self.set_inlet_status(tunnel_id, 0, true, String::new(), source.clone());
                     self.inlets.insert(tunnel_id, inlet);
                 }
             }

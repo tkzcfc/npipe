@@ -268,6 +268,9 @@ export interface Tunnel {
   sender_online: boolean
   receiver_online: boolean
   available: boolean
+  /** 监听状态：disabled / offline / listening / failed / unknown（旧版服务端无此字段） */
+  listen_status?: 'disabled' | 'offline' | 'listening' | 'failed' | 'unknown'
+  listen_error?: string
 }
 
 export interface TunnelDetail extends Tunnel {

@@ -8,7 +8,7 @@ use np_base::proxy::inlet::{Inlet, InletDataEx, InletProxyType};
 use np_base::proxy::outlet::Outlet;
 use np_base::proxy::{OutputFuncType, ProxyMessage};
 use np_proto::class_def::{Tunnel, TunnelPoint};
-use np_proto::client_server::LoginReq;
+use np_proto::client_server::{InletStatusNtf, LoginReq};
 use np_proto::message_map::{self, MessageType};
 use np_proto::server_client::ModifyTunnelNtf;
 use np_proto::utils::message_bridge;
@@ -48,6 +48,8 @@ where
     pub inlets: Arc<DashMap<u32, Inlet>>,
     /// 服务端下发的隧道快照，key 为隧道 ID。
     pub tunnels: HashMap<u32, Tunnel>,
+    /// 服务端是否支持接收入口状态上报（旧服务端不支持，发送会导致断线）。
+    pub support_inlet_status: bool,
 }
 
 /// 登录超时时间（秒）。
@@ -177,6 +179,7 @@ where
                     msg.transport_max_connections, msg.transport_idle_timeout_secs
                 );
                 self.player_id = msg.player_id;
+                self.support_inlet_status = msg.support_inlet_status;
                 self.transport
                     .configure_from_login(
                         msg.transport_token.clone(),
@@ -312,9 +315,22 @@ where
                 self.sync_tunnels(&tunnel_list).await;
                 return;
             }
+            let tunnel_id = tunnel.id;
+            let is_my_inlet = tunnel.enabled && tunnel.receiver == self.player_id;
+            let source = tunnel.source.as_ref().map_or(String::new(), |x| x.addr.clone());
+            let inlet_existed = self.inlets.contains_key(&tunnel_id);
             self.tunnels.insert(tunnel.id, tunnel);
             let tunnel_list: Vec<Tunnel> = self.tunnels.values().cloned().collect();
             self.sync_tunnels(&tunnel_list).await;
+            // 入口配置未变化（未重建）时也重新上报一次，服务端在修改通道时会清空旧状态
+            if is_my_inlet && inlet_existed {
+                let running = self.inlets.get(&tunnel_id).map(|i| i.running());
+                match running {
+                    Some(true) => self.report_inlet_status(tunnel_id, true, String::new(), &source).await,
+                    Some(false) => self.report_inlet_status(tunnel_id, false, "inlet stopped".into(), &source).await,
+                    None => {}
+                }
+            }
         }
     }
 
@@ -488,12 +504,32 @@ where
                         .await
                     {
                         error!("inlet listen failed {}: {}", source, err);
+                        self.report_inlet_status(tunnel.id, false, err.to_string(), &source)
+                            .await;
                     } else {
                         debug!("+ inlet({})", inlet.description());
                         self.inlets.insert(tunnel.id, inlet);
+                        self.report_inlet_status(tunnel.id, true, String::new(), &source)
+                            .await;
                     }
                 }
             }
+        }
+    }
+
+    /// 向服务端上报入口监听结果（仅当服务端声明支持时）。
+    async fn report_inlet_status(&self, tunnel_id: u32, ok: bool, error: String, listen_addr: &str) {
+        if !self.support_inlet_status {
+            return;
+        }
+        let message = MessageType::ClientServerInletStatusNtf(InletStatusNtf {
+            tunnel_id,
+            ok,
+            error,
+            listen_addr: listen_addr.to_owned(),
+        });
+        if let Err(err) = self.transport.send_control_message(0, &message).await {
+            warn!("failed to report inlet status (tunnel={tunnel_id}): {err}");
         }
     }
 

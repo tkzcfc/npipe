@@ -64,3 +64,22 @@ pub struct BindTransportReq {
     #[prost(uint32, tag = "3")]
     pub connection_type: u32,
 }
+/// 客户端入口（监听）状态上报，无需回复
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InletStatusNtf {
+    /// @build_automatically_generate_message_id@  enum MsgId {None = 0; Id = 1015;}
+    /// 隧道 ID
+    #[prost(uint32, tag = "1")]
+    pub tunnel_id: u32,
+    /// 是否正在监听
+    #[prost(bool, tag = "2")]
+    pub ok: bool,
+    /// 失败原因（ok=true 时为空）
+    #[prost(string, tag = "3")]
+    pub error: ::prost::alloc::string::String,
+    /// 实际监听地址
+    #[prost(string, tag = "4")]
+    pub listen_addr: ::prost::alloc::string::String,
+}

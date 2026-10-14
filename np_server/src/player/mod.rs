@@ -442,6 +442,10 @@ impl Player {
             let _ = connection.tx.send(WriterMessage::Close);
         }
         self.forward_session_routes.clear();
+        // 玩家离线：其上报的入口监听状态不再可信
+        crate::global::manager::GLOBAL_MANAGER
+            .proxy_manager
+            .clear_player_inlet_status(self.player_id);
         self.session_id = 0;
         self.tx.take();
         self.addr.clear();
@@ -463,6 +467,9 @@ impl Player {
     ) {
         trace!("on_connect_session, player_id: {}", self.player_id);
         assert!(!self.is_online());
+        crate::global::manager::GLOBAL_MANAGER
+            .proxy_manager
+            .clear_player_inlet_status(self.player_id);
         self.session_id = session_id;
         self.tx = Some(tx);
         self.addr = addr.to_string();

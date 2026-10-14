@@ -62,12 +62,12 @@
         </el-table-column>
         <el-table-column :label="$t('maintenance.oldest')" min-width="170">
           <template #default="{ row }">
-            <span>{{ row.oldest || '-' }}</span>
+            <span>{{ formatDateTime(row.oldest) }}</span>
           </template>
         </el-table-column>
         <el-table-column :label="$t('maintenance.newest')" min-width="170">
           <template #default="{ row }">
-            <span>{{ row.newest || '-' }}</span>
+            <span>{{ formatDateTime(row.newest) }}</span>
           </template>
         </el-table-column>
       </el-table>
@@ -95,6 +95,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatDateTime } from '@/utils/time'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Delete, Refresh } from '@element-plus/icons-vue'

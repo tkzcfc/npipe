@@ -376,6 +376,14 @@ export default {
       waiting: '等待上线',
       disabled: '未启用',
     },
+    listen: {
+      listening: '监听中',
+      failed: '监听失败',
+      offline: '入口离线',
+      disabled: '未启用',
+      unknown: '未知',
+      unknownTip: '入口端未上报监听状态（可能是旧版客户端）',
+    },
     table: {
       id: 'ID',
       source: '监听地址',
@@ -384,6 +392,7 @@ export default {
       sender: '出口ID',
       receiver: '入口ID',
       runtime: '运行状态',
+      listen: '监听状态',
       encryption: '加密',
       compression: '压缩',
       status: '状态',

@@ -98,7 +98,7 @@ pub(super) async fn operation_logs(
             target_id: item.target_id,
             target_name: item.target_name.clone(),
             detail: item.detail.clone(),
-            created_at: item.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+            created_at: item.created_at.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
         })
         .collect();
 

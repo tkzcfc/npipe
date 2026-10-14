@@ -3,9 +3,7 @@ use crate::global::GLOBAL_DB_POOL;
 use crate::orm_entity::prelude::Tunnel;
 use crate::orm_entity::tunnel;
 use crate::player::PlayerId;
-use crate::utils::str::{
-    get_tunnel_address_port, is_valid_tunnel_endpoint_address, is_valid_tunnel_source_address,
-};
+use crate::utils::str::{is_valid_tunnel_endpoint_address, is_valid_tunnel_source_address};
 use anyhow::anyhow;
 use np_base::proxy::inlet::InletProxyType;
 use np_proto::message_map::MessageType;
@@ -13,6 +11,7 @@ use np_proto::{class_def, server_client};
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ActiveModelTrait, EntityTrait};
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use tokio::sync::RwLock;
 
 pub struct TunnelManager {
@@ -89,6 +88,7 @@ impl TunnelManager {
         }; // ← 读锁 drop
         if let Some(index) = position {
             let tunnel = self.tunnels.write().await.remove(index);
+            GLOBAL_MANAGER.proxy_manager.clear_inlet_status(tunnel_id);
             Self::broadcast_tunnel_info(tunnel.sender, &tunnel, true).await;
             if tunnel.sender != tunnel.receiver {
                 Self::broadcast_tunnel_info(tunnel.receiver, &tunnel, true).await;
@@ -145,6 +145,9 @@ impl TunnelManager {
             db_tunnel.encryption_method = Set(tunnel.encryption_method.to_owned());
             db_tunnel.update(GLOBAL_DB_POOL.get().unwrap()).await?;
 
+            // 配置已变化，旧的监听状态作废，等待新的上报
+            GLOBAL_MANAGER.proxy_manager.clear_inlet_status(tunnel.id);
+
             if old_sender != tunnel.sender {
                 Self::broadcast_tunnel_info(old_sender, &tunnel, true).await;
             }
@@ -182,7 +185,15 @@ impl TunnelManager {
                 .await?;
             anyhow::ensure!(db_tunnel.is_some(), "Can't find tunnel: {}", tunnel_id);
 
+            // 从禁用改为启用时，需要和其它已启用通道做冲突检测（含服务端真实端口探测）
+            if enabled == 1 && tunnel.enabled != 1 {
+                let mut check = tunnel.clone();
+                check.enabled = 1;
+                self.listen_conflict_detection(&check).await?;
+            }
+
             tunnel.enabled = enabled;
+            GLOBAL_MANAGER.proxy_manager.clear_inlet_status(tunnel_id);
 
             let mut db_tunnel: tunnel::ActiveModel = db_tunnel.unwrap().into();
             db_tunnel.enabled = Set(enabled);
@@ -239,17 +250,45 @@ impl TunnelManager {
         self.player_id_detection(tunnel.sender).await?;
         self.player_id_detection(tunnel.receiver).await?;
 
-        // 端口冲突检测
-        if self
-            .port_conflict_detection(
-                tunnel.receiver,
-                get_tunnel_address_port(&tunnel.source),
-                Some(tunnel.id),
-                matches!(proxy_type, InletProxyType::UDP),
-            )
+        // 监听地址冲突检测（仅对启用状态的通道）
+        self.listen_conflict_detection(tunnel).await
+    }
+
+    /// 启用状态的通道：检测与其它已启用通道的监听冲突；receiver 为服务端时再做真实 bind 探测
+    async fn listen_conflict_detection(&self, tunnel: &tunnel::Model) -> anyhow::Result<()> {
+        if tunnel.enabled != 1 {
+            return Ok(());
+        }
+        let is_udp = is_udp_tunnel_type(tunnel.tunnel_type);
+        // add 时 id 为 0，不会与任何已有通道相同
+        let self_id = if tunnel.id == 0 { None } else { Some(tunnel.id) };
+        if let Some(other) = self
+            .port_conflict_detection(tunnel.receiver, &tunnel.source, self_id, is_udp)
             .await
         {
-            return Err(anyhow!("port already in use"));
+            return Err(anyhow!(
+                "listen address {} conflicts with enabled tunnel #{} ({})",
+                tunnel.source,
+                other.id,
+                other.source
+            ));
+        }
+
+        if tunnel.receiver == 0 {
+            // 若该地址正被本通道自己正在运行的入口占用，则跳过探测
+            let own_running = {
+                let guard = self.tunnels.read().await;
+                guard.iter().any(|t| {
+                    t.id == tunnel.id
+                        && t.enabled == 1
+                        && t.receiver == 0
+                        && t.source == tunnel.source
+                        && is_udp_tunnel_type(t.tunnel_type) == is_udp
+                })
+            } && GLOBAL_MANAGER.proxy_manager.has_running_inlet(tunnel.id);
+            if !own_running {
+                probe_bind(&tunnel.source, is_udp)?;
+            }
         }
         Ok(())
     }
@@ -263,32 +302,39 @@ impl TunnelManager {
         }
     }
 
-    /// 检测端口是否冲突
+    /// 检测监听地址是否与其它【已启用】通道冲突，返回冲突的通道
     async fn port_conflict_detection(
         &self,
         receiver: u32,
-        port: Option<u16>,
+        source: &str,
         tunnel_id: Option<u32>,
         is_udp: bool,
-    ) -> bool {
-        self.tunnels.read().await.iter().any(|x| {
-            x.receiver == receiver
-                && tunnel_id != Some(x.id)
-                && is_udp == matches!(InletProxyType::from_u32(x.tunnel_type), InletProxyType::UDP)
-                && get_tunnel_address_port(&x.source) == port
-        })
+    ) -> Option<tunnel::Model> {
+        self.tunnels
+            .read()
+            .await
+            .iter()
+            .find(|x| {
+                x.enabled == 1
+                    && x.receiver == receiver
+                    && tunnel_id != Some(x.id)
+                    && is_udp == is_udp_tunnel_type(x.tunnel_type)
+                    && listen_addr_conflict(&x.source, source)
+            })
+            .cloned()
     }
 
-    /// 检测端口是否和现有通道冲突
+    /// 检测监听地址是否和现有已启用通道冲突
     pub async fn has_port_conflict(
         &self,
         receiver: u32,
-        port: Option<u16>,
+        source: &str,
         tunnel_id: Option<u32>,
         is_udp: bool,
     ) -> bool {
-        self.port_conflict_detection(receiver, port, tunnel_id, is_udp)
+        self.port_conflict_detection(receiver, source, tunnel_id, is_udp)
             .await
+            .is_some()
     }
 
     /// 查询通道，同时返回总条数
@@ -367,4 +413,40 @@ impl From<&tunnel::Model> for class_def::Tunnel {
             custom_mapping,
         }
     }
+}
+
+/// 1 = UDP；TCP / SOCKS5 / HTTP 都监听 TCP
+pub fn is_udp_tunnel_type(tunnel_type: u32) -> bool {
+    matches!(InletProxyType::from_u32(tunnel_type), InletProxyType::UDP)
+}
+
+/// 两个监听地址是否冲突：端口相同，且 IP 相同或任一方为通配地址（0.0.0.0 / ::）
+pub fn listen_addr_conflict(a: &str, b: &str) -> bool {
+    match (a.parse::<SocketAddr>(), b.parse::<SocketAddr>()) {
+        (Ok(x), Ok(y)) => {
+            x.port() == y.port()
+                && (x.ip() == y.ip() || x.ip().is_unspecified() || y.ip().is_unspecified())
+        }
+        _ => a.trim() == b.trim(),
+    }
+}
+
+/// 在服务端真实尝试 bind 监听地址后立即释放，用于发现被其它进程占用的端口
+pub fn probe_bind(addr: &str, is_udp: bool) -> anyhow::Result<()> {
+    let sock_addr: SocketAddr = addr
+        .parse()
+        .map_err(|_| anyhow!("source address format error"))?;
+    let result = if is_udp {
+        std::net::UdpSocket::bind(sock_addr).map(drop)
+    } else {
+        std::net::TcpListener::bind(sock_addr).map(drop)
+    };
+    result.map_err(|err| {
+        anyhow!(
+            "listen address {} ({}) is not available on server: {}",
+            addr,
+            if is_udp { "udp" } else { "tcp" },
+            err
+        )
+    })
 }

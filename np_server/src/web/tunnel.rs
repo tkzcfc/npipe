@@ -8,7 +8,7 @@ use crate::orm_entity::prelude::User;
 use crate::orm_entity::tunnel;
 use crate::orm_entity::user;
 use crate::utils::str::{
-    get_tunnel_address_port, is_valid_tunnel_endpoint_address, is_valid_tunnel_source_address,
+    is_valid_tunnel_endpoint_address, is_valid_tunnel_source_address,
 };
 use actix_identity::Identity;
 use actix_web::{HttpResponse, Responder};
@@ -90,6 +90,7 @@ pub(super) async fn tunnel_list(
         let sender_online = player_online(data.sender).await;
         let receiver_online = player_online(data.receiver).await;
         let available = data.enabled == 1 && sender_online && receiver_online;
+        let (listen_status, listen_error) = listen_status_of(&data, receiver_online);
         let sender_name = user_name_map.get(&data.sender).cloned().unwrap_or_default();
         let receiver_name = user_name_map
             .get(&data.receiver)
@@ -114,6 +115,8 @@ pub(super) async fn tunnel_list(
             sender_online,
             receiver_online,
             available,
+            listen_status: listen_status.to_owned(),
+            listen_error,
         })
     }
 
@@ -292,10 +295,7 @@ pub(super) async fn add_tunnel(
                 &build_tunnel_snapshot(&new_tunnel),
             )
             .await;
-            Ok(HttpResponse::Ok().json(proto::GeneralResponse {
-                code: 0,
-                msg: "Success".into(),
-            }))
+            Ok(HttpResponse::Ok().json(mutate_success(Some(tunnel_id)).await))
         }
         Err(err) => Ok(HttpResponse::Ok().json(proto::GeneralResponse {
             code: -1,
@@ -472,10 +472,7 @@ pub(super) async fn update_tunnel(
                 &detail,
             )
             .await;
-            Ok(HttpResponse::Ok().json(proto::GeneralResponse {
-                code: 0,
-                msg: "Success".into(),
-            }))
+            Ok(HttpResponse::Ok().json(mutate_success(Some(req.id)).await))
         }
         Err(err) => Ok(HttpResponse::Ok().json(proto::GeneralResponse {
             code: -1,
@@ -529,10 +526,7 @@ pub(super) async fn update_tunnel_status(
             &detail,
         )
         .await;
-        Ok(HttpResponse::Ok().json(proto::GeneralResponse {
-            code: 0,
-            msg: "Success".into(),
-        }))
+        Ok(HttpResponse::Ok().json(mutate_success(if req.enabled == 1 { Some(req.id) } else { None }).await))
     }
 }
 
@@ -604,9 +598,9 @@ pub(super) async fn tunnel_diagnose(
         .tunnel_manager
         .has_port_conflict(
             req.receiver,
-            get_tunnel_address_port(&req.source),
+            &req.source,
             req.id,
-            req.tunnel_type == 1,
+            crate::global::manager::tunnel::is_udp_tunnel_type(req.tunnel_type),
         )
         .await;
     push_diagnose(
@@ -654,4 +648,63 @@ fn push_runtime_diagnose(
         level: level.to_owned(),
         message: message.to_owned(),
     });
+}
+
+/// 计算通道监听状态：disabled / offline / listening / failed / unknown（旧客户端不上报）
+fn listen_status_of(t: &tunnel::Model, receiver_online: bool) -> (&'static str, String) {
+    if t.enabled != 1 {
+        return ("disabled", String::new());
+    }
+    if t.receiver != 0 && !receiver_online {
+        return ("offline", String::new());
+    }
+    match GLOBAL_MANAGER.proxy_manager.get_inlet_status(t.id) {
+        Some(status) if status.ok => ("listening", String::new()),
+        Some(status) => ("failed", status.error),
+        None => ("unknown", String::new()),
+    }
+}
+
+/// 新增/修改/启用成功后，短暂等待监听结果（服务端入口立即可得，客户端入口最多等 2 秒）。
+/// 监听失败时返回 code = 2（配置已保存，但监听失败），msg 为原因。
+async fn mutate_success(tunnel_id: Option<u32>) -> proto::GeneralResponse {
+    if let Some(tunnel_id) = tunnel_id {
+        if let Some(err) = wait_listen_result(tunnel_id).await {
+            return proto::GeneralResponse {
+                code: 2,
+                msg: format!("saved, but listen failed: {err}"),
+            };
+        }
+    }
+    proto::GeneralResponse {
+        code: 0,
+        msg: "Success".into(),
+    }
+}
+
+async fn wait_listen_result(tunnel_id: u32) -> Option<String> {
+    let tunnel = GLOBAL_MANAGER
+        .tunnel_manager
+        .tunnels
+        .read()
+        .await
+        .iter()
+        .find(|t| t.id == tunnel_id)
+        .cloned()?;
+    if tunnel.enabled != 1 {
+        return None;
+    }
+    if tunnel.receiver != 0 && !player_online(tunnel.receiver).await {
+        return None;
+    }
+    for _ in 0..20 {
+        if let Some(status) = GLOBAL_MANAGER.proxy_manager.get_inlet_status(tunnel_id) {
+            return if status.ok { None } else { Some(status.error) };
+        }
+        if tunnel.receiver == 0 {
+            return None;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    None
 }

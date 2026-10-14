@@ -186,6 +186,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatDateTime } from '@/utils/time'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -366,9 +367,7 @@ function playerDetails(player: Player) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function formatTime(ts: number): string {
-  const d = new Date(ts * 1000)
-  const pad = (n: number) => n.toString().padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  return formatDateTime(ts)
 }
 
 function formatBytes(n: number): string {

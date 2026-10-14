@@ -85,6 +85,14 @@
           </template>
         </el-table-column>
 
+        <el-table-column :label="$t('tunnel.table.listen')" min-width="130">
+          <template #default="{ row }">
+            <el-tooltip :content="listenTip(row)" :disabled="!listenTip(row)" placement="top">
+              <el-tag :type="listenTagType(row)" size="small">{{ listenLabel(row) }}</el-tag>
+            </el-tooltip>
+          </template>
+        </el-table-column>
+
         <el-table-column :label="$t('tunnel.table.runtime')" width="120">
           <template #default="{ row }">
             <el-tooltip
@@ -334,6 +342,25 @@ function runtimeLabel(tunnel: Tunnel): string {
   if (!tunnel.enabled) return t('tunnel.runtime.disabled')
   if (tunnel.available) return t('tunnel.runtime.available')
   return t('tunnel.runtime.waiting')
+}
+
+function listenTagType(tunnel: Tunnel): TagType {
+  switch (tunnel.listen_status) {
+    case 'listening': return 'success'
+    case 'failed': return 'danger'
+    case 'offline': return 'warning'
+    default: return 'info'
+  }
+}
+
+function listenLabel(tunnel: Tunnel): string {
+  return t(`tunnel.listen.${tunnel.listen_status || 'unknown'}`)
+}
+
+function listenTip(tunnel: Tunnel): string {
+  if (tunnel.listen_status === 'failed') return tunnel.listen_error || ''
+  if (tunnel.listen_status === 'unknown') return t('tunnel.listen.unknownTip')
+  return ''
 }
 
 function endpointStatus(id: number, online: boolean): string {
@@ -588,6 +615,11 @@ async function handleSubmit() {
       ElMessage.success(formDialog.isEdit ? t('tunnel.saveSuccess') : t('tunnel.addSuccess'))
       formDialog.visible = false
       loadData(pagination.currentPage)
+    } else if (res.data.code === 2) {
+      // 已保存，但监听失败
+      ElMessage({ type: 'warning', message: res.data.msg, duration: 8000, showClose: true })
+      formDialog.visible = false
+      loadData(pagination.currentPage)
     } else {
       formDialog.error = res.data.msg || t('tunnel.submitFailed')
       ElMessage.error(formDialog.error)
@@ -661,8 +693,11 @@ async function handleToggle(tunnel: Tunnel) {
     if (res.data.code === 0) {
       ElMessage.success(t('tunnel.toggleSuccess'))
       loadData(pagination.currentPage)
+    } else if (res.data.code === 2) {
+      ElMessage({ type: 'warning', message: res.data.msg, duration: 8000, showClose: true })
+      loadData(pagination.currentPage)
     } else {
-      ElMessage.error(res.data.msg || t('common.failed'))
+      ElMessage({ type: 'error', message: res.data.msg || t('common.failed'), duration: 8000, showClose: true })
     }
   } finally {
     const s2 = new Set(toggling.value)

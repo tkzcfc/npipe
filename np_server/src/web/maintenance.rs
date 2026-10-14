@@ -9,6 +9,15 @@ use actix_web::{error, HttpResponse, Responder};
 use chrono::{Duration as ChronoDuration, Utc};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
+/// traffic_hourly.hour 存储格式为 "YYYY-MM-DD HH"（UTC），对外统一返回 RFC3339 UTC
+fn hour_bucket_to_rfc3339(hour: &str) -> String {
+    if hour.len() == 13 {
+        format!("{}T{}:00:00Z", &hour[..10], &hour[11..13])
+    } else {
+        hour.to_owned()
+    }
+}
+
 pub(super) async fn database_maintenance_info(
     identity: Option<Identity>,
     body: String,
@@ -44,14 +53,14 @@ pub(super) async fn database_maintenance_info(
         .one(db)
         .await
         .map_err(|err| error::ErrorInternalServerError(format!("sql error:{}", err)))?
-        .map(|item| item.login_time.format("%Y-%m-%d %H:%M:%S").to_string())
+        .map(|item| item.login_time.format("%Y-%m-%dT%H:%M:%SZ").to_string())
         .unwrap_or_default();
     let login_history_newest = login_history::Entity::find()
         .order_by_desc(login_history::Column::LoginTime)
         .one(db)
         .await
         .map_err(|err| error::ErrorInternalServerError(format!("sql error:{}", err)))?
-        .map(|item| item.login_time.format("%Y-%m-%d %H:%M:%S").to_string())
+        .map(|item| item.login_time.format("%Y-%m-%dT%H:%M:%SZ").to_string())
         .unwrap_or_default();
 
     let operation_log_total = operation_log::Entity::find()
@@ -68,14 +77,14 @@ pub(super) async fn database_maintenance_info(
         .one(db)
         .await
         .map_err(|err| error::ErrorInternalServerError(format!("sql error:{}", err)))?
-        .map(|item| item.created_at.format("%Y-%m-%d %H:%M:%S").to_string())
+        .map(|item| item.created_at.format("%Y-%m-%dT%H:%M:%SZ").to_string())
         .unwrap_or_default();
     let operation_log_newest = operation_log::Entity::find()
         .order_by_desc(operation_log::Column::CreatedAt)
         .one(db)
         .await
         .map_err(|err| error::ErrorInternalServerError(format!("sql error:{}", err)))?
-        .map(|item| item.created_at.format("%Y-%m-%d %H:%M:%S").to_string())
+        .map(|item| item.created_at.format("%Y-%m-%dT%H:%M:%SZ").to_string())
         .unwrap_or_default();
 
     let traffic_hourly_total = traffic_hourly::Entity::find()
@@ -92,14 +101,14 @@ pub(super) async fn database_maintenance_info(
         .one(db)
         .await
         .map_err(|err| error::ErrorInternalServerError(format!("sql error:{}", err)))?
-        .map(|item| item.hour)
+        .map(|item| hour_bucket_to_rfc3339(&item.hour))
         .unwrap_or_default();
     let traffic_hourly_newest = traffic_hourly::Entity::find()
         .order_by_desc(traffic_hourly::Column::Hour)
         .one(db)
         .await
         .map_err(|err| error::ErrorInternalServerError(format!("sql error:{}", err)))?
-        .map(|item| item.hour)
+        .map(|item| hour_bucket_to_rfc3339(&item.hour))
         .unwrap_or_default();
 
     Ok(

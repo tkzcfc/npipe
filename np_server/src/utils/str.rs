@@ -63,11 +63,8 @@ pub fn is_valid_tunnel_endpoint_address(addr: &str) -> bool {
 }
 
 /// 获取隧道端口
+#[allow(dead_code)]
 pub fn get_tunnel_address_port(addr: &str) -> Option<u16> {
-    let s: Vec<&str> = addr.split(":").collect();
-    if s.len() == 2 {
-        s[1].parse::<u16>().ok()
-    } else {
-        None
-    }
+    // 使用 SocketAddr 解析，兼容 IPv6（如 "[::]:10000"）
+    addr.parse::<SocketAddr>().ok().map(|x| x.port())
 }

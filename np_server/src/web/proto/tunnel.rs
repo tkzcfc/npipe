@@ -29,6 +29,10 @@ pub struct TunnelListItem {
     pub sender_online: bool,
     pub receiver_online: bool,
     pub available: bool,
+    /// 监听状态：disabled / offline / listening / failed / unknown
+    pub listen_status: String,
+    /// 监听失败原因
+    pub listen_error: String,
 }
 
 /// 通道详情请求

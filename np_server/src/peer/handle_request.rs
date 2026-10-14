@@ -167,6 +167,7 @@ impl Peer {
                 transport_token,
                 transport_max_connections,
                 transport_idle_timeout_secs,
+                support_inlet_status: true,
             }));
         }
 

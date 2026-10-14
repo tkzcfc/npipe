@@ -376,6 +376,14 @@ export default {
       waiting: 'Waiting',
       disabled: 'Disabled',
     },
+    listen: {
+      listening: 'Listening',
+      failed: 'Listen failed',
+      offline: 'Inlet offline',
+      disabled: 'Disabled',
+      unknown: 'Unknown',
+      unknownTip: 'The inlet side has not reported its listen status (possibly an old client)',
+    },
     table: {
       id: 'ID',
       source: 'Listen Address',
@@ -384,6 +392,7 @@ export default {
       sender: 'Outlet ID',
       receiver: 'Inlet ID',
       runtime: 'Runtime',
+      listen: 'Listen',
       encryption: 'Encryption',
       compression: 'Compression',
       status: 'Status',

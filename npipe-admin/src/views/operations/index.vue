@@ -11,7 +11,9 @@
     <section class="panel">
       <el-table v-loading="loading" :data="items" row-key="id" style="width:100%;">
         <el-table-column prop="id" label="ID" width="90" />
-        <el-table-column prop="created_at" :label="$t('operationLog.time')" min-width="170" />
+        <el-table-column :label="$t('operationLog.time')" min-width="170">
+          <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+        </el-table-column>
         <el-table-column prop="actor" :label="$t('operationLog.actor')" width="100" />
         <el-table-column :label="$t('operationLog.action')" min-width="170">
           <template #default="{ row }">
@@ -48,6 +50,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatDateTime } from '@/utils/time'
 import { onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Refresh } from '@element-plus/icons-vue'

@@ -552,7 +552,7 @@ pub(super) async fn player_detail(
             username: user.username,
             enabled: user.enabled == 1,
             web_access: user.web_access == 1,
-            create_time: user.create_time.format("%Y-%m-%d %H:%M:%S").to_string(),
+            create_time: user.create_time.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
             online,
             ip_addr,
             connection_protocol,

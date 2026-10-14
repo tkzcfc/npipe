@@ -78,9 +78,9 @@
               <span v-else>-</span>
             </el-descriptions-item>
             <el-descriptions-item :label="$t('player.table.onlineTime')">
-              {{ player.online ? formatDuration(player.online_time) : '-' }}
+              {{ player.online && player.online_time ? formatDateTime(player.online_time) : '-' }}
             </el-descriptions-item>
-            <el-descriptions-item :label="$t('player.createTime')">{{ player.create_time }}</el-descriptions-item>
+            <el-descriptions-item :label="$t('player.createTime')">{{ formatDateTime(player.create_time) }}</el-descriptions-item>
             <el-descriptions-item :label="$t('player.totalTransferTraffic')">
               ↓ {{ formatBytes(player.total_bytes_in) }} / ↑ {{ formatBytes(player.total_bytes_out) }}
             </el-descriptions-item>
@@ -136,7 +136,9 @@
           </div>
           <el-table :data="player.recent_logins" size="small" empty-text="-">
             <el-table-column prop="ip_addr" :label="$t('player.table.ip')" min-width="160" />
-            <el-table-column prop="login_time" :label="$t('loginLog.loginTime')" min-width="180" />
+            <el-table-column :label="$t('loginLog.loginTime')" min-width="180">
+              <template #default="{ row }">{{ formatDateTime(row.login_time) }}</template>
+            </el-table-column>
             <el-table-column :label="$t('loginLog.duration')" width="130">
               <template #default="{ row }">{{ row.logout_time ? formatDuration(row.duration_secs) : $t('loginLog.online') }}</template>
             </el-table-column>
@@ -227,6 +229,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatDateTime } from '@/utils/time'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'

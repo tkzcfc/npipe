@@ -46,3 +46,16 @@ message BindTransportReq {
   // 连接类型：1 = 转发连接
   uint32 connection_type = 3;
 }
+
+// 客户端入口（监听）状态上报，无需回复
+message InletStatusNtf {
+  enum MsgId {None = 0; Id = 1015;}
+  // 隧道 ID
+  uint32 tunnel_id = 1;
+  // 是否正在监听
+  bool ok = 2;
+  // 失败原因（ok=true 时为空）
+  string error = 3;
+  // 实际监听地址
+  string listen_addr = 4;
+}

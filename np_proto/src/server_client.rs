@@ -20,6 +20,9 @@ pub struct LoginAck {
     /// 转发连接空闲关闭时间（秒）
     #[prost(uint32, tag = "5")]
     pub transport_idle_timeout_secs: u32,
+    /// 服务端是否支持接收 Client_Server.InletStatusNtf（旧服务端为 false，客户端不得发送）
+    #[prost(bool, tag = "6")]
+    pub support_inlet_status: bool,
 }
 /// 管理员登录回复
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize, serde::Deserialize))]

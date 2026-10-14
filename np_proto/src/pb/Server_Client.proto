@@ -17,6 +17,8 @@ message LoginAck {
   uint32 transport_max_connections = 4;
   // 转发连接空闲关闭时间（秒）
   uint32 transport_idle_timeout_secs = 5;
+  // 服务端是否支持接收 Client_Server.InletStatusNtf（旧服务端为 false，客户端不得发送）
+  bool support_inlet_status = 6;
 }
 
 // 管理员登录回复

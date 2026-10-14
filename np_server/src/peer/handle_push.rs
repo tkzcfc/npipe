@@ -12,6 +12,42 @@ impl Peer {
         // 在 message 被 move 之前计算代理流量大小
         let proxy_bytes = get_message_size(&message) as u64 + 13;
 
+        // 客户端入口监听状态上报
+        if let MessageType::ClientServerInletStatusNtf(ntf) = &message {
+            let Some(player) = &self.player else {
+                return Ok(());
+            };
+            let my_player_id = player.read().await.get_player_id();
+            let is_receiver = GLOBAL_MANAGER
+                .tunnel_manager
+                .tunnels
+                .read()
+                .await
+                .iter()
+                .any(|t| t.id == ntf.tunnel_id && t.receiver == my_player_id);
+            if is_receiver {
+                if !ntf.ok {
+                    warn!(
+                        "client inlet listen failed: player={my_player_id}, tunnel={}, addr={}, error={}",
+                        ntf.tunnel_id, ntf.listen_addr, ntf.error
+                    );
+                }
+                GLOBAL_MANAGER.proxy_manager.set_inlet_status(
+                    ntf.tunnel_id,
+                    my_player_id,
+                    ntf.ok,
+                    ntf.error.clone(),
+                    ntf.listen_addr.clone(),
+                );
+            } else {
+                warn!(
+                    "reject inlet status report: player={my_player_id}, tunnel={}",
+                    ntf.tunnel_id
+                );
+            }
+            return Ok(());
+        }
+
         let proxy_session_id = message_bridge::pb_proxy_session_id(&message);
         let proxy_is_disconnect = message_bridge::pb_proxy_is_disconnect(&message);
 

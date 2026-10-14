@@ -384,6 +384,7 @@ where
         outlets: Arc::new(DashMap::new()),
         inlets: Arc::new(DashMap::new()),
         tunnels: HashMap::new(),
+        support_inlet_status: false,
     };
 
     session
