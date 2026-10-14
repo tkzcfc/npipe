@@ -64,14 +64,24 @@ impl ProxyManager {
             // 需要添加的出口（克隆所需字段，避免锁跨 await）
             let outlets_to_add: Vec<_> = tunnels
                 .iter()
-                .filter(|t| t.enabled == 1 && t.sender == 0 && !self.outlets.contains_key(&t.id))
+                .filter(|t| {
+                    t.enabled == 1
+                        && t.sender == 0
+                        // 描述变化被删除的出口也要重建（removes 是在删除前计算的）
+                        && (!self.outlets.contains_key(&t.id) || outlet_removes.contains(&t.id))
+                })
                 .map(|t| (t.id, t.receiver, t.sender, t.outlet_description()))
                 .collect();
 
             // 需要添加的入口（克隆所需字段）
             let inlets_to_add: Vec<_> = tunnels
                 .iter()
-                .filter(|t| t.enabled == 1 && t.receiver == 0 && !self.inlets.contains_key(&t.id))
+                .filter(|t| {
+                    t.enabled == 1
+                        && t.receiver == 0
+                        // 描述变化被删除的入口也要重建（removes 是在删除前计算的）
+                        && (!self.inlets.contains_key(&t.id) || inlet_removes.contains(&t.id))
+                })
                 .map(|t| {
                     (
                         t.id,

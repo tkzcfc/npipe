@@ -148,7 +148,7 @@ impl TunnelManager {
             if old_sender != tunnel.sender {
                 Self::broadcast_tunnel_info(old_sender, &tunnel, true).await;
             }
-            if old_receiver != tunnel.sender {
+            if old_receiver != tunnel.receiver && old_receiver != old_sender {
                 Self::broadcast_tunnel_info(old_receiver, &tunnel, true).await;
             }
             Self::broadcast_tunnel_info(tunnel.sender, &tunnel, false).await;
