@@ -9,6 +9,22 @@ mod transport;
 use crate::CommonArgs;
 use anyhow::anyhow;
 pub use connect::run;
+
+/// 服务端明确拒绝登录（账号错误、用户禁用、业务错误如缺表）。
+///
+/// 调用方应拉长重试间隔后继续连接，用户稍后添加或网络恢复时可以连上。
+#[derive(Debug)]
+pub struct LoginRejected {
+    message: String,
+}
+
+impl std::fmt::Display for LoginRejected {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for LoginRejected {}
 use http::Uri;
 use std::time::{SystemTime, UNIX_EPOCH};
 

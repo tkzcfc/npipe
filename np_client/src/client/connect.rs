@@ -298,7 +298,7 @@ async fn run_quic_client(
 ) -> anyhow::Result<()> {
     config.alpn_protocols = vec![b"h3".to_vec()];
 
-    let client = QUICClient::builder()
+    let mut client = QUICClient::builder()
         .with_io("0.0.0.0:0")?
         .with_tls(s2n_quic_rustls::Client::from(config))?
         .with_congestion_controller(s2n_quic_core::recovery::bbr::Endpoint::default())?
@@ -341,7 +341,15 @@ async fn run_quic_client(
         })
     });
 
-    run_client(common_args, connector).await
+    let result = run_client(common_args, connector).await;
+
+    // 会话结束（含登录失败重试）后必须显式关闭连接并等待 endpoint 排空，
+    // 否则 keep_alive 连接 / Client endpoint 后台任务会在每次重连时累积，导致内存持续增长。
+    let _ = connection.keep_alive(false);
+    connection.close(0u32.into());
+    let _ = tokio::time::timeout(Duration::from_secs(5), client.wait_idle()).await;
+
+    result
 }
 
 // ─── 通用客户端启动 ──────────────────────────────────────────────────────────
@@ -365,7 +373,7 @@ where
     let last_active_secs = Arc::new(AtomicU64::new(now_secs()));
     let last_read_secs = Arc::new(AtomicU64::new(now_secs()));
 
-    let transport = ClientTransport::new(
+    let (transport, cleanup_task) = ClientTransport::new(
         writer,
         connector,
         event_tx.clone(),
@@ -388,6 +396,13 @@ where
     };
 
     session
-        .run(reader, event_tx, event_rx, last_active_secs, last_read_secs)
+        .run(
+            reader,
+            event_tx,
+            event_rx,
+            last_active_secs,
+            last_read_secs,
+            cleanup_task,
+        )
         .await
 }

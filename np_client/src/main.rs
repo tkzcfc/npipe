@@ -193,7 +193,14 @@ async fn run_with_args(common_args: CommonArgs) -> anyhow::Result<()> {
             info!("Starting client with server URI: {}", uri);
             if let Err(err) = client::run(&common_args, uri).await {
                 error!("Client run error: {}", err);
-                sleep(Duration::from_secs(5)).await;
+                // 服务端明确拒绝（账号不存在、未建表、用户禁用）时拉长间隔，避免空转打满连接。
+                // 网络失败和超时仍按 5 秒重试。
+                let delay = if err.downcast_ref::<client::LoginRejected>().is_some() {
+                    Duration::from_secs(60)
+                } else {
+                    Duration::from_secs(5)
+                };
+                sleep(delay).await;
             } else {
                 info!("Client exited normally, restarting...");
                 sleep(Duration::from_secs(1)).await;

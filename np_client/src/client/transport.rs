@@ -15,10 +15,11 @@ use np_proto::utils::transport::TRANSPORT_CONNECTION_TYPE_FORWARD;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
+use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, WriteHalf};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, watch, Mutex};
 use tokio::time::sleep;
 
 use super::io::{package_and_send_message, read_transport_events};
@@ -73,6 +74,21 @@ where
     pub last_used_secs: AtomicU64,
     /// 最后一次收到数据的时间（Unix 秒），用于 ping/pong 检活。
     pub last_recv_secs: AtomicU64,
+    /// 该路径的读取任务。移除路径时 abort，避免任务继续占着读半边。
+    read_task: StdMutex<Option<tokio::task::JoinHandle<anyhow::Result<()>>>>,
+}
+
+impl<S> Drop for PooledForwardPath<S>
+where
+    S: AsyncRead + AsyncWrite + Send + 'static,
+{
+    fn drop(&mut self) {
+        if let Ok(mut guard) = self.read_task.lock() {
+            if let Some(task) = guard.take() {
+                task.abort();
+            }
+        }
+    }
 }
 
 impl<S> PooledForwardPath<S>
@@ -137,6 +153,8 @@ where
     pub session_paths: DashMap<u32, Arc<PooledForwardPath<S>>>,
     /// 连接 ID → 转发路径的索引表。
     pub forward_paths: DashMap<u64, Arc<PooledForwardPath<S>>>,
+    /// 通知空闲清理任务立即退出，避免会话结束后再占住传输状态。
+    shutdown_tx: watch::Sender<bool>,
 }
 
 impl<S> PooledTransportState<S>
@@ -274,31 +292,54 @@ where
     }
 
     /// 移除指定转发路径（路径关闭或出错时调用）。
-    pub async fn remove_forward_path(&self, connection_id: u64) {
+    pub async fn remove_forward_path(&self, connection_id: u64, reason: &str) {
         self.session_paths
             .retain(|_, path| path.connection_id != connection_id);
         if let Some((_, path)) = self.forward_paths.remove(&connection_id) {
             info!(
-                "forward path removed: connection_id={}, remaining={}",
+                "forward path removed ({reason}): connection_id={}, remaining={}",
                 connection_id,
                 self.forward_paths.len()
             );
-            let _ = path.writer.lock().await.shutdown().await;
+            stop_forward_path(path).await;
         }
     }
 
+    /// 关闭全部转发路径和控制连接写半边。
+    pub async fn shutdown(&self) {
+        let ids: Vec<u64> = self.forward_paths.iter().map(|entry| *entry.key()).collect();
+        for connection_id in ids {
+            self.remove_forward_path(connection_id, "shutdown").await;
+        }
+        let _ = self.control_writer.lock().await.shutdown().await;
+    }
+
     /// 启动后台任务，定期清理空闲转发路径。
-    pub fn start_idle_cleanup(state: Arc<Self>) {
+    ///
+    /// `shutdown` 被置位，或本任务成为 state 的唯一持有者时退出。
+    pub fn start_idle_cleanup(state: Arc<Self>) -> tokio::task::JoinHandle<()> {
+        let mut shutdown_rx = state.shutdown_tx.subscribe();
         tokio::spawn(async move {
             loop {
-                sleep(Duration::from_secs(5)).await;
-                if Arc::strong_count(&state) <= 1 {
+                tokio::select! {
+                    _ = sleep(Duration::from_secs(5)) => {}
+                    result = shutdown_rx.changed() => {
+                        if result.is_err() || *shutdown_rx.borrow() {
+                            break;
+                        }
+                        continue;
+                    }
+                }
+                if *shutdown_rx.borrow() || Arc::strong_count(&state) <= 1 {
                     break;
                 }
                 state.ping_idle_forward_paths().await;
+                if *shutdown_rx.borrow() {
+                    break;
+                }
                 state.close_idle_forward_paths().await;
             }
-        });
+        })
     }
 
     // ─── 私有方法 ──────────────────────────────────────────────────────────────
@@ -388,7 +429,20 @@ where
             inflight_bytes: AtomicUsize::new(0),
             last_used_secs: AtomicU64::new(now_secs()),
             last_recv_secs: AtomicU64::new(now_secs()),
+            read_task: StdMutex::new(None),
         });
+
+        let read_task = tokio::spawn(read_transport_events(
+            reader,
+            Some(connection_id),
+            self.event_tx.clone(),
+            self.last_active_secs.clone(),
+            self.last_read_secs.clone(),
+        ));
+        *path
+            .read_task
+            .lock()
+            .unwrap_or_else(|err| err.into_inner()) = Some(read_task);
 
         self.forward_paths.insert(connection_id, path.clone());
         debug!(
@@ -396,15 +450,6 @@ where
             connection_id,
             self.forward_paths.len()
         );
-
-        // 为该路径启动读取任务
-        tokio::spawn(read_transport_events(
-            reader,
-            Some(connection_id),
-            self.event_tx.clone(),
-            self.last_active_secs.clone(),
-            self.last_read_secs.clone(),
-        ));
 
         Ok(path)
     }
@@ -450,17 +495,8 @@ where
             }
         }
 
-        // 移除死连接
         for connection_id in dead_ids {
-            if self.forward_paths.remove(&connection_id).is_some() {
-                self.session_paths
-                    .retain(|_, p| p.connection_id != connection_id);
-                info!(
-                    "dead forward path removed (pong timeout): connection_id={}, remaining={}",
-                    connection_id,
-                    self.forward_paths.len()
-                );
-            }
+            self.remove_forward_path(connection_id, "pong timeout").await;
         }
 
         // 对需要探测的路径发 ping
@@ -472,14 +508,8 @@ where
             )
             .await;
             if result.is_err() {
-                self.forward_paths.remove(&connection_id);
-                self.session_paths
-                    .retain(|_, p| p.connection_id != connection_id);
-                info!(
-                    "dead forward path removed (ping write failed): connection_id={}, remaining={}",
-                    connection_id,
-                    self.forward_paths.len()
-                );
+                self.remove_forward_path(connection_id, "ping write failed")
+                    .await;
             }
         }
     }
@@ -513,18 +543,25 @@ where
         idle_ids.truncate(removable_count);
 
         for connection_id in idle_ids {
-            if let Some((_, path)) = self.forward_paths.remove(&connection_id) {
-                self.session_paths
-                    .retain(|_, p| p.connection_id != connection_id);
-                info!(
-                    "idle forward path closed: connection_id={}, remaining={}",
-                    connection_id,
-                    self.forward_paths.len()
-                );
-                let _ = path.writer.lock().await.shutdown().await;
-            }
+            self.remove_forward_path(connection_id, "idle").await;
         }
     }
+}
+
+async fn stop_forward_path<S>(path: Arc<PooledForwardPath<S>>)
+where
+    S: AsyncRead + AsyncWrite + Send + 'static,
+{
+    let task = path
+        .read_task
+        .lock()
+        .unwrap_or_else(|err| err.into_inner())
+        .take();
+    if let Some(task) = task {
+        task.abort();
+        let _ = task.await;
+    }
+    let _ = path.writer.lock().await.shutdown().await;
 }
 
 // ─── ClientTransport ───────────────────────────────────────────────────────────
@@ -562,7 +599,8 @@ where
         last_active_secs: Arc<AtomicU64>,
         last_read_secs: Arc<AtomicU64>,
         min_forward_paths: u32,
-    ) -> Self {
+    ) -> (Self, tokio::task::JoinHandle<()>) {
+        let (shutdown_tx, _shutdown_rx) = watch::channel(false);
         let state = Arc::new(PooledTransportState {
             control_writer,
             connector,
@@ -577,9 +615,10 @@ where
             next_connection_id: AtomicU64::new(1),
             session_paths: DashMap::new(),
             forward_paths: DashMap::new(),
+            shutdown_tx,
         });
-        PooledTransportState::start_idle_cleanup(state.clone());
-        Self { state }
+        let cleanup_task = PooledTransportState::start_idle_cleanup(state.clone());
+        (Self { state }, cleanup_task)
     }
 
     /// 发送控制消息。
@@ -623,10 +662,72 @@ where
         self.state.warm_up().await;
     }
 
+    /// 通知空闲清理任务退出。任务会在当前一轮清理结束后结束。
+    pub fn request_shutdown(&self) {
+        let _ = self.state.shutdown_tx.send(true);
+    }
+
+    /// 关掉全部转发路径和控制连接写半边。
+    pub async fn shutdown(&self) {
+        self.state.shutdown().await;
+    }
+
     /// 移除转发路径。path_id 为 None 时无操作（控制连接不在此移除）。
     pub async fn remove_path(&self, path_id: Option<u64>) {
         if let Some(id) = path_id {
-            self.state.remove_forward_path(id).await;
+            self.state.remove_forward_path(id, "closed").await;
+        }
+    }
+}
+
+/// 持有后台任务。显式 `stop` 会 abort 并等待；future 被取消时 Drop 也会 abort。
+pub(super) struct TaskGuard<T> {
+    handle: Option<tokio::task::JoinHandle<T>>,
+}
+
+impl<T> TaskGuard<T> {
+    pub(super) fn new(handle: tokio::task::JoinHandle<T>) -> Self {
+        Self {
+            handle: Some(handle),
+        }
+    }
+
+    /// 任务已自行结束，丢掉 JoinHandle，避免再次 poll。
+    pub(super) fn detach(&mut self) {
+        self.handle.take();
+    }
+
+    /// 等待任务自行结束。
+    pub(super) async fn join(&mut self) {
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.await;
+        }
+    }
+
+    /// 终止任务并等待它退出。
+    pub(super) async fn stop(&mut self) {
+        if let Some(handle) = self.handle.take() {
+            handle.abort();
+            let _ = handle.await;
+        }
+    }
+}
+
+impl<T> Drop for TaskGuard<T> {
+    fn drop(&mut self) {
+        if let Some(handle) = self.handle.take() {
+            handle.abort();
+        }
+    }
+}
+
+impl<T> Future for TaskGuard<T> {
+    type Output = Result<T, tokio::task::JoinError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        match self.get_mut().handle.as_mut() {
+            Some(handle) => Pin::new(handle).poll(cx),
+            None => Poll::Pending,
         }
     }
 }

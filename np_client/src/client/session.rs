@@ -21,7 +21,7 @@ use tokio::select;
 use tokio::sync::mpsc;
 
 use super::io::ping_forever;
-use super::transport::{ClientTransport, IncomingFrame, TransportEvent};
+use super::transport::{ClientTransport, IncomingFrame, TaskGuard, TransportEvent};
 
 /// 客户端会话状态：登录、隧道同步与代理消息路由。
 ///
@@ -63,6 +63,9 @@ where
     ///
     /// 先启动控制连接读取任务，使登录期间就能接收事件。
     /// 登录成功后预热转发路径，再进入主循环。
+    ///
+    /// 退出时会停掉控制连接读任务、空闲清理任务和全部转发路径，
+    /// 避免 JoinHandle 被 drop 后任务仍阻塞在 read 上，拖住底层连接。
     pub async fn run(
         &mut self,
         reader: ReadHalf<S>,
@@ -70,40 +73,62 @@ where
         mut event_rx: mpsc::UnboundedReceiver<TransportEvent>,
         last_active_secs: Arc<AtomicU64>,
         last_read_secs: Arc<AtomicU64>,
+        cleanup_task: tokio::task::JoinHandle<()>,
     ) -> anyhow::Result<()> {
-        // 1. 启动控制连接读取任务
-        let read_handle = tokio::spawn(super::io::read_transport_events(
+        // 1. 启动控制连接读取任务。Guard 在 future 被取消时也会 abort。
+        let mut read_guard = TaskGuard::new(tokio::spawn(super::io::read_transport_events(
             reader,
             None,
             event_tx,
             last_active_secs.clone(),
             last_read_secs.clone(),
-        ));
+        )));
+        let mut cleanup_guard = TaskGuard::new(cleanup_task);
 
-        // 2. 发送登录并等待回复
-        self.login_with_timeout(&mut event_rx).await?;
+        // 2. 发送登录并等待回复；失败时先释放连接再返回
+        if let Err(err) = self.login_with_timeout(&mut event_rx).await {
+            self.teardown(&mut read_guard, &mut cleanup_guard).await;
+            return Err(err);
+        }
 
         // 3. 预热转发路径
         self.transport.warm_up().await;
 
         // 4. 主事件循环 + 心跳
         let transport = self.transport.clone();
-        let result;
-        select! {
-            r1 = self.event_loop(&mut event_rx) => { result = r1 },
-            r2 = ping_forever(transport, last_active_secs, last_read_secs) => { result = r2 },
-            r3 = read_handle => {
-                // 读取任务退出 = 控制连接断开
-                result = match r3 {
+        let mut control_read_finished = false;
+        let result = select! {
+            r1 = self.event_loop(&mut event_rx) => r1,
+            r2 = ping_forever(transport, last_active_secs, last_read_secs) => r2,
+            r3 = &mut read_guard => {
+                // 读取任务退出 = 控制连接断开。输出已被取出，不能再 await 这个 JoinHandle。
+                control_read_finished = true;
+                match r3 {
                     Ok(inner) => inner,
                     Err(e) => Err(anyhow!("control connection read task panicked: {}", e)),
-                };
+                }
             },
+        };
+        if control_read_finished {
+            read_guard.detach();
         }
 
-        // 5. 清理隧道
-        self.sync_tunnels(&[]).await;
+        // 5. 停掉后台任务、本地隧道和转发连接
+        self.teardown(&mut read_guard, &mut cleanup_guard).await;
         result
+    }
+
+    /// 释放本轮会话占用的任务和连接。
+    async fn teardown(
+        &mut self,
+        read_guard: &mut TaskGuard<anyhow::Result<()>>,
+        cleanup_guard: &mut TaskGuard<()>,
+    ) {
+        read_guard.stop().await;
+        self.transport.request_shutdown();
+        cleanup_guard.join().await;
+        self.sync_tunnels(&[]).await;
+        self.transport.shutdown().await;
     }
 
     /// 发送登录请求并在超时时间内等待服务端回复。
@@ -168,7 +193,10 @@ where
         let message = message_map::decode_message(msg_id, &frame[8..])?;
 
         if serial <= 0 {
-            return Err(anyhow!("login failed: unexpected serial={}", serial));
+            return Err(login_rejected(format!(
+                "login failed: unexpected serial={}",
+                serial
+            )));
         }
 
         match message {
@@ -191,12 +219,11 @@ where
                 self.tunnels = msg.tunnel_list.into_iter().map(|t| (t.id, t)).collect();
                 Ok(())
             }
-            MessageType::GenericError(err) => Err(anyhow!(
+            MessageType::GenericError(err) => Err(login_rejected(format!(
                 "login failed: {} (code={})",
-                err.message,
-                err.number
-            )),
-            _ => Err(anyhow!("login failed: unexpected message type")),
+                err.message, err.number
+            ))),
+            _ => Err(login_rejected("login failed: unexpected message type")),
         }
     }
 
@@ -567,6 +594,13 @@ where
 }
 
 // ─── 辅助函数 ──────────────────────────────────────────────────────────────────
+
+fn login_rejected(message: impl Into<String>) -> anyhow::Error {
+    super::LoginRejected {
+        message: message.into(),
+    }
+    .into()
+}
 
 fn fmt_point(point: &Option<TunnelPoint>) -> String {
     match point {
