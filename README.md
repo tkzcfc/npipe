@@ -97,6 +97,7 @@ The server reads `config.json` from the current directory by default. Use `-c` t
     "web_password": "admin@1234",
     "transport_max_connections_per_player": 16,
     "transport_idle_timeout_secs": 60,
+    "max_inflight_connections": 4096,
     "quiet": false,
     "log_dir": "logs"
 }
@@ -122,6 +123,7 @@ The server reads `config.json` from the current directory by default. Use `-c` t
 | `web_password`            | Web admin password (empty to disable web dashboard)                  | `admin@1234`                                                        |
 | `transport_max_connections_per_player` | Max forward connections/streams per user; `0` = single-connection mode | `0` / `4` / `8`                                              |
 | `transport_idle_timeout_secs` | Forward connection idle timeout (seconds); `0` = never close     | `60`                                                                |
+| `max_inflight_connections`    | Max in-flight listener sessions (TCP/KCP/WS/QUIC/UDP combined); new connections are refused when full; default `4096` if omitted | `4096`                                                              |
 | `illegal_traffic_forward` | Forward non-npipe traffic to this address (empty to discard)         | `127.0.0.1:80`                                                      |
 | `illegal_traffic_forward_rules` | Traffic forwarding rules array (see detailed explanation below) | See example                                                         |
 | `quiet`                   | Quiet mode, suppress log output                                      | `true` / `false`                                                    |

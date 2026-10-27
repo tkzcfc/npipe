@@ -97,6 +97,7 @@ cargo build --release --no-default-features --features tcp
     "web_password": "admin@1234",
     "transport_max_connections_per_player": 16,
     "transport_idle_timeout_secs": 60,
+    "max_inflight_connections": 4096,
     "quiet": false,
     "log_dir": "logs"
 }
@@ -122,6 +123,7 @@ cargo build --release --no-default-features --features tcp
 | `web_password`            | Web 管理员密码（留空则禁用 Web 管理）                                | `admin@1234`                                                        |
 | `transport_max_connections_per_player` | 每个用户允许的最大转发连接/流数量，`0` 表示保持单连接模式 | `0` / `4` / `8`                                                     |
 | `transport_idle_timeout_secs` | 转发连接/流空闲关闭时间（秒），`0` 表示不因空闲主动关闭              | `60`                                                                |
+| `max_inflight_connections`    | 监听端同时在途连接上限（TCP/KCP/WS/QUIC/UDP 会话合计），满则拒绝新连接；省略时默认 `4096` | `4096`                                                              |
 | `illegal_traffic_forward` | 非 npipe 流量转发地址，可对接 Nginx 等（留空则丢弃）                 | `127.0.0.1:80`                                                      |
 | `illegal_traffic_forward_rules` | 非法流量转发规则数组，支持按流量类型匹配转发（见下方详细说明） | 见示例                                                               |
 | `quiet`                   | 安静模式，不输出日志                                                 | `true` / `false`                                                    |
