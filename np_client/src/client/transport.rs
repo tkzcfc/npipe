@@ -110,7 +110,7 @@ where
     fn unbind_session(&self) {
         let _ = self
             .active_sessions
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
                 Some(v.saturating_sub(1))
             });
         self.last_used_secs.store(now_secs(), Ordering::Relaxed);
