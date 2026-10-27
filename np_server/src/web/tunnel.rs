@@ -7,9 +7,7 @@ use crate::global::GLOBAL_DB_POOL;
 use crate::orm_entity::prelude::User;
 use crate::orm_entity::tunnel;
 use crate::orm_entity::user;
-use crate::utils::str::{
-    is_valid_tunnel_endpoint_address, is_valid_tunnel_source_address,
-};
+use crate::utils::str::{is_valid_tunnel_endpoint_address, is_valid_tunnel_source_address};
 use actix_identity::Identity;
 use actix_web::{HttpResponse, Responder};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
@@ -526,7 +524,8 @@ pub(super) async fn update_tunnel_status(
             &detail,
         )
         .await;
-        Ok(HttpResponse::Ok().json(mutate_success(if req.enabled == 1 { Some(req.id) } else { None }).await))
+        Ok(HttpResponse::Ok()
+            .json(mutate_success(if req.enabled == 1 { Some(req.id) } else { None }).await))
     }
 }
 

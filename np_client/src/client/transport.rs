@@ -307,7 +307,11 @@ where
 
     /// 关闭全部转发路径和控制连接写半边。
     pub async fn shutdown(&self) {
-        let ids: Vec<u64> = self.forward_paths.iter().map(|entry| *entry.key()).collect();
+        let ids: Vec<u64> = self
+            .forward_paths
+            .iter()
+            .map(|entry| *entry.key())
+            .collect();
         for connection_id in ids {
             self.remove_forward_path(connection_id, "shutdown").await;
         }
@@ -439,10 +443,7 @@ where
             self.last_active_secs.clone(),
             self.last_read_secs.clone(),
         ));
-        *path
-            .read_task
-            .lock()
-            .unwrap_or_else(|err| err.into_inner()) = Some(read_task);
+        *path.read_task.lock().unwrap_or_else(|err| err.into_inner()) = Some(read_task);
 
         self.forward_paths.insert(connection_id, path.clone());
         debug!(
@@ -496,7 +497,8 @@ where
         }
 
         for connection_id in dead_ids {
-            self.remove_forward_path(connection_id, "pong timeout").await;
+            self.remove_forward_path(connection_id, "pong timeout")
+                .await;
         }
 
         // 对需要探测的路径发 ping

@@ -1,3 +1,4 @@
+use crate::net::limit::try_acquire_connection;
 use crate::net::session_delegate::CreateSessionDelegateCallback;
 use crate::net::{net_session, tls};
 use log::{debug, error};
@@ -26,6 +27,10 @@ impl Server {
 
         loop {
             let (stream, addr) = listener.accept().await?;
+            let Some(permit) = try_acquire_connection() else {
+                debug!("KCP connection limit reached, closing {addr}");
+                continue;
+            };
 
             let tls_acceptor = tls_acceptor.clone();
             let delegate = on_create_session_delegate_callback();
@@ -34,6 +39,7 @@ impl Server {
 
             // 新连接单独起一个异步任务处理
             tokio::spawn(async move {
+                let _permit = permit;
                 trace!("KCP Server new connection: {}", addr);
 
                 if let Some(tls_acceptor) = tls_acceptor {

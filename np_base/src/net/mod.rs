@@ -6,6 +6,7 @@ use std::time::Duration;
 
 pub mod net_session;
 
+pub mod limit;
 pub mod session_delegate;
 pub mod tcp_server;
 pub mod tls;

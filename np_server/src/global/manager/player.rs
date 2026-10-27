@@ -112,8 +112,8 @@ impl PlayerManager {
     /// 新加玩家
     pub async fn add_player(
         &self,
-        username: &String,
-        password: &String,
+        username: &str,
+        password: &str,
     ) -> anyhow::Result<(i32, String)> {
         if !is_valid_username(username) || !is_valid_password(password) {
             return Ok((-1, "usernames may not exceed 30 characters, and passwords may not exceed 15 characters.".into()));
@@ -158,7 +158,7 @@ impl PlayerManager {
     }
 
     /// 修改玩家用户名
-    pub async fn rename_player(&self, player_id: u32, username: &String) -> anyhow::Result<()> {
+    pub async fn rename_player(&self, player_id: u32, username: &str) -> anyhow::Result<()> {
         anyhow::ensure!(is_valid_username(username), "username format error");
 
         if let Some(existing_user) = User::find()
@@ -185,7 +185,7 @@ impl PlayerManager {
     pub async fn reset_player_password(
         &self,
         player_id: u32,
-        password: &String,
+        password: &str,
     ) -> anyhow::Result<()> {
         anyhow::ensure!(is_valid_password(password), "password format error");
 
@@ -257,10 +257,31 @@ pub(crate) fn start_transport_idle_cleanup_loop() {
                 .collect::<Vec<_>>();
 
             for player in players {
-                let mut p = player.write().await;
-                p.close_idle_forward_connections(now);
+                let (online, has_forward, control_idle) = {
+                    let p = player.read().await;
+                    let online = p.is_online();
+                    if !online {
+                        (false, false, false)
+                    } else {
+                        let control_idle = p.get_last_recv_time() > 0
+                            && now.saturating_sub(p.get_last_recv_time())
+                                >= SESSION_IDLE_TIMEOUT_SECS;
+                        (true, p.has_forward_connections(), control_idle)
+                    }
+                };
+                if !online {
+                    continue;
+                }
 
-                // 检测控制连接空闲超时
+                // 没有转发连接且控制连接仍活跃时，不拿写锁。
+                if !has_forward && !control_idle {
+                    continue;
+                }
+
+                let mut p = player.write().await;
+                if has_forward {
+                    p.close_idle_forward_connections(now);
+                }
                 if p.is_online()
                     && p.get_last_recv_time() > 0
                     && now.saturating_sub(p.get_last_recv_time()) >= SESSION_IDLE_TIMEOUT_SECS

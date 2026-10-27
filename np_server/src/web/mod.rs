@@ -4,7 +4,7 @@ mod logs;
 mod maintenance;
 mod player;
 mod proto;
-mod rate_limit;
+pub(crate) mod rate_limit;
 mod support;
 mod tunnel;
 

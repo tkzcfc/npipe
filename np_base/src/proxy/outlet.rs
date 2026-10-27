@@ -19,7 +19,7 @@ use std::time::Duration;
 use tokio::net::{TcpStream, UdpSocket};
 use tokio::select;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tokio::sync::{broadcast, mpsc, Notify, RwLock};
+use tokio::sync::{broadcast, mpsc, Notify, OwnedSemaphorePermit, RwLock, Semaphore};
 
 struct SessionInfo {
     sender: InputSenderType,
@@ -27,6 +27,8 @@ struct SessionInfo {
 }
 
 type SessionInfoMap = Arc<DashMap<u32, SessionInfo>>;
+
+const MAX_OUTLET_CONNECTIONS: usize = 1024;
 
 pub struct Outlet {
     session_info_map: SessionInfoMap,
@@ -39,6 +41,8 @@ pub struct Outlet {
     session_count: Arc<AtomicUsize>,
     /// 每当 session_count 降为 0 时通知 stop()
     all_sessions_closed: Arc<Notify>,
+    /// 同时向外建立的连接上限
+    connect_permits: Arc<Semaphore>,
 }
 
 impl Outlet {
@@ -56,6 +60,7 @@ impl Outlet {
             input: input_tx,
             session_count: Arc::new(AtomicUsize::new(0)),
             all_sessions_closed: Arc::new(Notify::new()),
+            connect_permits: Arc::new(Semaphore::new(MAX_OUTLET_CONNECTIONS)),
         });
 
         let outlet_cloned = outlet.clone();
@@ -137,6 +142,17 @@ impl Outlet {
                 let output = self.output.clone();
                 let session_count = self.session_count.clone();
                 let all_sessions_closed = self.all_sessions_closed.clone();
+                let Some(permit) = self.connect_permits.clone().try_acquire_owned().ok() else {
+                    let _ = self
+                        .output
+                        .send(ProxyMessage::O2iConnect(
+                            session_id,
+                            false,
+                            "too many outbound connections".to_string(),
+                        ))
+                        .await;
+                    return Ok(());
+                };
                 tokio::spawn(async move {
                     if let Err(err) = Self::on_i2o_connect(
                         session_info_map,
@@ -151,6 +167,7 @@ impl Outlet {
                         output.clone(),
                         session_count,
                         all_sessions_closed,
+                        permit,
                     )
                     .await
                     {
@@ -288,6 +305,7 @@ impl Outlet {
         output: mpsc::Sender<ProxyMessage>,
         session_count: Arc<AtomicUsize>,
         all_sessions_closed: Arc<Notify>,
+        connect_permit: OwnedSemaphorePermit,
     ) -> anyhow::Result<()> {
         if session_info_map.contains_key(&session_id) {
             return Err(anyhow!("repeated connection: session_id:{session_id}"));
@@ -330,6 +348,7 @@ impl Outlet {
                         tunnel_type,
                         session_count,
                         all_sessions_closed,
+                        connect_permit,
                     )),
                     shutdown_receiver,
                     stream,
@@ -360,6 +379,7 @@ impl Outlet {
                         tunnel_type,
                         session_count,
                         all_sessions_closed,
+                        connect_permit,
                     )),
                     None,
                     shutdown_receiver,
@@ -383,6 +403,7 @@ struct OutletSession {
     tunnel_type: InletProxyType,
     session_count: Arc<AtomicUsize>,
     all_sessions_closed: Arc<Notify>,
+    _connect_permit: OwnedSemaphorePermit,
 }
 
 impl OutletSession {
@@ -393,6 +414,7 @@ impl OutletSession {
         tunnel_type: InletProxyType,
         session_count: Arc<AtomicUsize>,
         all_sessions_closed: Arc<Notify>,
+        connect_permit: OwnedSemaphorePermit,
     ) -> Self {
         Self {
             session_info_map,
@@ -402,6 +424,7 @@ impl OutletSession {
             tunnel_type,
             session_count,
             all_sessions_closed,
+            _connect_permit: connect_permit,
         }
     }
 }

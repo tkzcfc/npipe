@@ -1,3 +1,4 @@
+use crate::net::limit::try_acquire_connection;
 use crate::net::session_delegate::CreateSessionDelegateCallback;
 use crate::net::ws_async_io::WebSocketAsyncIo;
 use crate::net::{net_session, tls};
@@ -35,6 +36,10 @@ impl Server {
 
         loop {
             let (mut stream, addr) = listener.accept().await?;
+            let Some(permit) = try_acquire_connection() else {
+                debug!("Websocket connection limit reached, closing {addr}");
+                continue;
+            };
 
             if let Some(ref on_stream_init_callback) = on_stream_init_callback {
                 match on_stream_init_callback(stream).await {
@@ -55,6 +60,7 @@ impl Server {
 
             // 新连接单独起一个异步任务处理
             tokio::spawn(async move {
+                let _permit = permit;
                 trace!("Websocket Server new connection: {}", addr);
 
                 if let Some(tls_acceptor) = tls_acceptor {

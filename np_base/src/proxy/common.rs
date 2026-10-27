@@ -34,11 +34,10 @@ impl FlowController {
 
     // 申请读取许可（阻塞直到有足够空间）
     async fn acquire_read_permit(&self, size: usize) {
-        let permits = if size > self.max_bytes {
-            self.max_bytes as u32
-        } else {
-            size as u32
-        };
+        let permits = self.permit_count(size);
+        if permits == 0 {
+            return;
+        }
         // unwrap: 只在 Semaphore 关闭时 panic，而我们的 Semaphore 不会被关闭
         self.read_semaphore
             .acquire_many(permits)
@@ -47,9 +46,17 @@ impl FlowController {
             .forget();
     }
 
-    // 写入成功后释放读取许可
+    // 写入成功后释放读取许可。释放数量与申请时相同，避免超大包把 permit 撑过上限。
     pub fn release_read_permit(&self, size: usize) {
-        self.read_semaphore.add_permits(size);
+        let permits = self.permit_count(size) as usize;
+        if permits == 0 {
+            return;
+        }
+        self.read_semaphore.add_permits(permits);
+    }
+
+    fn permit_count(&self, size: usize) -> u32 {
+        size.min(self.max_bytes).min(u32::MAX as usize) as u32
     }
 }
 

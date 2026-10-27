@@ -35,6 +35,7 @@ const PROXY_AUTH_HEADER: &str = "Proxy-Authorization";
 const PROXY_AUTH_REQUIRED_RESPONSE: &[u8] = b"HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"Proxy\"\r\n\r\n";
 const BAD_GATEWAY_HEADER: &[u8] =
     b"HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n";
+const MAX_HTTP_HANDSHAKE: usize = 64 * 1024;
 #[async_trait]
 impl ProxyContext for HttpContext {
     async fn on_start(
@@ -56,6 +57,10 @@ impl ProxyContext for HttpContext {
     ) -> anyhow::Result<()> {
         match self.status {
             Status::Free => {
+                if self.cache_data.len().saturating_add(data.len()) > MAX_HTTP_HANDSHAKE {
+                    self.status = Status::Invalid;
+                    return Err(anyhow!("http handshake exceeds {MAX_HTTP_HANDSHAKE} bytes"));
+                }
                 self.cache_data.extend_from_slice(&data);
 
                 let mut headers = [httparse::EMPTY_HEADER; 64];

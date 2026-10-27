@@ -62,11 +62,17 @@ impl Peer {
             }
             if self.connection_kind == PeerConnectionKind::Forward {
                 if let (Some(player), Some(session_id)) = (&self.player, proxy_session_id) {
-                    let mut player = player.write().await;
                     if proxy_is_disconnect {
-                        player.unbind_forward_session(session_id);
-                    } else {
-                        player.bind_forward_session(session_id, self.connection_id);
+                        player.write().await.unbind_forward_session(session_id);
+                    } else if !player
+                        .read()
+                        .await
+                        .touch_forward_session(session_id, self.connection_id)
+                    {
+                        player
+                            .write()
+                            .await
+                            .bind_forward_session(session_id, self.connection_id);
                     }
                 }
             }

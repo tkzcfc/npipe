@@ -1,7 +1,8 @@
+use crate::net::limit::try_acquire_connection;
 use crate::net::session_delegate::CreateSessionDelegateCallback;
 use crate::net::{net_session, tls};
 use log::error;
-use log::{info, trace};
+use log::{debug, info, trace};
 use s2n_quic::Server as QUICServer;
 use std::future::Future;
 use std::path::Path;
@@ -41,11 +42,17 @@ impl Server {
             let remote_addr = connection.remote_addr()?;
             trace!("Accept connection from {}", remote_addr);
 
+            let Some(connection_permit) = try_acquire_connection() else {
+                debug!("QUIC connection limit reached, closing {remote_addr}");
+                continue;
+            };
+
             let callback = on_create_session_delegate_callback.clone();
             let shutdown_complete_connection = self.shutdown_complete_tx.clone();
             let notify_shutdown_clone = self.notify_shutdown.clone();
 
             tokio::spawn(async move {
+                let _connection_permit = connection_permit;
                 let mut shutdown = notify_shutdown_clone.subscribe();
                 loop {
                     tokio::select! {
@@ -54,12 +61,19 @@ impl Server {
                                 Ok(Some(stream)) => {
                                     trace!("Stream opened from {}", remote_addr);
 
+                                    let Some(stream_permit) = try_acquire_connection() else {
+                                        debug!("QUIC connection limit reached, dropping stream from {remote_addr}");
+                                        drop(stream);
+                                        continue;
+                                    };
+
                                     let delegate = callback();
                                     let stream_shutdown = notify_shutdown_clone.subscribe();
                                     let shutdown_complete_stream = shutdown_complete_connection.clone();
 
                                     // 新连接单独起一个异步任务处理
                                     tokio::spawn(async move {
+                                        let _stream_permit = stream_permit;
                                         net_session::run(
                                             net_session::create_session_id(),
                                             remote_addr,

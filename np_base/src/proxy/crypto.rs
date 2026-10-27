@@ -12,6 +12,20 @@ pub fn compress_data(input: &[u8]) -> Result<Vec<u8>, io::Error> {
 
 // Function to decompress data
 pub fn decompress_data(compressed: &[u8]) -> Result<Vec<u8>, io::Error> {
+    const MAX_DECOMPRESSED_SIZE: usize = 4 * 1024 * 1024;
+    if compressed.len() < 4 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "compressed payload is too short",
+        ));
+    }
+    let declared = u32::from_le_bytes(compressed[..4].try_into().unwrap()) as usize;
+    if declared > MAX_DECOMPRESSED_SIZE {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "decompressed size exceeds 4MB",
+        ));
+    }
     decompress_size_prepended(compressed)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
 }

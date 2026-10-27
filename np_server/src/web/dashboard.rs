@@ -2,9 +2,9 @@ use super::proto;
 use super::support::require_admin;
 use crate::global::config::GLOBAL_CONFIG;
 use crate::global::manager::GLOBAL_MANAGER;
+use crate::global::system_monitor;
 use actix_identity::Identity;
 use actix_web::{HttpResponse, Responder};
-use sysinfo::{System, MINIMUM_CPU_UPDATE_INTERVAL};
 
 pub(super) async fn dashboard_overview(
     identity: Option<Identity>,
@@ -49,35 +49,21 @@ pub(super) async fn dashboard_overview(
             log_dir: GLOBAL_CONFIG.log_dir.clone(),
             database: database_kind(&GLOBAL_CONFIG.database_url).to_string(),
         },
-        system: collect_system_info().await,
+        system: {
+            let info = system_monitor::snapshot();
+            proto::DashboardSystemInfo {
+                host_name: info.host_name,
+                os_name: info.os_name,
+                kernel_version: info.kernel_version,
+                uptime_secs: info.uptime_secs,
+                cpu_usage: info.cpu_usage,
+                cpu_cores: info.cpu_cores,
+                total_memory: info.total_memory,
+                used_memory: info.used_memory,
+                memory_usage: info.memory_usage,
+            }
+        },
     }))
-}
-
-async fn collect_system_info() -> proto::DashboardSystemInfo {
-    let mut system = System::new_all();
-    tokio::time::sleep(MINIMUM_CPU_UPDATE_INTERVAL).await;
-    system.refresh_cpu_usage();
-    system.refresh_memory();
-
-    let total_memory = system.total_memory();
-    let used_memory = system.used_memory();
-    let memory_usage = if total_memory > 0 {
-        used_memory as f32 * 100.0 / total_memory as f32
-    } else {
-        0.0
-    };
-
-    proto::DashboardSystemInfo {
-        host_name: System::host_name().unwrap_or_default(),
-        os_name: System::name().unwrap_or_default(),
-        kernel_version: System::kernel_version().unwrap_or_default(),
-        uptime_secs: System::uptime(),
-        cpu_usage: system.global_cpu_usage(),
-        cpu_cores: system.cpus().len(),
-        total_memory,
-        used_memory,
-        memory_usage,
-    }
 }
 
 fn database_kind(database_url: &str) -> &'static str {

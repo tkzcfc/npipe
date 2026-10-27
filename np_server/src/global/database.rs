@@ -3,7 +3,7 @@ use crate::global::manager::GLOBAL_MANAGER;
 use crate::orm_entity::{
     login_history, operation_log, schema_version, traffic_hourly, tunnel, user,
 };
-use chrono::Utc;
+use chrono::{Duration as ChronoDuration, Utc};
 use sea_orm::sea_query::{Index, MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
@@ -494,5 +494,56 @@ async fn traffic_flush_loop() {
                 );
             }
         }
+
+        purge_expired_records(db).await;
+    }
+}
+
+const LOGIN_HISTORY_KEEP_DAYS: i64 = 90;
+const OPERATION_LOG_KEEP_DAYS: i64 = 180;
+const TRAFFIC_HOURLY_KEEP_DAYS: i64 = 90;
+
+async fn purge_expired_records(db: &DatabaseConnection) {
+    let now = Utc::now();
+    let login_cutoff = (now - ChronoDuration::days(LOGIN_HISTORY_KEEP_DAYS)).naive_utc();
+    let operation_cutoff = (now - ChronoDuration::days(OPERATION_LOG_KEEP_DAYS)).naive_utc();
+    let traffic_cutoff = (now - ChronoDuration::days(TRAFFIC_HOURLY_KEEP_DAYS))
+        .format("%Y-%m-%d %H")
+        .to_string();
+
+    match login_history::Entity::delete_many()
+        .filter(login_history::Column::LoginTime.lt(login_cutoff))
+        .exec(db)
+        .await
+    {
+        Ok(res) if res.rows_affected > 0 => {
+            log::info!("purged {} login_history rows", res.rows_affected);
+        }
+        Err(err) => log::error!("purge login_history failed: {err}"),
+        _ => {}
+    }
+
+    match operation_log::Entity::delete_many()
+        .filter(operation_log::Column::CreatedAt.lt(operation_cutoff))
+        .exec(db)
+        .await
+    {
+        Ok(res) if res.rows_affected > 0 => {
+            log::info!("purged {} operation_log rows", res.rows_affected);
+        }
+        Err(err) => log::error!("purge operation_log failed: {err}"),
+        _ => {}
+    }
+
+    match traffic_hourly::Entity::delete_many()
+        .filter(traffic_hourly::Column::Hour.lt(traffic_cutoff))
+        .exec(db)
+        .await
+    {
+        Ok(res) if res.rows_affected > 0 => {
+            log::info!("purged {} traffic_hourly rows", res.rows_affected);
+        }
+        Err(err) => log::error!("purge traffic_hourly failed: {err}"),
+        _ => {}
     }
 }

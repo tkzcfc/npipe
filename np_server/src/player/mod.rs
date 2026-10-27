@@ -29,12 +29,20 @@ pub struct PlayerConnection {
     pub addr: String,
     /// 建立时间（Unix 秒）。
     pub connected_at: i64,
-    /// 最近一次使用时间（Unix 秒）。
-    pub last_active_at: i64,
+    /// 最近一次使用时间（Unix 秒）。原子更新，数据包路径不必拿写锁。
+    pub last_active_at: AtomicI64,
     /// 当前绑定到该路径上的代理会话数量。
     pub active_sessions: usize,
     /// 当前正在该路径上写出但尚未完成的字节数。
     pub inflight_bytes: u64,
+}
+
+/// 代理消息发送前的路由结果。
+pub(crate) enum ProxySendPrep {
+    /// 已有可用发送端，调用方在锁外组包发送。
+    Ready(UnboundedSender<WriterMessage>),
+    /// 需要写锁建立路由或解除绑定。
+    NeedsWrite,
 }
 
 /// 用户在服务端的运行时状态。
@@ -233,7 +241,7 @@ impl Player {
                 tx,
                 addr: addr.to_string(),
                 connected_at: now,
-                last_active_at: now,
+                last_active_at: AtomicI64::new(now),
                 active_sessions: 0,
                 inflight_bytes: 0,
             },
@@ -274,7 +282,8 @@ impl Player {
             .iter()
             .filter(|(_, connection)| {
                 connection.active_sessions == 0
-                    && now.saturating_sub(connection.last_active_at) >= idle_timeout_secs
+                    && now.saturating_sub(connection.last_active_at.load(Ordering::Relaxed))
+                        >= idle_timeout_secs
             })
             .map(|(connection_id, _)| *connection_id)
             .collect::<Vec<_>>();
@@ -287,7 +296,7 @@ impl Player {
                     "close idle forward transport, player_id:{}, connection_id:{}, idle_secs:{}, active_sessions:{}",
                     self.player_id,
                     connection_id,
-                    now.saturating_sub(connection.last_active_at),
+                    now.saturating_sub(connection.last_active_at.load(Ordering::Relaxed)),
                     connection.active_sessions
                 );
                 let _ = connection.tx.send(WriterMessage::Close);
@@ -310,8 +319,10 @@ impl Player {
             .copied()
             .is_some_and(|old_connection_id| old_connection_id == connection_id)
         {
-            if let Some(connection) = self.forward_connections.get_mut(&connection_id) {
-                connection.last_active_at = Utc::now().timestamp();
+            if let Some(connection) = self.forward_connections.get(&connection_id) {
+                connection
+                    .last_active_at
+                    .store(Utc::now().timestamp(), Ordering::Relaxed);
             }
             return;
         }
@@ -327,7 +338,9 @@ impl Player {
 
         if let Some(connection) = self.forward_connections.get_mut(&connection_id) {
             connection.active_sessions += 1;
-            connection.last_active_at = Utc::now().timestamp();
+            connection
+                .last_active_at
+                .store(Utc::now().timestamp(), Ordering::Relaxed);
             debug!(
                 "forward session bound, player_id:{}, proxy_session_id:{}, connection_id:{}, active_sessions:{}",
                 self.player_id, session_id, connection_id, connection.active_sessions
@@ -339,7 +352,9 @@ impl Player {
         if let Some(connection_id) = self.forward_session_routes.remove(&session_id) {
             if let Some(connection) = self.forward_connections.get_mut(&connection_id) {
                 connection.active_sessions = connection.active_sessions.saturating_sub(1);
-                connection.last_active_at = Utc::now().timestamp();
+                connection
+                    .last_active_at
+                    .store(Utc::now().timestamp(), Ordering::Relaxed);
                 debug!(
                     "forward session unbound, player_id:{}, proxy_session_id:{}, connection_id:{}, active_sessions:{}",
                     self.player_id, session_id, connection_id, connection.active_sessions
@@ -348,9 +363,59 @@ impl Player {
         }
     }
 
-    pub fn send_proxy_push(&mut self, message: &MessageType) -> anyhow::Result<()> {
+    pub fn has_forward_connections(&self) -> bool {
+        !self.forward_connections.is_empty()
+    }
+
+    /// 会话已经绑定到这条转发连接时，只刷新活跃时间。
+    pub fn touch_forward_session(&self, session_id: u32, connection_id: u64) -> bool {
+        if self.forward_session_routes.get(&session_id).copied() != Some(connection_id) {
+            return false;
+        }
+        let Some(connection) = self.forward_connections.get(&connection_id) else {
+            return false;
+        };
+        connection
+            .last_active_at
+            .store(Utc::now().timestamp(), Ordering::Relaxed);
+        true
+    }
+
+    /// 读锁路径：能直接发出去就返回发送端，否则交给写锁。
+    pub fn prepare_proxy_send(&self, message: &MessageType) -> ProxySendPrep {
+        if message_bridge::pb_proxy_is_disconnect(message)
+            && !self.forward_session_routes.is_empty()
+        {
+            return ProxySendPrep::NeedsWrite;
+        }
+
         let Some(session_id) = message_bridge::pb_proxy_session_id(message) else {
-            return self.send_push(message);
+            return self.ready_control_sender();
+        };
+
+        if let Some(connection_id) = self.forward_session_routes.get(&session_id).copied() {
+            if let Some(connection) = self.forward_connections.get(&connection_id) {
+                connection
+                    .last_active_at
+                    .store(Utc::now().timestamp(), Ordering::Relaxed);
+                return ProxySendPrep::Ready(connection.tx.clone());
+            }
+        }
+
+        if self.forward_connections.is_empty() {
+            return self.ready_control_sender();
+        }
+
+        ProxySendPrep::NeedsWrite
+    }
+
+    /// 写锁路径：必要时绑定路由，返回发送端。组包由调用方在锁外完成。
+    pub fn resolve_proxy_sender(
+        &mut self,
+        message: &MessageType,
+    ) -> Option<UnboundedSender<WriterMessage>> {
+        let Some(session_id) = message_bridge::pb_proxy_session_id(message) else {
+            return self.tx.clone();
         };
 
         let mut connection_id = self.forward_session_routes.get(&session_id).copied();
@@ -365,22 +430,31 @@ impl Player {
             }
         }
 
-        let result = if let Some(connection_id) = connection_id {
-            if let Some(connection) = self.forward_connections.get_mut(&connection_id) {
-                connection.last_active_at = Utc::now().timestamp();
-                package_and_send_message(&Some(connection.tx.clone()), 0, message, true)
+        let tx = if let Some(connection_id) = connection_id {
+            if let Some(connection) = self.forward_connections.get(&connection_id) {
+                connection
+                    .last_active_at
+                    .store(Utc::now().timestamp(), Ordering::Relaxed);
+                Some(connection.tx.clone())
             } else {
-                self.send_push(message)
+                self.tx.clone()
             }
         } else {
-            self.send_push(message)
+            self.tx.clone()
         };
 
         if message_bridge::pb_proxy_is_disconnect(message) {
             self.unbind_forward_session(session_id);
         }
 
-        result
+        tx
+    }
+
+    fn ready_control_sender(&self) -> ProxySendPrep {
+        match &self.tx {
+            Some(tx) => ProxySendPrep::Ready(tx.clone()),
+            None => ProxySendPrep::NeedsWrite,
+        }
     }
 
     fn select_least_loaded_forward_connection_id(&self) -> Option<u64> {
@@ -390,7 +464,7 @@ impl Player {
                 (
                     connection.active_sessions,
                     connection.inflight_bytes,
-                    connection.last_active_at,
+                    connection.last_active_at.load(Ordering::Relaxed),
                 )
             })
             .map(|(connection_id, _)| *connection_id)
@@ -662,7 +736,7 @@ mod tests {
                 tx: idle_tx,
                 addr: "127.0.0.1:10001".to_string(),
                 connected_at: now - 30,
-                last_active_at: now - 30,
+                last_active_at: AtomicI64::new(now - 30),
                 active_sessions: 0,
                 inflight_bytes: 0,
             },
@@ -674,7 +748,7 @@ mod tests {
                 tx: active_tx,
                 addr: "127.0.0.1:10002".to_string(),
                 connected_at: now - 30,
-                last_active_at: now - 30,
+                last_active_at: AtomicI64::new(now - 30),
                 active_sessions: 1,
                 inflight_bytes: 0,
             },

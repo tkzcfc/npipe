@@ -62,18 +62,25 @@ impl Peer {
         let requested_transport_max_connections = message.transport_max_connections;
         let requested_transport_idle_timeout_secs = message.transport_idle_timeout_secs;
 
+        let rl_key = format!("client:{}", self.addr.ip());
+        if let Some(secs) = crate::web::rate_limit::locked_secs_remaining(&rl_key) {
+            return Ok(MessageType::GenericError(generic::Error {
+                number: -5,
+                message: format!("Too many failed attempts, try again in {secs}s"),
+            }));
+        }
+
         let user_result = User::find()
-            .filter(user::Column::Username.eq(username))
+            .filter(user::Column::Username.eq(&username))
             .one(GLOBAL_DB_POOL.get().unwrap())
             .await?;
 
         let user = match user_result {
-            Some(user)
-                if crate::utils::password::verify_password(&password, &user.password) =>
-            {
+            Some(user) if crate::utils::password::verify_password(&password, &user.password) => {
                 user
             }
             _ => {
+                crate::web::rate_limit::record_failure(&rl_key);
                 return Ok(MessageType::GenericError(generic::Error {
                     number: -2,
                     message: "Incorrect username or password".into(),
@@ -161,6 +168,7 @@ impl Peer {
                 .map(|x| x.into())
                 .collect();
             trace!("login success, player_id:{}", user.id);
+            crate::web::rate_limit::record_success(&rl_key);
             return Ok(MessageType::ServerClientLoginAck(server_client::LoginAck {
                 player_id: user.id,
                 tunnel_list,

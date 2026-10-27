@@ -21,6 +21,7 @@ use tokio::sync::mpsc::{Sender, UnboundedSender};
 use tokio_util::sync::CancellationToken;
 
 const SOCKS5_VERSION: u8 = 0x05;
+const MAX_SOCKS5_HANDSHAKE: usize = 64 * 1024;
 
 const SOCKS5_AUTH_METHOD_NONE: u8 = 0x00;
 // const SOCKS5_AUTH_METHOD_GSSAPI: u8 = 0x01; // not support
@@ -95,15 +96,15 @@ impl ProxyContext for Socks5Context {
     ) -> anyhow::Result<()> {
         match &self.status {
             Status::Init => {
-                self.buffer.extend_from_slice(&data);
+                self.append_handshake(&data)?;
                 self.on_socks5_init()?;
             }
             Status::Verification => {
-                self.buffer.extend_from_slice(&data);
+                self.append_handshake(&data)?;
                 self.on_socks5_verification()?;
             }
             Status::Connect => {
-                self.buffer.extend_from_slice(&data);
+                self.append_handshake(&data)?;
                 self.on_socks5_connect().await?;
             }
             Status::Connecting(_) => {
@@ -183,6 +184,14 @@ impl Socks5Context {
             ctx_data: None,
             peer_addr: None,
         }
+    }
+
+    fn append_handshake(&mut self, data: &[u8]) -> anyhow::Result<()> {
+        if self.buffer.len().saturating_add(data.len()) > MAX_SOCKS5_HANDSHAKE {
+            anyhow::bail!("socks5 handshake exceeds {MAX_SOCKS5_HANDSHAKE} bytes");
+        }
+        self.buffer.extend_from_slice(data);
+        Ok(())
     }
 
     fn on_socks5_init(&mut self) -> anyhow::Result<()> {

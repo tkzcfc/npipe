@@ -70,6 +70,9 @@ pub struct Config {
     /// 转发连接空闲关闭时间（秒）
     #[serde(default = "default_config_transport_idle_timeout_secs_function")]
     pub transport_idle_timeout_secs: u32,
+    /// 监听端同时在途连接上限（TCP/KCP/WS/QUIC/UDP 会话合计）
+    #[serde(default = "default_max_inflight_connections")]
+    pub max_inflight_connections: usize,
     #[serde(skip)]
     pub forward_rules: Vec<ForwardRule>,
 }
@@ -91,6 +94,9 @@ fn default_config_transport_max_connections_function() -> u32 {
 }
 fn default_config_transport_idle_timeout_secs_function() -> u32 {
     60
+}
+fn default_max_inflight_connections() -> usize {
+    np_base::net::limit::DEFAULT_MAX_INFLIGHT_CONNECTIONS
 }
 pub static GLOBAL_CONFIG: Lazy<Config> = Lazy::new(|| {
     let file = match File::open(&GLOBAL_OPTS.config_file) {

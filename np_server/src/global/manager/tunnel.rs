@@ -261,7 +261,11 @@ impl TunnelManager {
         }
         let is_udp = is_udp_tunnel_type(tunnel.tunnel_type);
         // add 时 id 为 0，不会与任何已有通道相同
-        let self_id = if tunnel.id == 0 { None } else { Some(tunnel.id) };
+        let self_id = if tunnel.id == 0 {
+            None
+        } else {
+            Some(tunnel.id)
+        };
         if let Some(other) = self
             .port_conflict_detection(tunnel.receiver, &tunnel.source, self_id, is_udp)
             .await

@@ -344,7 +344,10 @@ where
             }
             let tunnel_id = tunnel.id;
             let is_my_inlet = tunnel.enabled && tunnel.receiver == self.player_id;
-            let source = tunnel.source.as_ref().map_or(String::new(), |x| x.addr.clone());
+            let source = tunnel
+                .source
+                .as_ref()
+                .map_or(String::new(), |x| x.addr.clone());
             let inlet_existed = self.inlets.contains_key(&tunnel_id);
             self.tunnels.insert(tunnel.id, tunnel);
             let tunnel_list: Vec<Tunnel> = self.tunnels.values().cloned().collect();
@@ -353,8 +356,14 @@ where
             if is_my_inlet && inlet_existed {
                 let running = self.inlets.get(&tunnel_id).map(|i| i.running());
                 match running {
-                    Some(true) => self.report_inlet_status(tunnel_id, true, String::new(), &source).await,
-                    Some(false) => self.report_inlet_status(tunnel_id, false, "inlet stopped".into(), &source).await,
+                    Some(true) => {
+                        self.report_inlet_status(tunnel_id, true, String::new(), &source)
+                            .await
+                    }
+                    Some(false) => {
+                        self.report_inlet_status(tunnel_id, false, "inlet stopped".into(), &source)
+                            .await
+                    }
                     None => {}
                 }
             }
@@ -545,7 +554,13 @@ where
     }
 
     /// 向服务端上报入口监听结果（仅当服务端声明支持时）。
-    async fn report_inlet_status(&self, tunnel_id: u32, ok: bool, error: String, listen_addr: &str) {
+    async fn report_inlet_status(
+        &self,
+        tunnel_id: u32,
+        ok: bool,
+        error: String,
+        listen_addr: &str,
+    ) {
         if !self.support_inlet_status {
             return;
         }

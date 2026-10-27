@@ -1,5 +1,6 @@
 use crate::global::manager::GLOBAL_MANAGER;
-use crate::player::PlayerId;
+use crate::peer::package_and_send_message;
+use crate::player::{PlayerId, ProxySendPrep};
 use dashmap::DashMap;
 use log::{debug, error};
 use np_base::proxy::inlet::{Inlet, InletDataEx, InletProxyType};
@@ -298,44 +299,18 @@ impl ProxyManager {
             return;
         }
 
-        if let Some(player) = GLOBAL_MANAGER.player_manager.get_player(to_player_id) {
-            // 合并为单次写锁：同时检查在线状态、更新转发路由并发送消息。
-            let mut p = player.write().await;
-            if p.is_online() {
-                let message = message_bridge::proxy_message_2_pb(proxy_message, tunnel_id);
-                if !message.is_none() {
-                    // 统计出站代理流量
-                    let tx_bytes = get_message_size(&message) as u64 + 13;
-                    p.traffic_tx.fetch_add(tx_bytes, Ordering::Relaxed);
-                    let _ = p.send_proxy_push(&message);
-                }
-                return;
-            }
+        // 先组包，再只为取发送端加锁。
+        let message = message_bridge::proxy_message_2_pb(proxy_message, tunnel_id);
+        if message.is_none() {
+            return;
+        }
+
+        if deliver_pb_to_player(to_player_id, &message).await {
+            return;
         }
 
         // 玩家离线或找不到
-        let message = match proxy_message {
-            ProxyMessage::I2oConnect(session_id, ..) => Some(ProxyMessage::O2iConnect(
-                session_id,
-                false,
-                format!("no player {to_player_id} or the player is offline"),
-            )),
-
-            ProxyMessage::I2oSendData(session_id, ..)
-            | ProxyMessage::I2oRecvDataResult(session_id, ..) => {
-                Some(ProxyMessage::O2iDisconnect(session_id))
-            }
-
-            ProxyMessage::O2iConnect(session_id, ..)
-            | ProxyMessage::O2iRecvData(session_id, ..)
-            | ProxyMessage::O2iSendDataResult(session_id, ..) => {
-                Some(ProxyMessage::I2oDisconnect(session_id))
-            }
-            _ => None,
-        };
-
-        if let Some(proxy_message) = message {
-            // 入口是服务器自己
+        if let Some(proxy_message) = offline_reply(&message, to_player_id) {
             if from_player_id == 0 {
                 if message_bridge::is_i2o_message(&proxy_message) {
                     send_input_to_outlet(&tunnel_id, proxy_message).await;
@@ -343,23 +318,72 @@ impl ProxyManager {
                     send_input_to_inlet(&tunnel_id, proxy_message).await;
                 }
             } else {
-                push_message_to_player(
-                    from_player_id,
-                    &message_bridge::proxy_message_2_pb(proxy_message, tunnel_id),
-                )
-                .await;
+                let reply = message_bridge::proxy_message_2_pb(proxy_message, tunnel_id);
+                if !reply.is_none() {
+                    let _ = deliver_pb_to_player(from_player_id, &reply).await;
+                }
             }
         }
     }
 }
 
-async fn push_message_to_player(player_id: PlayerId, message: &MessageType) {
-    if let Some(player) = GLOBAL_MANAGER.player_manager.get_player(player_id) {
+async fn deliver_pb_to_player(player_id: PlayerId, message: &MessageType) -> bool {
+    let Some(player) = GLOBAL_MANAGER.player_manager.get_player(player_id) else {
+        return false;
+    };
+    let tx_bytes = get_message_size(message) as u64 + 13;
+
+    let ready = {
+        let p = player.read().await;
+        if !p.is_online() {
+            return false;
+        }
+        match p.prepare_proxy_send(message) {
+            ProxySendPrep::Ready(tx) => {
+                p.traffic_tx.fetch_add(tx_bytes, Ordering::Relaxed);
+                Some(tx)
+            }
+            ProxySendPrep::NeedsWrite => None,
+        }
+    };
+
+    let tx = if let Some(tx) = ready {
+        tx
+    } else {
         let mut p = player.write().await;
-        // 统计出站代理流量
-        let tx_bytes = get_message_size(message) as u64 + 13;
+        if !p.is_online() {
+            return false;
+        }
         p.traffic_tx.fetch_add(tx_bytes, Ordering::Relaxed);
-        let _ = p.send_proxy_push(message);
+        match p.resolve_proxy_sender(message) {
+            Some(tx) => tx,
+            None => {
+                drop(p);
+                let _ = package_and_send_message(&None, 0, message, true);
+                return true;
+            }
+        }
+    };
+
+    let _ = package_and_send_message(&Some(tx), 0, message, true);
+    true
+}
+
+fn offline_reply(message: &MessageType, to_player_id: PlayerId) -> Option<ProxyMessage> {
+    let session_id = message_bridge::pb_proxy_session_id(message)?;
+    match message {
+        MessageType::GenericI2oConnect(_) => Some(ProxyMessage::O2iConnect(
+            session_id,
+            false,
+            format!("no player {to_player_id} or the player is offline"),
+        )),
+        MessageType::GenericI2oSendData(_) | MessageType::GenericI2oRecvDataResult(_) => {
+            Some(ProxyMessage::O2iDisconnect(session_id))
+        }
+        MessageType::GenericO2iConnect(_)
+        | MessageType::GenericO2iRecvData(_)
+        | MessageType::GenericO2iSendDataResult(_) => Some(ProxyMessage::I2oDisconnect(session_id)),
+        _ => None,
     }
 }
 
