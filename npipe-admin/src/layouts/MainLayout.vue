@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
+import { useScrollLock } from '@/composables/useScrollLock'
 import { cn } from '@/utils/cn'
 import Button from '@/components/ui/Button.vue'
 import Icon from '@/components/ui/Icon.vue'
@@ -23,6 +24,7 @@ const toast = useToastStore()
 const mobileOpen = ref(false)
 const logoutOpen = ref(false)
 const logoutLoading = ref(false)
+useScrollLock(mobileOpen)
 
 const isMobile = () => window.innerWidth <= 768
 function onResize() {
@@ -92,10 +94,7 @@ const pageTitle = computed(() => {
 
 <template>
   <div
-    :class="cn(
-      'min-h-full bg-canvas text-ink',
-      mobileOpen && 'max-md:overflow-hidden',
-    )"
+    class="min-h-full bg-canvas text-ink"
     :style="{ '--current-sidebar': appStore.sidebarCollapsed ? 'var(--sidebar-w-collapsed)' : 'var(--sidebar-w)' }"
   >
     <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-[90] focus:rounded-lg focus:bg-surface focus:px-3 focus:py-2">
@@ -112,22 +111,27 @@ const pageTitle = computed(() => {
       )"
       :style="{ width: appStore.sidebarCollapsed ? 'var(--sidebar-w-collapsed)' : 'var(--sidebar-w)' }"
     >
-      <div class="flex h-14 items-center gap-2.5 px-4">
-        <img src="/logo.svg" alt="" class="h-8 w-8 rounded-lg" />
-        <div v-if="!appStore.sidebarCollapsed" class="min-w-0">
+      <div
+        :class="cn(
+          'flex h-14 shrink-0 items-center',
+          appStore.sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-3',
+        )"
+      >
+        <img src="/logo.svg" alt="" class="h-8 w-8 shrink-0 rounded-lg" />
+        <div v-if="!appStore.sidebarCollapsed" class="min-w-0 flex-1">
           <p class="truncate text-sm font-semibold tracking-wide">{{ t('layout.appName') }}</p>
           <p class="ui-kicker !text-[var(--text-sidebar-muted)]">{{ t('layout.appTag') }}</p>
         </div>
       </div>
 
-      <nav class="flex-1 space-y-1 px-2 py-3" :aria-label="t('layout.appName')">
+      <nav class="flex-1 space-y-1 overflow-y-auto px-2 pt-3" :aria-label="t('layout.appName')">
         <button
           v-for="item in menuItems"
           :key="item.path"
           type="button"
           :class="cn(
-            'flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
-            appStore.sidebarCollapsed && 'justify-center px-0',
+            'flex h-10 w-full items-center rounded-lg text-left text-sm transition-colors',
+            appStore.sidebarCollapsed ? 'justify-center px-0' : 'gap-3 px-2.5',
             activePath === item.path
               ? 'bg-accent-dim text-accent'
               : 'text-[var(--text-sidebar-muted)] hover:bg-[var(--bg-sidebar-hover)] hover:text-[var(--text-sidebar)]',
@@ -140,34 +144,45 @@ const pageTitle = computed(() => {
         </button>
       </nav>
 
-      <div class="mt-auto border-t border-line">
-        <div class="hidden p-2 md:block">
+      <div class="mt-auto hidden shrink-0 overflow-visible border-t border-line p-2 md:block">
+        <div
+          :class="cn(
+            'group relative overflow-visible',
+            appStore.sidebarCollapsed ? 'flex justify-center' : 'flex',
+          )"
+        >
           <button
             type="button"
-            class="flex w-full items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs text-[var(--text-sidebar-muted)] hover:bg-[var(--bg-sidebar-hover)]"
+            class="flex h-10 w-10 items-center justify-center rounded-lg text-[var(--text-sidebar-muted)] transition-colors hover:bg-[var(--bg-sidebar-hover)] hover:text-[var(--text-sidebar)] focus-visible:bg-[var(--bg-sidebar-hover)] focus-visible:text-[var(--text-sidebar)]"
+            :title="appStore.sidebarCollapsed ? t('layout.expand') : t('layout.collapse')"
             :aria-label="appStore.sidebarCollapsed ? t('layout.expand') : t('layout.collapse')"
+            :aria-expanded="!appStore.sidebarCollapsed"
             @click="appStore.toggleSidebar()"
           >
-            <Icon :name="appStore.sidebarCollapsed ? 'chevronRight' : 'chevronLeft'" :size="16" />
-            <span v-if="!appStore.sidebarCollapsed">{{ t('layout.collapse') }}</span>
+            <Icon name="menu" :size="18" />
           </button>
+          <span
+            role="tooltip"
+            class="pointer-events-none absolute z-[60] hidden whitespace-nowrap rounded-md border border-line bg-surface px-2 py-1 text-xs text-ink shadow-soft group-hover:block group-focus-within:block"
+            :class="appStore.sidebarCollapsed ? 'left-full top-1/2 ml-1.5 -translate-y-1/2' : 'bottom-full left-0 mb-1.5'"
+          >
+            {{ appStore.sidebarCollapsed ? t('layout.expand') : t('layout.collapse') }}
+          </span>
         </div>
-        <AccountMenu :collapsed="appStore.sidebarCollapsed" @account="goAccount" @login-logs="goLoginLogs" @logout="logoutOpen = true" />
       </div>
     </aside>
 
-    <div class="flex min-h-full flex-col" :style="{ marginLeft: 'var(--current-sidebar)' }" style="margin-left: 0;">
+    <div class="flex min-h-full flex-col" style="margin-left: 0;">
       <div class="flex min-h-full flex-col md:ml-[var(--current-sidebar)]">
-        <header class="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-line bg-[var(--bg-header)]/90 px-4 backdrop-blur">
-          <div class="flex min-w-0 items-center gap-2">
+        <header class="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-[var(--bg-header)]/90 px-4 backdrop-blur">
+          <div class="flex min-w-0 flex-1 items-center gap-2">
             <Button class="md:hidden" variant="ghost" size="sm" icon="menu" :aria-label="t('layout.openMenu')" @click="mobileOpen = true" />
-            <div class="min-w-0">
-              <p class="truncate text-sm font-semibold text-ink">{{ pageTitle }}</p>
-            </div>
+            <p class="min-w-0 truncate text-sm font-semibold text-ink">{{ pageTitle }}</p>
           </div>
-          <div class="flex items-center gap-2">
-            <LanguageSwitch class="hidden sm:block" />
+          <div class="flex shrink-0 items-center gap-2">
+            <LanguageSwitch compact />
             <ThemeSwitch />
+            <AccountMenu @account="goAccount" @login-logs="goLoginLogs" @logout="logoutOpen = true" />
           </div>
         </header>
 

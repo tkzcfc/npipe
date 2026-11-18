@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useFocusTrap } from '@/composables/useFocusTrap'
+import { useScrollLock } from '@/composables/useScrollLock'
 import Button from './Button.vue'
 
 const props = defineProps<{
@@ -20,6 +21,7 @@ const { t } = useI18n()
 const panel = ref<HTMLElement | null>(null)
 const isOpen = computed(() => props.open)
 useFocusTrap(panel, isOpen)
+useScrollLock(isOpen)
 
 function close() {
   emit('update:open', false)
@@ -30,13 +32,9 @@ function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape' && props.open) close()
 }
 
-watch(() => props.open, (open) => {
-  document.body.style.overflow = open ? 'hidden' : ''
-})
 onMounted(() => document.addEventListener('keydown', onKey))
 onUnmounted(() => {
   document.removeEventListener('keydown', onKey)
-  document.body.style.overflow = ''
 })
 </script>
 

@@ -3,6 +3,8 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import Segmented from './ui/Segmented.vue'
 
+withDefaults(defineProps<{ compact?: boolean }>(), { compact: false })
+
 const { t } = useI18n()
 const app = useAppStore()
 </script>
@@ -11,6 +13,7 @@ const app = useAppStore()
   <div>
     <p v-if="$attrs.labeled !== undefined || true" class="sr-only">{{ t('layout.language') }}</p>
     <Segmented
+      :compact="compact"
       :model-value="app.locale"
       :options="[
         { label: t('layout.langZh'), value: 'zh-CN' },

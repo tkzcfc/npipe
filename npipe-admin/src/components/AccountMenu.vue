@@ -4,10 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { cn } from '@/utils/cn'
 import Icon from '@/components/ui/Icon.vue'
-
-const props = defineProps<{
-  collapsed?: boolean
-}>()
+import { placeMenu } from '@/utils/menuPlacement'
 
 const emit = defineEmits<{
   logout: []
@@ -28,17 +25,20 @@ const initial = computed(() => (auth.displayName || 'U').slice(0, 1).toUpperCase
 function place() {
   const rect = trigger.value?.getBoundingClientRect()
   if (!rect) return
-  const width = Math.max(200, props.collapsed ? 220 : rect.width)
-  let left = props.collapsed ? rect.right + 8 : rect.left
-  left = Math.min(Math.max(8, left), window.innerWidth - width - 8)
-  const height = auth.isAdmin ? 132 : 176
-  let top = rect.top - height - 8
-  if (top < 8) top = Math.min(window.innerHeight - height - 8, rect.bottom + 8)
+  const measured = menu.value?.getBoundingClientRect().height
+  const pos = placeMenu({
+    trigger: { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left },
+    menuWidth: 240,
+    menuHeight: measured && measured > 0 ? measured : (auth.isAdmin ? 148 : 192),
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+    align: 'end',
+  })
   style.value = {
     position: 'fixed',
-    top: `${top}px`,
-    left: `${left}px`,
-    width: `${width}px`,
+    top: `${pos.top}px`,
+    left: `${pos.left}px`,
+    width: `${pos.width}px`,
     zIndex: '70',
   }
 }
@@ -76,25 +76,37 @@ function onKey(event: KeyboardEvent) {
   buttons[next]?.focus()
 }
 
+function addListeners() {
+  document.addEventListener('mousedown', onDoc)
+  document.addEventListener('keydown', onKey)
+  window.addEventListener('resize', place)
+  window.addEventListener('scroll', place, true)
+}
+
+function removeListeners() {
+  document.removeEventListener('mousedown', onDoc)
+  document.removeEventListener('keydown', onKey)
+  window.removeEventListener('resize', place)
+  window.removeEventListener('scroll', place, true)
+}
+
 watch(open, async (value) => {
   if (value) {
+    await nextTick()
     place()
     await nextTick()
     place()
     menu.value?.querySelector<HTMLButtonElement>('button[data-item]')?.focus()
-    document.addEventListener('mousedown', onDoc)
-    document.addEventListener('keydown', onKey)
-    window.addEventListener('resize', close)
-    window.addEventListener('scroll', close, true)
+    addListeners()
   } else {
-    document.removeEventListener('mousedown', onDoc)
-    document.removeEventListener('keydown', onKey)
-    window.removeEventListener('resize', close)
-    window.removeEventListener('scroll', close, true)
+    removeListeners()
   }
 })
 
-onBeforeUnmount(close)
+onBeforeUnmount(() => {
+  removeListeners()
+  close()
+})
 
 function goAccount() {
   emit('account')
@@ -113,11 +125,10 @@ function goLogout() {
 </script>
 
 <template>
-  <div ref="trigger" class="px-2 pb-2 pt-1">
+  <div ref="trigger" class="relative shrink-0">
     <button
       type="button"
-      class="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-[var(--text-sidebar)] hover:bg-[var(--bg-sidebar-hover)]"
-      :class="collapsed && 'justify-center px-0'"
+      class="flex max-w-[13rem] items-center gap-2 rounded-lg py-1 pl-1 pr-1.5 text-left text-ink transition-colors hover:bg-canvas md:pr-2"
       :aria-haspopup="true"
       :aria-expanded="open"
       :aria-label="t('layout.accountMenu')"
@@ -127,19 +138,17 @@ function goLogout() {
       <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-dim text-xs font-semibold text-accent">
         {{ initial }}
       </span>
-      <span v-if="!collapsed" class="min-w-0 flex-1">
-        <span class="block truncate text-sm font-medium leading-tight">{{ auth.displayName }}</span>
-        <span class="block truncate text-[11px] text-[var(--text-sidebar-muted)]">{{ roleLabel }}</span>
-      </span>
-      <Icon v-if="!collapsed" name="chevronUp" :size="14" class="shrink-0 text-[var(--text-sidebar-muted)]" />
+      <span class="hidden min-w-0 truncate text-sm font-medium leading-tight md:inline">{{ auth.displayName }}</span>
+      <Icon name="chevronDown" :size="14" class="hidden shrink-0 text-faint md:block" />
     </button>
     <Teleport to="body">
       <div
         v-if="open"
         ref="menu"
         role="menu"
+        :aria-label="t('layout.accountMenu')"
         :style="style"
-        class="rounded-lg border border-line bg-surface py-1 shadow-lift"
+        class="overflow-hidden rounded-lg border border-line bg-surface py-1 shadow-lift"
       >
         <div class="border-b border-line px-3 py-2">
           <p class="truncate text-sm font-medium text-ink">{{ auth.displayName }}</p>
@@ -166,6 +175,7 @@ function goLogout() {
           <Icon name="log" :size="14" />
           {{ t('layout.myLoginLogs') }}
         </button>
+        <div class="my-1 border-t border-line" role="separator" />
         <button
           type="button"
           data-item

@@ -2,6 +2,7 @@
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { cn } from '@/utils/cn'
+import { placeMenu } from '@/utils/menuPlacement'
 import Button from './Button.vue'
 import Icon from './Icon.vue'
 
@@ -36,18 +37,19 @@ const visibleItems = () => props.items.filter((item) => !item.hidden)
 function place() {
   const rect = trigger.value?.getBoundingClientRect()
   if (!rect) return
-  const width = 200
-  const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8)
-  const below = rect.bottom + 6
-  const estimated = visibleItems().length * 36 + 8
-  const top = below + estimated > window.innerHeight - 8
-    ? Math.max(8, rect.top - estimated - 6)
-    : below
+  const pos = placeMenu({
+    trigger: { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left },
+    menuWidth: 200,
+    menuHeight: visibleItems().length * 36 + 8,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+    align: 'end',
+  })
   style.value = {
     position: 'fixed',
-    top: `${top}px`,
-    left: `${left}px`,
-    width: `${width}px`,
+    top: `${pos.top}px`,
+    left: `${pos.left}px`,
+    width: `${pos.width}px`,
     zIndex: '90',
   }
 }
