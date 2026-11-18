@@ -137,6 +137,104 @@ async fn poll_write<S>(
     delegate_receiver.close();
 }
 
+/// 将已读缓冲交给 delegate 循环解包。
+async fn drain_frames(
+    addr: SocketAddr,
+    delegate: &mut Box<dyn SessionDelegate>,
+    buffer: &mut BytesMut,
+) -> anyhow::Result<()> {
+    loop {
+        if buffer.is_empty() {
+            break;
+        }
+        let result = delegate.on_try_extract_frame(buffer).await?;
+        if let Some(frame) = result {
+            delegate.on_recv_frame(frame).await?;
+        } else {
+            break;
+        }
+
+        // Detect delegates that forget to consume buffer data.
+        if buffer.len() > 10 * 1024 * 1024 {
+            return Err(anyhow!(
+                "[{addr}] buffer.len() is abnormal – on_try_extract_frame must consume data"
+            ));
+        }
+    }
+    Ok(())
+}
+
+enum ReadOnce {
+    Bytes,
+    Eof,
+    Timeout,
+}
+
+async fn sleep_until_std(deadline: std::time::Instant) {
+    let now = std::time::Instant::now();
+    if deadline <= now {
+        return;
+    }
+    sleep(deadline.saturating_duration_since(now)).await;
+}
+
+/// 执行一次读取。若 delegate 提供截止时间，到期会唤醒而不是一直阻塞在 `read` 上。
+/// 若提供 `max_additional_read`，本轮最多读那么多字节，避免一次读入突破上限。
+async fn read_once<S>(
+    reader: &mut ReadHalf<S>,
+    delegate: &mut Box<dyn SessionDelegate>,
+    buffer: &mut BytesMut,
+) -> anyhow::Result<ReadOnce>
+where
+    S: AsyncRead + AsyncWrite + Send + 'static,
+{
+    let deadline = delegate.read_deadline();
+    let limit = delegate.max_additional_read(buffer.len());
+
+    if let Some(0) = limit {
+        return Ok(ReadOnce::Timeout);
+    }
+
+    if let Some(limit) = limit {
+        let mut tmp = vec![0u8; limit];
+        let read_res = if let Some(deadline) = deadline {
+            let fut = reader.read(&mut tmp);
+            tokio::pin!(fut);
+            select! {
+                biased;
+                result = &mut fut => result,
+                _ = sleep_until_std(deadline) => return Ok(ReadOnce::Timeout),
+            }
+        } else {
+            reader.read(&mut tmp).await
+        };
+        let n = read_res?;
+        if n == 0 {
+            return Ok(ReadOnce::Eof);
+        }
+        buffer.extend_from_slice(&tmp[..n]);
+        return Ok(ReadOnce::Bytes);
+    }
+
+    let read_res = if let Some(deadline) = deadline {
+        let fut = reader.read_buf(buffer);
+        tokio::pin!(fut);
+        select! {
+            biased;
+            result = &mut fut => result,
+            _ = sleep_until_std(deadline) => return Ok(ReadOnce::Timeout),
+        }
+    } else {
+        reader.read_buf(buffer).await
+    };
+    let n = read_res?;
+    if n == 0 {
+        Ok(ReadOnce::Eof)
+    } else {
+        Ok(ReadOnce::Bytes)
+    }
+}
+
 /// 循环读取数据
 async fn poll_read<S>(
     addr: SocketAddr,
@@ -162,28 +260,261 @@ where
             }
         }
 
-        if reader.read_buf(&mut buffer).await? == 0 {
-            return Err(anyhow!("[{addr}] socket closed."));
-        }
-
-        // 循环解包（处理粘包）
-        loop {
-            if buffer.is_empty() {
-                break;
-            }
-            let result = delegate.on_try_extract_frame(&mut buffer).await?;
-            if let Some(frame) = result {
-                delegate.on_recv_frame(frame).await?;
-            } else {
-                break;
-            }
-
-            // Detect delegates that forget to consume buffer data.
-            if buffer.len() > 10 * 1024 * 1024 {
+        // 嗅探上限：不再读取，立即按“超限”收口，避免为判定无限累积。
+        if let Some(0) = delegate.max_additional_read(buffer.len()) {
+            delegate.on_read_limit(&mut buffer).await?;
+            drain_frames(addr, delegate, &mut buffer).await?;
+            if delegate.max_additional_read(buffer.len()) == Some(0) {
                 return Err(anyhow!(
-                    "[{addr}] buffer.len() is abnormal – on_try_extract_frame must consume data"
+                    "[{addr}] read limit reached but buffer was not consumed"
                 ));
             }
+            continue;
         }
+
+        let outcome = read_once(&mut reader, delegate, &mut buffer).await?;
+        match outcome {
+            ReadOnce::Eof => {
+                if !buffer.is_empty() {
+                    delegate.on_read_eof(&mut buffer).await?;
+                    drain_frames(addr, delegate, &mut buffer).await?;
+                }
+                return Err(anyhow!("[{addr}] socket closed."));
+            }
+            ReadOnce::Timeout => {
+                delegate.on_read_timeout(&mut buffer).await?;
+                drain_frames(addr, delegate, &mut buffer).await?;
+                if delegate.read_deadline().is_some() {
+                    return Err(anyhow!("[{addr}] read deadline reached"));
+                }
+            }
+            ReadOnce::Bytes => {
+                drain_frames(addr, delegate, &mut buffer).await?;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::net::session_delegate::SessionDelegate;
+    use async_trait::async_trait;
+    use bytes::Bytes;
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+    use tokio::io::{duplex, AsyncWriteExt};
+
+    struct TestDelegate {
+        frames: Arc<Mutex<Vec<Vec<u8>>>>,
+        events: Arc<Mutex<Vec<String>>>,
+        deadline: Option<Instant>,
+        cap: Option<usize>,
+        /// If true, timeout/limit/eof consume the buffer (simulate forwarding).
+        consume_on_interrupt: bool,
+        /// If true, extract waits (returns None) for non-empty buffer like NeedMore.
+        wait_extract: bool,
+        consume_all_on_extract: bool,
+    }
+
+    #[async_trait]
+    impl SessionDelegate for TestDelegate {
+        async fn on_session_start(
+            &mut self,
+            _session_id: u32,
+            _addr: &SocketAddr,
+            _tx: tokio::sync::mpsc::UnboundedSender<WriterMessage>,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn on_session_close(&mut self) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        fn read_deadline(&self) -> Option<Instant> {
+            self.deadline
+        }
+
+        fn max_additional_read(&self, buffer_len: usize) -> Option<usize> {
+            self.cap.map(|cap| cap.saturating_sub(buffer_len))
+        }
+
+        async fn on_try_extract_frame(
+            &mut self,
+            buffer: &mut BytesMut,
+        ) -> anyhow::Result<Option<Bytes>> {
+            if self.wait_extract {
+                return Ok(None);
+            }
+            if self.consume_all_on_extract {
+                let frame = buffer.split().freeze();
+                return Ok(Some(frame));
+            }
+            Ok(Some(buffer.split().freeze()))
+        }
+
+        async fn on_recv_frame(&mut self, frame: Bytes) -> anyhow::Result<()> {
+            self.frames.lock().unwrap().push(frame.to_vec());
+            Ok(())
+        }
+
+        async fn on_read_timeout(&mut self, buffer: &mut BytesMut) -> anyhow::Result<()> {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("timeout:{}", buffer.len()));
+            if self.consume_on_interrupt {
+                self.frames.lock().unwrap().push(buffer.split().to_vec());
+                self.deadline = None;
+                self.cap = None;
+                self.wait_extract = false;
+                return Ok(());
+            }
+            anyhow::bail!("timeout with no fallback")
+        }
+
+        async fn on_read_limit(&mut self, buffer: &mut BytesMut) -> anyhow::Result<()> {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("limit:{}", buffer.len()));
+            if self.consume_on_interrupt {
+                self.frames.lock().unwrap().push(buffer.split().to_vec());
+                self.deadline = None;
+                self.cap = None;
+                self.wait_extract = false;
+            }
+            Ok(())
+        }
+
+        async fn on_read_eof(&mut self, buffer: &mut BytesMut) -> anyhow::Result<()> {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("eof:{}", buffer.len()));
+            if self.consume_on_interrupt {
+                self.frames.lock().unwrap().push(buffer.split().to_vec());
+                self.deadline = None;
+                self.cap = None;
+                self.wait_extract = false;
+            }
+            Ok(())
+        }
+    }
+
+    fn addr() -> SocketAddr {
+        SocketAddr::from(([127, 0, 0, 1], 1))
+    }
+
+    #[tokio::test]
+    async fn poll_read_timeout_wakes_without_more_data() {
+        let (client, server) = duplex(64);
+        let (reader, _writer) = tokio::io::split(server);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let frames = Arc::new(Mutex::new(Vec::new()));
+        let mut delegate: Box<dyn SessionDelegate> = Box::new(TestDelegate {
+            frames: frames.clone(),
+            events: events.clone(),
+            deadline: Some(Instant::now() + Duration::from_millis(200)),
+            cap: None,
+            consume_on_interrupt: false,
+            wait_extract: true,
+            consume_all_on_extract: true,
+        });
+        let start = Instant::now();
+        let err = poll_read(addr(), &mut delegate, reader).await.unwrap_err();
+        let elapsed = start.elapsed();
+        drop(client);
+        assert!(
+            elapsed >= Duration::from_millis(150) && elapsed < Duration::from_millis(2000),
+            "elapsed={elapsed:?} err={err}"
+        );
+        assert!(err.to_string().contains("no fallback"), "{err}");
+        let ev = events.lock().unwrap().clone();
+        assert!(ev.iter().any(|e| e.starts_with("timeout:")), "{ev:?}");
+    }
+
+    #[tokio::test]
+    async fn poll_read_eof_with_pending_buffer_notifies_delegate() {
+        let (mut client, server) = duplex(64);
+        let (reader, _writer) = tokio::io::split(server);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let frames = Arc::new(Mutex::new(Vec::new()));
+        // First write 1 byte; extract waits (NeedMore). Then client half-closes.
+        tokio::spawn(async move {
+            client.write_all(&[0x00]).await.unwrap();
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            let _ = client.shutdown().await;
+        });
+        let mut delegate: Box<dyn SessionDelegate> = Box::new(TestDelegate {
+            frames: frames.clone(),
+            events: events.clone(),
+            deadline: Some(Instant::now() + Duration::from_secs(5)),
+            cap: Some(1024),
+            consume_on_interrupt: true,
+            wait_extract: true,
+            consume_all_on_extract: true,
+        });
+        let err = poll_read(addr(), &mut delegate, reader).await.unwrap_err();
+        assert!(err.to_string().contains("socket closed"), "{err}");
+        let ev = events.lock().unwrap().clone();
+        let fr = frames.lock().unwrap().clone();
+        assert!(ev.iter().any(|e| e == "eof:1"), "{ev:?}");
+        assert_eq!(fr, vec![vec![0x00]]);
+    }
+
+    #[tokio::test]
+    async fn poll_read_cap_limits_additional_read() {
+        let (mut client, server) = duplex(4096);
+        let (reader, _writer) = tokio::io::split(server);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let frames = Arc::new(Mutex::new(Vec::new()));
+        let mut delegate: Box<dyn SessionDelegate> = Box::new(TestDelegate {
+            frames: frames.clone(),
+            events: events.clone(),
+            deadline: Some(Instant::now() + Duration::from_secs(5)),
+            cap: Some(8),
+            consume_on_interrupt: true,
+            wait_extract: true,
+            consume_all_on_extract: true,
+        });
+        client.write_all(&[0u8; 64]).await.unwrap();
+        let _ = client.shutdown().await;
+        let _ = poll_read(addr(), &mut delegate, reader).await;
+        let ev = events.lock().unwrap().clone();
+        let fr = frames.lock().unwrap().clone();
+        assert!(ev.iter().any(|e| e.starts_with("limit:")), "events={ev:?}");
+        assert!(!fr.is_empty(), "limit must hand off already-read bytes");
+        assert!(
+            fr[0].len() <= 8,
+            "sniff batch exceeded cap: first={} ev={ev:?}",
+            fr[0].len()
+        );
+    }
+
+    #[tokio::test]
+    async fn poll_read_normal_frames_still_extracted() {
+        let (mut client, server) = duplex(64);
+        let (reader, _writer) = tokio::io::split(server);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let frames = Arc::new(Mutex::new(Vec::new()));
+        tokio::spawn(async move {
+            client.write_all(b"hello").await.unwrap();
+            let _ = client.shutdown().await;
+        });
+        let mut delegate: Box<dyn SessionDelegate> = Box::new(TestDelegate {
+            frames: frames.clone(),
+            events: events.clone(),
+            deadline: None,
+            cap: None,
+            consume_on_interrupt: false,
+            wait_extract: false,
+            consume_all_on_extract: true,
+        });
+        let err = poll_read(addr(), &mut delegate, reader).await.unwrap_err();
+        assert!(err.to_string().contains("socket closed"), "{err}");
+        assert_eq!(*frames.lock().unwrap(), vec![b"hello".to_vec()]);
+        assert!(events.lock().unwrap().is_empty());
     }
 }

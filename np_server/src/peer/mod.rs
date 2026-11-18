@@ -2,7 +2,10 @@ mod handle_push;
 mod handle_request;
 mod handle_response;
 use crate::global::config::GLOBAL_CONFIG;
-use crate::global::forward_rule::match_rule;
+use crate::global::forward_rule::{
+    resolve_unsatisfied_sniff, select_forward_rule, SelectResult, ILLEGAL_TRAFFIC_SNIFF_MAX_BYTES,
+    ILLEGAL_TRAFFIC_SNIFF_TIMEOUT,
+};
 use crate::global::GLOBAL_DB_POOL;
 use crate::orm_entity::login_history;
 use crate::player::Player;
@@ -22,7 +25,7 @@ use socket2::{SockRef, TcpKeepalive};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicI64, AtomicU64};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant as StdInstant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::UnboundedSender;
@@ -72,6 +75,8 @@ pub struct Peer {
     last_recv_time: Option<Arc<AtomicI64>>,
     /// 登录历史记录 ID，用于登出时更新记录。
     login_record_id: u32,
+    /// 非法流量嗅探截止时间。自首个非 0x21 字节时设置，不会随后续字节刷新。
+    sniff_deadline: Option<StdInstant>,
 }
 
 impl Peer {
@@ -89,6 +94,7 @@ impl Peer {
             traffic_tx: None,
             last_recv_time: None,
             login_record_id: 0,
+            sniff_deadline: None,
         }
     }
 
@@ -207,16 +213,23 @@ impl Peer {
         Ok(())
     }
 
-    /// 创建流量转发通道
-    async fn create_traffic_forward_channel(&mut self, buf: &[u8]) -> anyhow::Result<()> {
-        if let Some(ref tx) = self.tx {
-            let target = GLOBAL_CONFIG
-                .forward_rules
-                .iter()
-                .find(|rule| match_rule(&rule.matcher, buf))
-                .map(|rule| rule.target);
+    fn arm_sniff_deadline(&mut self) {
+        if self.sniff_deadline.is_none() && self.traffic_forward_writer.is_none() {
+            self.sniff_deadline = Some(StdInstant::now() + ILLEGAL_TRAFFIC_SNIFF_TIMEOUT);
+        }
+    }
 
-            let addr = target.ok_or(anyhow!("No forward rule matched"))?;
+    fn clear_sniff_deadline(&mut self) {
+        self.sniff_deadline = None;
+    }
+
+    fn is_sniffing(&self) -> bool {
+        self.sniff_deadline.is_some() && self.traffic_forward_writer.is_none()
+    }
+
+    /// 创建流量转发通道
+    async fn create_traffic_forward_channel(&mut self, addr: SocketAddr) -> anyhow::Result<()> {
+        if let Some(ref tx) = self.tx {
             let stream = TcpStream::connect(addr).await?;
 
             // 设置 TCP 保活。
@@ -241,9 +254,64 @@ impl Peer {
                 let _ = tx.send(WriterMessage::Close);
             });
             self.traffic_forward_writer = Some(writer);
+            self.clear_sniff_deadline();
             Ok(())
         } else {
             Err(anyhow!("tx is none"))
+        }
+    }
+
+    /// 将当前缓冲作为已读流量交给目标。调用后 buffer 被消费。
+    async fn forward_buffered_illegal_traffic(
+        &mut self,
+        target: SocketAddr,
+        buffer: &mut BytesMut,
+    ) -> anyhow::Result<()> {
+        self.create_traffic_forward_channel(target).await?;
+        if let Some(ref mut writer) = self.traffic_forward_writer {
+            if !buffer.is_empty() {
+                let frame = buffer.split().freeze();
+                writer.write_all(&frame).await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// 超时、上限或嗅探中 EOF：半截前缀不算命中；有 any 则原样转交已读字节。
+    /// 无 any 时直接关闭，不再走 5 秒 404 页面，以免慢连接占用会话。
+    async fn finalize_unsatisfied_sniff(&mut self, buffer: &mut BytesMut) -> anyhow::Result<()> {
+        let rules = &GLOBAL_CONFIG.forward_rules;
+        match resolve_unsatisfied_sniff(rules, buffer) {
+            SelectResult::Selected(idx) => {
+                let target = rules[idx].target;
+                self.forward_buffered_illegal_traffic(target, buffer).await
+            }
+            SelectResult::NeedMore | SelectResult::None => {
+                self.clear_sniff_deadline();
+                Err(anyhow!("No forward rule matched"))
+            }
+        }
+    }
+
+    /// 对非 npipe 首包做增量选择。NeedMore 时不消费缓冲。
+    async fn try_select_illegal_traffic(&mut self, buffer: &mut BytesMut) -> anyhow::Result<()> {
+        self.arm_sniff_deadline();
+        if buffer.len() >= ILLEGAL_TRAFFIC_SNIFF_MAX_BYTES {
+            self.finalize_unsatisfied_sniff(buffer).await?;
+            return Ok(());
+        }
+        match select_forward_rule(&GLOBAL_CONFIG.forward_rules, buffer) {
+            SelectResult::Selected(idx) => {
+                let target = GLOBAL_CONFIG.forward_rules[idx].target;
+                self.forward_buffered_illegal_traffic(target, buffer).await
+            }
+            SelectResult::NeedMore => Ok(()),
+            SelectResult::None => {
+                self.clear_sniff_deadline();
+                debug!("bad flag");
+                self.send_http_404_response().await?;
+                Err(anyhow!("Bad flag"))
+            }
         }
     }
 }
@@ -310,6 +378,44 @@ impl SessionDelegate for Peer {
         Ok(())
     }
 
+    fn read_deadline(&self) -> Option<StdInstant> {
+        if self.is_sniffing() {
+            self.sniff_deadline
+        } else {
+            None
+        }
+    }
+
+    fn max_additional_read(&self, buffer_len: usize) -> Option<usize> {
+        if self.is_sniffing() {
+            Some(ILLEGAL_TRAFFIC_SNIFF_MAX_BYTES.saturating_sub(buffer_len))
+        } else {
+            None
+        }
+    }
+
+    async fn on_read_timeout(&mut self, buffer: &mut BytesMut) -> anyhow::Result<()> {
+        if self.is_sniffing() {
+            self.finalize_unsatisfied_sniff(buffer).await?;
+        }
+        Ok(())
+    }
+
+    async fn on_read_limit(&mut self, buffer: &mut BytesMut) -> anyhow::Result<()> {
+        if self.is_sniffing() {
+            self.finalize_unsatisfied_sniff(buffer).await?;
+        }
+        Ok(())
+    }
+
+    async fn on_read_eof(&mut self, buffer: &mut BytesMut) -> anyhow::Result<()> {
+        // 仅在非法流量嗅探未决时把已读字节交给 any；npipe 半包仍按原语义随会话关闭丢弃。
+        if self.is_sniffing() && !buffer.is_empty() && buffer[0] != 33u8 {
+            self.finalize_unsatisfied_sniff(buffer).await?;
+        }
+        Ok(())
+    }
+
     /// 数据粘包处理
     ///
     /// 注意：这个函数只能使用消耗 buffer 数据的函数，否则框架会一直循环调用本函数来驱动处理消息
@@ -318,19 +424,20 @@ impl SessionDelegate for Peer {
         &mut self,
         buffer: &mut BytesMut,
     ) -> anyhow::Result<Option<Bytes>> {
-        if !buffer.is_empty()
-            && buffer[0] != 33u8
-            && self.traffic_forward_writer.is_none()
-            && self.create_traffic_forward_channel(buffer).await.is_err()
-        {
-            debug!("bad flag");
-            self.send_http_404_response().await?;
-            return Err(anyhow!("Bad flag"));
+        if !buffer.is_empty() && buffer[0] != 33u8 && self.traffic_forward_writer.is_none() {
+            self.try_select_illegal_traffic(buffer).await?;
         }
 
         if let Some(ref mut writer) = self.traffic_forward_writer {
-            let frame = buffer.split().freeze();
-            writer.write_all(&frame).await?;
+            if !buffer.is_empty() {
+                let frame = buffer.split().freeze();
+                writer.write_all(&frame).await?;
+            }
+            return Ok(None);
+        }
+
+        // 非法流量仍在等待更多字节：不要进入 npipe 拆包。
+        if !buffer.is_empty() && buffer[0] != 33u8 {
             return Ok(None);
         }
 
@@ -473,4 +580,46 @@ pub(crate) fn package_and_send_message(
         debug!("tx is none, cannot send message");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod npipe_frame_tests {
+    use super::*;
+    use bytes::BytesMut;
+
+    #[tokio::test]
+    async fn npipe_incomplete_header_is_not_consumed() {
+        let mut peer = Peer::new("tcp");
+        let mut buf = BytesMut::from(&b"\x21\x00\x00"[..]);
+        let out = peer.on_try_extract_frame(&mut buf).await.unwrap();
+        assert!(out.is_none());
+        assert_eq!(&buf[..], b"\x21\x00\x00");
+        assert!(peer.sniff_deadline.is_none());
+        assert!(peer.traffic_forward_writer.is_none());
+    }
+
+    #[tokio::test]
+    async fn npipe_complete_frame_is_extracted() {
+        let mut peer = Peer::new("tcp");
+        // flag + u32be length=8 + 8-byte payload
+        let mut raw = vec![33u8, 0, 0, 0, 8];
+        raw.extend_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8]);
+        let mut buf = BytesMut::from(&raw[..]);
+        let out = peer.on_try_extract_frame(&mut buf).await.unwrap().unwrap();
+        assert_eq!(&out[..], &[1, 2, 3, 4, 5, 6, 7, 8]);
+        assert!(buf.is_empty());
+        assert!(peer.sniff_deadline.is_none());
+    }
+
+    #[tokio::test]
+    async fn npipe_length_waits_for_body() {
+        let mut peer = Peer::new("tcp");
+        let mut raw = vec![33u8, 0, 0, 0, 8];
+        raw.extend_from_slice(&[1, 2, 3]); // short body
+        let mut buf = BytesMut::from(&raw[..]);
+        let out = peer.on_try_extract_frame(&mut buf).await.unwrap();
+        assert!(out.is_none());
+        assert_eq!(buf.len(), raw.len());
+        assert!(peer.sniff_deadline.is_none());
+    }
 }

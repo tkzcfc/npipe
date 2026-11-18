@@ -162,7 +162,10 @@ cargo build --release --no-default-features --features tcp
 | `prefix:str:<s>`    | 字符串前缀匹配                                 | `"prefix:str:GET "`        |
 | `regex:<pattern>`   | 正则表达式匹配                                 | `"regex:^(GET|POST) "`     |
 
+
 > **注意**：规则按数组顺序依次匹配，命中即停止。若同时配置了 `illegal_traffic_forward`，它等价于一条 `match_expr` 为 `any` 的兜底规则，放在所有 `illegal_traffic_forward_rules` 之后执行。
+
+**分包与嗅探（内置行为，无需改配置结构）**：`prefix` / `http` / `tls` 按已读字节增量判断（匹配、不匹配、数据不足）。数据不足且仍可能命中时会继续读取，期间后面的 `any` 不会抢先；已能确定不匹配则立即看下一条。自首个非 npipe（非 `0x21`）字节起，最多等待 1 秒、累计缓冲 1024 字节（内置上限，不会每收到一字节就刷新超时）。超时、达到上限或此时对端 EOF，半截前缀不算命中：有 `any` 则把已读字节原样交给兜底，没有则关闭连接。`regex` 只对当前缓冲做判定，没有通用的“还不完整”识别，短数据可能假阴性并落入后续规则。npipe 自身以 `0x21` 开头的协议路径不变。上述逻辑用于 TCP / KCP / WebSocket / QUIC 字节流；UDP 数据报仍按整包处理。
 
 **配置示例**：
 

@@ -162,7 +162,10 @@ Each rule has three fields:
 | `prefix:str:<s>`    | String prefix match                                | `"prefix:str:GET "`        |
 | `regex:<pattern>`   | Regular expression match                           | `"regex:^(GET|POST) "`     |
 
+
 > **Note**: Rules are matched in array order; first match wins. If `illegal_traffic_forward` is also configured, it acts as a catch-all (`any`) rule appended after all `illegal_traffic_forward_rules`.
+
+**Fragmentation and sniffing (built-in, no config schema change):** `prefix` / `http` / `tls` are evaluated incrementally on bytes already read (match, mismatch, or need more). While a leading rule still needs more data, a later `any` rule does not take the connection; a definite mismatch is skipped immediately. Starting at the first non-npipe (`0x21`) byte, sniffing waits at most 1 second and accumulates at most 1024 bytes (built-in limits; the deadline is not refreshed on every extra byte). On timeout, buffer cap, or EOF during an inconclusive sniff, a partial prefix is not treated as a match: if `any` is configured, already-read bytes are forwarded to that fallback as-is; otherwise the connection is closed. `regex` is evaluated against the current buffer only and has no general "incomplete input" detector, so a short buffer may miss and fall through. The native npipe framing path (`0x21`) is unchanged. This applies to TCP / KCP / WebSocket / QUIC streams; UDP datagrams are still handled as whole packets.
 
 **Example configuration**:
 
