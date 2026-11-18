@@ -1,7 +1,8 @@
 import axios, { type AxiosInstance, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
-import { ElMessage } from 'element-plus'
 import router from '@/router'
 import { useAuthStore } from '@/stores/auth'
+import { useToastStore } from '@/stores/toast'
+import i18n from '@/locales'
 
 const request: AxiosInstance = axios.create({
   baseURL: '/',
@@ -12,28 +13,27 @@ const request: AxiosInstance = axios.create({
   },
 })
 
-// Request interceptor
-request.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
-    return config
-  },
-  (error) => Promise.reject(error),
-)
+function t(key: string) {
+  return String(i18n.global.t(key))
+}
 
-// Response interceptor
 function handleSessionExpired() {
   const authStore = useAuthStore()
   authStore.clearSession()
   if (router.currentRoute.value.name !== 'Login') {
-    ElMessage.error('登录已过期，请重新登录')
+    useToastStore().error(t('error.sessionExpired'))
     router.replace({ name: 'Login', query: { redirect: router.currentRoute.value.fullPath } })
   }
 }
 
+request.interceptors.request.use(
+  (config: InternalAxiosRequestConfig) => config,
+  (error) => Promise.reject(error),
+)
+
 request.interceptors.response.use(
   (response: AxiosResponse) => {
     const data = response.data
-    // Session expired
     if (data?.code === 10086) {
       handleSessionExpired()
       return Promise.reject(new Error('Session expired'))
@@ -43,11 +43,11 @@ request.interceptors.response.use(
   (error) => {
     const status = error.response?.status
     if (error.code === 'ECONNABORTED') {
-      ElMessage.error('请求超时，请检查网络后重试')
+      useToastStore().error(t('common.timeout'))
       return Promise.reject(error)
     }
     if (!error.response) {
-      ElMessage.error('网络连接异常，请稍后重试')
+      useToastStore().error(t('common.networkError'))
       return Promise.reject(error)
     }
     if (status === 401) {
@@ -55,18 +55,19 @@ request.interceptors.response.use(
       return Promise.reject(error)
     }
     const messages: Record<number, string> = {
-      400: '请求参数错误',
-      401: '未授权，请重新登录',
-      403: '拒绝访问',
-      404: '请求路径不存在',
-      500: '服务器内部错误',
-      502: '网关错误',
-      503: '服务不可用',
+      400: t('common.badRequest'),
+      403: t('common.forbidden'),
+      404: t('common.notFound'),
+      429: error.response?.data?.msg || t('common.failed'),
+      500: t('common.serverError'),
+      502: t('common.gatewayError'),
+      503: t('common.unavailable'),
     }
-    ElMessage.error(messages[status] ?? `网络错误 (${status ?? 'unknown'})`)
+    if (status !== 429) {
+      useToastStore().error(messages[status] ?? `${t('common.unknownError')} (${status ?? 'unknown'})`)
+    }
     return Promise.reject(error)
   },
 )
 
 export default request
-

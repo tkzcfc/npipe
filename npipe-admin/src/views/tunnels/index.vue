@@ -1,802 +1,344 @@
-<template>
-  <div class="page-container">
-    <div class="page-head">
-      <div>
-        <h1>{{ $t('tunnel.title') }}</h1>
-        <p>{{ $t('tunnel.subtitle') }}</p>
-      </div>
-    </div>
-
-    <section class="panel">
-      <!-- Toolbar -->
-      <div class="table-toolbar">
-        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-          <el-button type="primary" :icon="Plus" @click="openAddDialog">{{ $t('tunnel.add') }}</el-button>
-          <el-button :icon="Refresh" :loading="loading" @click="loadData(pagination.currentPage)">{{ $t('common.refresh') }}</el-button>
-          <el-button text @click="clearSearch">{{ $t('common.all') }}</el-button>
-        </div>
-        <el-input
-          v-model="searchText"
-          :placeholder="$t('tunnel.searchPlaceholder')"
-          clearable
-          style="width: 240px;"
-          :prefix-icon="Search"
-          @input="onSearch"
-          @clear="clearSearch"
-        />
-      </div>
-
-      <!-- Table -->
-      <el-table
-        v-loading="loading"
-        :data="displayedTunnels"
-        stripe
-        row-key="id"
-        style="width: 100%; margin-top: 16px;"
-        :default-sort="{ prop: 'id', order: 'ascending' }"
-      >
-        <template #empty>
-          <el-empty :description="loadError || '暂无隧道数据'">
-            <el-button v-if="loadError" type="primary" :icon="Refresh" @click="loadData(pagination.currentPage)">
-              重试
-            </el-button>
-          </el-empty>
-        </template>
-        <el-table-column prop="id" :label="$t('tunnel.table.id')" width="70" sortable />
-
-        <el-table-column :label="$t('tunnel.table.source')" min-width="150">
-          <template #default="{ row }">
-            <code class="addr-code">{{ row.source }}</code>
-          </template>
-        </el-table-column>
-
-        <el-table-column :label="$t('tunnel.table.endpoint')" min-width="150">
-          <template #default="{ row }">
-            <code v-if="row.endpoint" class="addr-code">{{ row.endpoint }}</code>
-            <span v-else class="text-muted">—</span>
-          </template>
-        </el-table-column>
-
-        <el-table-column :label="$t('tunnel.table.type')" width="90">
-          <template #default="{ row }">
-            <el-tag :type="tunnelTypeColor(row.tunnel_type)" size="small">
-              {{ TUNNEL_TYPE_NAMES[row.tunnel_type] ?? row.tunnel_type }}
-            </el-tag>
-          </template>
-        </el-table-column>
-
-        <el-table-column :label="$t('tunnel.table.sender')" width="120">
-          <template #default="{ row }">
-            <span v-if="row.sender === 0" class="text-muted" style="font-size:12px;">{{ $t('common.server') }}</span>
-            <span v-else>
-              <span v-if="row.sender_name" class="font-mono">{{ row.sender_name }}</span>
-              <span class="text-muted" style="font-size:11px; margin-left:2px;">#{{ row.sender }}</span>
-            </span>
-          </template>
-        </el-table-column>
-
-        <el-table-column :label="$t('tunnel.table.receiver')" width="120">
-          <template #default="{ row }">
-            <span v-if="row.receiver === 0" class="text-muted" style="font-size:12px;">{{ $t('common.server') }}</span>
-            <span v-else>
-              <span v-if="row.receiver_name" class="font-mono">{{ row.receiver_name }}</span>
-              <span class="text-muted" style="font-size:11px; margin-left:2px;">#{{ row.receiver }}</span>
-            </span>
-          </template>
-        </el-table-column>
-
-        <el-table-column :label="$t('tunnel.table.listen')" min-width="130">
-          <template #default="{ row }">
-            <el-tooltip :content="listenTip(row)" :disabled="!listenTip(row)" placement="top">
-              <el-tag :type="listenTagType(row)" size="small">{{ listenLabel(row) }}</el-tag>
-            </el-tooltip>
-          </template>
-        </el-table-column>
-
-        <el-table-column :label="$t('tunnel.table.runtime')" width="120">
-          <template #default="{ row }">
-            <el-tooltip
-              :content="runtimeTip(row)"
-              placement="top"
-            >
-              <el-tag :type="runtimeTagType(row)" size="small">
-                {{ runtimeLabel(row) }}
-              </el-tag>
-            </el-tooltip>
-          </template>
-        </el-table-column>
-
-        <el-table-column :label="$t('tunnel.table.encryption')" width="110">
-          <template #default="{ row }">
-            <el-tag
-              v-if="row.encryption_method && row.encryption_method !== 'None'"
-              type="primary" size="small"
-            >
-              {{ row.encryption_method }}
-            </el-tag>
-            <span v-else class="text-muted" style="font-size:12px;">{{ $t('common.none') }}</span>
-          </template>
-        </el-table-column>
-
-        <el-table-column :label="$t('tunnel.table.compression')" width="75">
-          <template #default="{ row }">
-            <el-icon v-if="row.is_compressed" color="#3fb950"><SuccessFilled /></el-icon>
-            <el-icon v-else style="color: var(--border-color)"><CircleClose /></el-icon>
-          </template>
-        </el-table-column>
-
-        <el-table-column :label="$t('tunnel.table.status')" width="90">
-          <template #default="{ row }">
-            <el-tag :type="row.enabled ? 'success' : 'danger'" size="small">
-              {{ row.enabled ? $t('common.enable') : $t('common.disable') }}
-            </el-tag>
-          </template>
-        </el-table-column>
-
-        <el-table-column prop="description" :label="$t('tunnel.table.description')" min-width="120" show-overflow-tooltip />
-
-        <el-table-column :label="$t('tunnel.table.actions')" width="100" fixed="right">
-          <template #default="{ row }">
-            <el-dropdown trigger="click">
-              <el-button size="small" text type="primary" style="font-size:16px; padding:0 8px;" :loading="toggling.has(row.id)">
-                <el-icon><MoreFilled /></el-icon>
-              </el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item v-if="canManageTunnel(row)" @click="openEditDialog(row)">
-                    <el-icon><Edit /></el-icon> {{ $t('tunnel.edit') }}
-                  </el-dropdown-item>
-                  <el-dropdown-item v-if="canManageTunnel(row)" @click="openCloneDialog(row)">
-                    <el-icon><CopyDocument /></el-icon> {{ $t('tunnel.clone') }}
-                  </el-dropdown-item>
-                  <el-dropdown-item v-if="canManageTunnel(row)" @click="handleToggle(row)">
-                    <el-icon><SwitchButton /></el-icon> {{ row.enabled ? $t('common.disable') : $t('common.enable') }}
-                  </el-dropdown-item>
-                  <el-dropdown-item v-if="canManageTunnel(row)" divided @click="handleRemove(row)">
-                    <el-icon><Delete /></el-icon> {{ $t('common.delete') }}
-                  </el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <!-- Pagination -->
-      <div style="margin-top: 16px; display:flex; justify-content:flex-end;">
-        <el-pagination
-          v-model:current-page="pagination.currentPage"
-          v-model:page-size="pagination.pageSize"
-          :total="pagination.total"
-          layout="total, prev, pager, next"
-          background
-          @current-change="loadData"
-        />
-      </div>
-    </section>
-
-    <!-- Add / Edit Dialog -->
-    <el-dialog
-      v-model="formDialog.visible"
-      :title="formDialog.isEdit ? $t('tunnel.editTitle') : $t('tunnel.addTitle')"
-      width="520px"
-      destroy-on-close
-    >
-      <el-form
-        ref="tunnelFormRef"
-        :model="formDialog.form"
-        :rules="tunnelRules"
-        label-width="100px"
-        @submit.prevent
-      >
-        <el-form-item :label="$t('common.type')" prop="tunnel_type">
-          <el-select v-model="formDialog.form.tunnel_type" style="width:100%;" @change="onTypeChange">
-            <el-option label="TCP"    :value="0" />
-            <el-option label="UDP"    :value="1" />
-            <el-option label="SOCKS5" :value="2" />
-            <el-option label="HTTP"   :value="3" />
-          </el-select>
-        </el-form-item>
-
-        <el-form-item :label="$t('tunnel.source')" prop="source">
-          <el-input v-model="formDialog.form.source" :placeholder="$t('tunnel.sourcePlaceholder')" />
-        </el-form-item>
-
-        <el-form-item v-if="!isProxyType" :label="$t('tunnel.endpoint')" prop="endpoint">
-          <el-input v-model="formDialog.form.endpoint" :placeholder="$t('tunnel.endpointPlaceholder')" />
-        </el-form-item>
-
-        <el-form-item :label="$t('tunnel.senderId')">
-          <el-input-number
-            v-if="authStore.isAdmin"
-            v-model="formDialog.form.sender"
-            :min="0"
-            style="width:100%;"
-          />
-          <el-select v-else v-model="formDialog.form.sender" style="width:100%;">
-            <el-option :label="$t('tunnel.endpointOption.self')" :value="authStore.currentUserId" />
-          </el-select>
-          <div class="form-hint">{{ $t('tunnel.hintServer') }}</div>
-        </el-form-item>
-
-        <el-form-item :label="$t('tunnel.receiverId')">
-          <el-input-number
-            v-if="authStore.isAdmin"
-            v-model="formDialog.form.receiver"
-            :min="0"
-            style="width:100%;"
-          />
-          <el-select v-else v-model="formDialog.form.receiver" style="width:100%;">
-            <el-option :label="$t('tunnel.endpointOption.server')" :value="0" />
-            <el-option :label="$t('tunnel.endpointOption.self')" :value="authStore.currentUserId" />
-          </el-select>
-          <div class="form-hint">{{ $t('tunnel.hintServer') }}</div>
-        </el-form-item>
-
-        <template v-if="isProxyType">
-          <el-form-item :label="$t('tunnel.authUser')">
-            <el-input v-model="formDialog.form.username" :placeholder="$t('common.optional')" />
-          </el-form-item>
-          <el-form-item :label="$t('tunnel.authPass')">
-            <el-input v-model="formDialog.form.password" :placeholder="$t('common.optional')" />
-          </el-form-item>
-        </template>
-
-        <el-form-item :label="$t('tunnel.encryption')">
-          <el-select v-model="formDialog.form.encryption_method" style="width:100%;">
-            <el-option label="None（不加密）"   value="None" />
-            <el-option label="Xor（轻量混淆）"  value="Xor" />
-            <el-option label="AES-128（强加密）" value="Aes128" />
-          </el-select>
-        </el-form-item>
-
-        <el-form-item :label="$t('tunnel.compression')">
-          <el-switch v-model="formDialog.form.is_compressed" />
-        </el-form-item>
-
-        <el-form-item v-if="formDialog.isEdit" :label="$t('tunnel.enabled')">
-          <el-switch v-model="formDialog.form.enabled" />
-        </el-form-item>
-
-        <el-form-item :label="$t('common.description')">
-          <el-input v-model="formDialog.form.description" :placeholder="$t('common.optional')" />
-        </el-form-item>
-      </el-form>
-
-      <el-alert
-        v-if="formDialog.error"
-        class="submit-alert"
-        type="error"
-        :title="formDialog.error"
-        show-icon
-        :closable="false"
-      />
-
-      <div v-if="diagnoseResult.items.length" class="diagnose-panel">
-        <div class="diagnose-title">
-          <span>{{ $t('tunnel.diagnoseResult') }}</span>
-          <el-tag :type="diagnoseResult.ok ? 'success' : 'danger'" size="small">
-            {{ diagnoseResult.ok ? $t('tunnel.diagnosePassed') : $t('tunnel.diagnoseFailed') }}
-          </el-tag>
-        </div>
-        <div class="diagnose-list">
-          <div v-for="item in diagnoseResult.items" :key="item.key" class="diagnose-item">
-            <el-tag :type="diagnoseTagType(item.level)" size="small">{{ diagnoseLevelLabel(item.level) }}</el-tag>
-            <span>{{ diagnoseMessage(item) }}</span>
-          </div>
-        </div>
-      </div>
-
-      <template #footer>
-        <el-button @click="formDialog.visible = false">{{ $t('common.cancel') }}</el-button>
-        <el-button :loading="diagnosing" @click="handleDiagnose">{{ $t('tunnel.diagnose') }}</el-button>
-        <el-button type="primary" :loading="formDialog.loading" @click="handleSubmit">
-          {{ formDialog.isEdit ? $t('common.save') : $t('common.add') }}
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <ConfirmAction
-      v-model:visible="deleteDialog.visible"
-      :title="$t('tunnel.deleteTitle')"
-      :message="$t('tunnel.deleteConfirm', { desc: deleteDialog.source })"
-      :details="deleteDialog.details"
-      :loading="deleteDialog.loading"
-      :confirm-text="$t('common.delete')"
-      :cancel-text="$t('common.cancel')"
-      confirm-type="danger"
-      :warning-text="$t('common.irreversible')"
-      @confirm="handleRemoveConfirm"
-    />
-  </div>
-</template>
-
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
-import { Plus, Refresh, Search, Edit, Delete, MoreFilled, CopyDocument, SwitchButton } from '@element-plus/icons-vue'
 import { tunnelApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
-import ConfirmAction from '@/components/ConfirmAction.vue'
-import type { Tunnel, TunnelDetail, TunnelDiagnoseItem, TunnelDiagnoseResponse, TunnelMutateRequest } from '@/types'
+import type { Tunnel, TunnelListRequest, TunnelListenStatus } from '@/types'
+import { accountScope, loadFilters, saveFilters } from '@/utils/filters'
+import { clampQuery, isApiErrorPayload, supportsListQuery } from '@/utils/listQuery'
+import { messageFromResult, type ApiResultLike } from '@/utils/apiMessage'
+import { canManageTunnel, TUNNEL_TYPE_NAMES, tunnelDisplayName } from '@/utils/tunnel'
+import { useTunnelMutations } from '@/composables/useTunnelMutations'
+import PageHeader from '@/components/PageHeader.vue'
+import StatusBadge from '@/components/StatusBadge.vue'
+import Button from '@/components/ui/Button.vue'
+import Input from '@/components/ui/Input.vue'
+import Select from '@/components/ui/Select.vue'
+import Segmented from '@/components/ui/Segmented.vue'
+import Switch from '@/components/ui/Switch.vue'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import Spinner from '@/components/ui/Spinner.vue'
+import Pagination from '@/components/ui/Pagination.vue'
+import ActionMenu from '@/components/ui/ActionMenu.vue'
+import CopyableText from '@/components/CopyableText.vue'
+import TunnelEditorDrawer from '@/components/TunnelEditorDrawer.vue'
+import DiagnoseDialog from '@/components/DiagnoseDialog.vue'
+import TunnelReadonlyDrawer from '@/components/TunnelReadonlyDrawer.vue'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
+const editor = ref<InstanceType<typeof TunnelEditorDrawer> | null>(null)
+const diagnose = ref<InstanceType<typeof DiagnoseDialog> | null>(null)
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-const TUNNEL_TYPE_NAMES: Record<number, string> = { 0: 'TCP', 1: 'UDP', 2: 'SOCKS5', 3: 'HTTP' }
-type TagType = 'primary' | 'success' | 'warning' | 'info' | 'danger'
-const TUNNEL_TYPE_COLORS: Record<number, TagType> = { 0: 'primary', 1: 'warning', 2: 'success', 3: 'info' }
-
-function tunnelTypeColor(type: number): TagType | undefined {
-  return TUNNEL_TYPE_COLORS[type]
-}
-
-function runtimeTagType(tunnel: Tunnel): TagType {
-  if (!tunnel.enabled) return 'info'
-  return tunnel.available ? 'success' : 'warning'
-}
-
-function runtimeLabel(tunnel: Tunnel): string {
-  if (!tunnel.enabled) return t('tunnel.runtime.disabled')
-  if (tunnel.available) return t('tunnel.runtime.available')
-  return t('tunnel.runtime.waiting')
-}
-
-function listenTagType(tunnel: Tunnel): TagType {
-  switch (tunnel.listen_status) {
-    case 'listening': return 'success'
-    case 'failed': return 'danger'
-    case 'offline': return 'warning'
-    default: return 'info'
-  }
-}
-
-function listenLabel(tunnel: Tunnel): string {
-  return t(`tunnel.listen.${tunnel.listen_status || 'unknown'}`)
-}
-
-function listenTip(tunnel: Tunnel): string {
-  if (tunnel.listen_status === 'failed') return tunnel.listen_error || ''
-  if (tunnel.listen_status === 'unknown') return t('tunnel.listen.unknownTip')
-  return ''
-}
-
-function endpointStatus(id: number, online: boolean): string {
-  if (id === 0) return t('common.server')
-  return online ? t('common.online') : t('common.offline')
-}
-
-function runtimeTip(tunnel: Tunnel): string {
-  return `${t('tunnel.table.sender')}: ${endpointStatus(tunnel.sender, tunnel.sender_online)} / ${t('tunnel.table.receiver')}: ${endpointStatus(tunnel.receiver, tunnel.receiver_online)}`
-}
-
-function canManageTunnel(tunnel: Tunnel): boolean {
-  return authStore.isAdmin ||
-    (tunnel.sender === authStore.currentUserId &&
-      (tunnel.receiver === 0 || tunnel.receiver === authStore.currentUserId))
-}
-
-// ── State ─────────────────────────────────────────────────────────────────────
-const loading    = ref(false)
-const loadError  = ref('')
-const tunnels    = ref<Tunnel[]>([])
+const loading = ref(false)
+const loadError = ref('')
+const tunnels = ref<Tunnel[]>([])
 const searchText = ref('')
-const toggling   = ref<Set<number>>(new Set())
-const diagnosing = ref(false)
+const statusFilter = ref<'all' | 'listening' | 'failed' | 'offline' | 'disabled'>('all')
+const typeFilter = ref<'all' | '0' | '1' | '2' | '3'>('all')
+const serverQuery = ref(false)
 let loadSeq = 0
-const diagnoseResult = reactive<TunnelDiagnoseResponse>({
-  ok: false,
-  items: [],
-})
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+const pagination = reactive({ currentPage: 1, pageSize: 20, total: 0 })
+let persistReady = false
+const detail = ref<InstanceType<typeof TunnelReadonlyDrawer> | null>(null)
 
-const deleteDialog = reactive({
-  visible: false,
-  loading: false,
-  tunnelId: 0,
-  source: '',
-  details: [] as { label: string; value: string }[],
-})
+const auth = () => ({ isAdmin: authStore.isAdmin, currentUserId: authStore.currentUserId })
+const { toggling, confirm, requestToggle, requestRemove, confirmAction } = useTunnelMutations(() => loadData(pagination.currentPage))
 
-const pagination = reactive({
-  currentPage: 1,
-  pageSize: 20,
-  total: 0,
-})
-
-// ── Computed ──────────────────────────────────────────────────────────────────
 const displayedTunnels = computed(() => {
-  if (!searchText.value) return tunnels.value
-  const q = searchText.value.toLowerCase()
-  return tunnels.value.filter(t =>
-    t.source.toLowerCase().includes(q) ||
-    t.endpoint.toLowerCase().includes(q) ||
-    t.description.toLowerCase().includes(q)
-  )
+  if (serverQuery.value) return tunnels.value
+  return tunnels.value.filter((item) => {
+    if (statusFilter.value !== 'all') {
+      if (statusFilter.value === 'disabled' && item.enabled) return false
+      if (statusFilter.value === 'listening' && item.listen_status !== 'listening') return false
+      if (statusFilter.value === 'failed' && item.listen_status !== 'failed') return false
+      if (statusFilter.value === 'offline' && item.listen_status !== 'offline') return false
+    }
+    if (typeFilter.value !== 'all' && String(item.tunnel_type) !== typeFilter.value) return false
+    if (!searchText.value) return true
+    const q = searchText.value.toLowerCase()
+    return item.source.toLowerCase().includes(q)
+      || item.endpoint.toLowerCase().includes(q)
+      || item.description.toLowerCase().includes(q)
+      || (item.sender_name || '').toLowerCase().includes(q)
+      || (item.receiver_name || '').toLowerCase().includes(q)
+      || String(item.id).includes(q)
+      || String(item.sender).includes(q)
+      || String(item.receiver).includes(q)
+  })
 })
 
-// ── Data ──────────────────────────────────────────────────────────────────────
+const filterOptions = computed(() => [
+  { label: t('common.all'), value: 'all' },
+  { label: t('tunnel.filterListening'), value: 'listening' },
+  { label: t('tunnel.filterFailed'), value: 'failed' },
+  { label: t('tunnel.filterOffline'), value: 'offline' },
+  { label: t('tunnel.filterDisabled'), value: 'disabled' },
+])
+
+const typeOptions = computed(() => [
+  { label: t('common.all'), value: 'all' },
+  { label: 'TCP', value: '0' },
+  { label: 'UDP', value: '1' },
+  { label: 'SOCKS5', value: '2' },
+  { label: 'HTTP', value: '3' },
+])
+
+function restoreFilters() {
+  const saved = loadFilters<{
+    search?: string
+    status?: typeof statusFilter.value
+    type?: typeof typeFilter.value
+    page?: number
+    pageSize?: number
+  }>('tunnels', accountScope(authStore.role, authStore.currentUserId))
+  if (!saved) return 1
+  if (saved.search != null) searchText.value = saved.search
+  if (saved.status) statusFilter.value = saved.status
+  if (saved.type) typeFilter.value = saved.type
+  if (saved.pageSize) pagination.pageSize = saved.pageSize
+  return saved.page || 1
+}
+
+watch([searchText, statusFilter, typeFilter, () => pagination.currentPage, () => pagination.pageSize], () => {
+  if (!persistReady) return
+  saveFilters('tunnels', accountScope(authStore.role, authStore.currentUserId), {
+    search: searchText.value,
+    status: statusFilter.value,
+    type: typeFilter.value,
+    page: pagination.currentPage,
+    pageSize: pagination.pageSize,
+  })
+})
+
+function buildTunnelRequest(page: number): TunnelListRequest {
+  const req: TunnelListRequest = { page_number: page - 1, page_size: pagination.pageSize }
+  const q = clampQuery(searchText.value)
+  if (q) req.q = q
+  if (typeFilter.value !== 'all') req.tunnel_type = Number(typeFilter.value)
+  if (statusFilter.value !== 'all') req.listen_status = statusFilter.value as TunnelListenStatus
+  return req
+}
+
 async function loadData(page = 1) {
   const seq = ++loadSeq
   loading.value = true
   loadError.value = ''
   pagination.currentPage = page
   try {
-    const res = await tunnelApi.list({ page_number: page - 1, page_size: pagination.pageSize })
+    const res = await tunnelApi.list(buildTunnelRequest(page))
     if (seq !== loadSeq) return
-    tunnels.value    = res.data.tunnels ?? []
+    if (isApiErrorPayload(res.data)) {
+      loadError.value = messageFromResult(res.data as ApiResultLike, t, t('common.loadFailed'))
+      tunnels.value = []
+      pagination.total = 0
+      serverQuery.value = false
+      return
+    }
+    serverQuery.value = supportsListQuery(res.data)
+    tunnels.value = res.data.tunnels ?? []
     pagination.total = res.data.total_count ?? 0
   } catch {
     if (seq !== loadSeq) return
-    loadError.value = '数据加载失败，请稍后刷新重试'
+    loadError.value = t('common.loadFailed')
   } finally {
     if (seq === loadSeq) loading.value = false
   }
 }
 
-function onSearch() { /* client-side filter */ }
-function clearSearch() { searchText.value = '' }
-
-// ── Form dialog ───────────────────────────────────────────────────────────────
-interface TunnelForm {
-  id: number
-  source: string
-  endpoint: string
-  tunnel_type: number
-  sender: number
-  receiver: number
-  username: string
-  password: string
-  encryption_method: string
-  is_compressed: boolean
-  enabled: boolean
-  description: string
+function scheduleSearch() {
+  if (!persistReady) return
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => { loadData(1) }, 300)
 }
 
-const defaultForm = (): TunnelForm => ({
-  id: 0, source: '', endpoint: '', tunnel_type: 0,
-  sender: 0, receiver: 0, username: '', password: '',
-  encryption_method: 'Xor', is_compressed: true, enabled: true, description: '',
+watch([statusFilter, typeFilter], () => {
+  if (persistReady) loadData(1)
 })
 
-const tunnelFormRef  = ref<FormInstance>()
-const formDialog = reactive<{
-  visible: boolean; isEdit: boolean; loading: boolean; error: string; form: TunnelForm
-}>({
-  visible: false, isEdit: false, loading: false, error: '', form: defaultForm(),
+onBeforeUnmount(() => {
+  if (searchTimer) clearTimeout(searchTimer)
 })
 
-const isProxyType = computed(() =>
-  formDialog.form.tunnel_type === 2 || formDialog.form.tunnel_type === 3
-)
-
-const tunnelRules: FormRules = {
-  source: [{ required: true, message: () => t('tunnel.validation.sourceRequired'), trigger: 'blur' }],
-  endpoint: [
-    {
-      validator: (_rule, _val, cb) => {
-        if (!isProxyType.value && !formDialog.form.endpoint) {
-          cb(new Error(t('tunnel.validation.endpointRequired')))
-        } else {
-          cb()
-        }
-      },
-      trigger: 'blur',
-    },
-  ],
+function runtimeTone(tunnel: Tunnel) {
+  if (!tunnel.enabled) return 'neutral' as const
+  if (tunnel.listen_status === 'failed') return 'danger' as const
+  if (tunnel.listen_status === 'offline') return 'warning' as const
+  return tunnel.available ? 'success' as const : 'warning' as const
+}
+function runtimeLabel(tunnel: Tunnel) {
+  if (!tunnel.enabled) return t('tunnel.runtime.disabled')
+  if (tunnel.listen_status === 'failed') return t('tunnel.listen.failed')
+  if (tunnel.listen_status === 'offline') return t('tunnel.listen.offline')
+  if (tunnel.available) return t('tunnel.runtime.available')
+  return t('tunnel.runtime.waiting')
+}
+function listenTip(tunnel: Tunnel) {
+  if (tunnel.listen_status === 'failed') return tunnel.listen_error || ''
+  if (tunnel.listen_status === 'unknown') return t('tunnel.listen.unknownTip')
+  return ''
+}
+function endpointName(id: number, name: string) {
+  if (id === 0) return t('common.server')
+  return name || `#${id}`
 }
 
-function onTypeChange() {
-  formDialog.error = ''
-  if (isProxyType.value) {
-    formDialog.form.endpoint = ''
-  } else {
-    formDialog.form.username = ''
-    formDialog.form.password = ''
-  }
+function onMenu(tunnel: Tunnel, key: string) {
+  if (key === 'clone') editor.value?.openClone(tunnel)
+  else if (key === 'diagnose') diagnose.value?.run(tunnel)
+  else if (key === 'delete') requestRemove(tunnel)
 }
 
-function openAddDialog() {
-  formDialog.form   = defaultForm()
-  formDialog.error  = ''
-  if (!authStore.isAdmin) {
-    formDialog.form.sender = authStore.currentUserId
-    formDialog.form.receiver = 0
-  }
-  formDialog.isEdit = false
-  clearDiagnoseResult()
-  formDialog.visible = true
-}
-
-function formFromTunnel(tunnel: TunnelDetail): TunnelForm {
-  return {
-    id:                tunnel.id,
-    source:            tunnel.source,
-    endpoint:          tunnel.endpoint,
-    tunnel_type:       tunnel.tunnel_type,
-    sender:            tunnel.sender,
-    receiver:          tunnel.receiver,
-    username:          tunnel.username,
-    password:          tunnel.password,
-    encryption_method: tunnel.encryption_method || 'None',
-    is_compressed:     tunnel.is_compressed,
-    enabled:           tunnel.enabled,
-    description:       tunnel.description,
-  }
-}
-
-async function fetchTunnelDetail(id: number): Promise<TunnelDetail | null> {
-  const res = await tunnelApi.detail({ id })
-  const detail = res.data.tunnel
-  if (!detail) {
-    ElMessage.error(t('tunnel.notFound'))
-    return null
-  }
-  return detail
-}
-
-async function openEditDialog(tunnel: Tunnel) {
-  const detail = await fetchTunnelDetail(tunnel.id)
-  if (!detail) return
-
-  formDialog.form = formFromTunnel(detail)
-  formDialog.isEdit  = true
-  formDialog.error   = ''
-  clearDiagnoseResult()
-  formDialog.visible = true
-}
-
-async function openCloneDialog(tunnel: Tunnel) {
-  const detail = await fetchTunnelDetail(tunnel.id)
-  if (!detail) return
-
-  formDialog.form = {
-    id: 0,
-    source: detail.source,
-    endpoint: detail.endpoint,
-    tunnel_type: detail.tunnel_type,
-    sender: detail.sender,
-    receiver: detail.receiver,
-    username: detail.username,
-    password: detail.password,
-    encryption_method: detail.encryption_method || 'None',
-    is_compressed: detail.is_compressed,
-    enabled: true,
-    description: detail.description ? `${detail.description} copy` : '',
-  }
-  formDialog.isEdit = false
-  formDialog.error = ''
-  clearDiagnoseResult()
-  formDialog.visible = true
-}
-
-function buildRequest(form: TunnelForm): TunnelMutateRequest {
-  const sender = authStore.isAdmin ? form.sender : authStore.currentUserId
-  const receiver = authStore.isAdmin ? form.receiver : form.receiver === authStore.currentUserId ? authStore.currentUserId : 0
-  return {
-    id:                form.id,
-    source:            form.source,
-    endpoint:          isProxyType.value ? '' : form.endpoint,
-    enabled:           form.enabled ? 1 : 0,
-    sender,
-    receiver,
-    description:       form.description,
-    tunnel_type:       form.tunnel_type,
-    password:          isProxyType.value ? form.password : '',
-    username:          isProxyType.value ? form.username : '',
-    is_compressed:     form.is_compressed ? 1 : 0,
-    encryption_method: form.encryption_method,
-    custom_mapping:    {},
-  }
-}
-
-function submitFailedMessage(error: unknown): string {
-  const responseData = typeof error === 'object' && error !== null && 'response' in error
-    ? (error as { response?: { data?: { msg?: unknown } } }).response?.data
-    : undefined
-  return typeof responseData?.msg === 'string' && responseData.msg
-    ? responseData.msg
-    : t('tunnel.submitFailed')
-}
-
-async function handleSubmit() {
-  const valid = await tunnelFormRef.value?.validate().catch(() => false)
-  if (!valid) return
-  formDialog.error = ''
-  clearDiagnoseResult()
-  formDialog.loading = true
-  try {
-    const req = buildRequest(formDialog.form)
-    const res = formDialog.isEdit
-      ? await tunnelApi.update(req)
-      : await tunnelApi.add({ ...req, enabled: 1 })
-    if (res.data.code === 0) {
-      ElMessage.success(formDialog.isEdit ? t('tunnel.saveSuccess') : t('tunnel.addSuccess'))
-      formDialog.visible = false
-      loadData(pagination.currentPage)
-    } else if (res.data.code === 2) {
-      // 已保存，但监听失败
-      ElMessage({ type: 'warning', message: res.data.msg, duration: 8000, showClose: true })
-      formDialog.visible = false
-      loadData(pagination.currentPage)
-    } else {
-      formDialog.error = res.data.msg || t('tunnel.submitFailed')
-      ElMessage.error(formDialog.error)
-      await runDiagnose()
-    }
-  } catch (error) {
-    formDialog.error = submitFailedMessage(error)
-    ElMessage.error(formDialog.error)
-    await runDiagnose()
-  } finally {
-    formDialog.loading = false
-  }
-}
-
-function clearDiagnoseResult() {
-  diagnoseResult.ok = false
-  diagnoseResult.items = []
-}
-
-async function runDiagnose() {
-  diagnosing.value = true
-  try {
-    const res = await tunnelApi.diagnose({
-      id: formDialog.isEdit ? formDialog.form.id : undefined,
-      source: formDialog.form.source,
-      endpoint: isProxyType.value ? '' : formDialog.form.endpoint,
-      sender: authStore.isAdmin ? formDialog.form.sender : authStore.currentUserId,
-      receiver: authStore.isAdmin ? formDialog.form.receiver : formDialog.form.receiver === authStore.currentUserId ? authStore.currentUserId : 0,
-      tunnel_type: formDialog.form.tunnel_type,
-    })
-    diagnoseResult.ok = res.data.ok
-    diagnoseResult.items = res.data.items ?? []
-  } catch {
-    clearDiagnoseResult()
-  } finally {
-    diagnosing.value = false
-  }
-}
-
-async function handleDiagnose() {
-  const valid = await tunnelFormRef.value?.validate().catch(() => false)
-  if (!valid) return
-  await runDiagnose()
-}
-
-function diagnoseTagType(level: TunnelDiagnoseItem['level']): TagType {
-  if (level === 'ok') return 'success'
-  if (level === 'warn') return 'warning'
-  return 'danger'
-}
-
-function diagnoseLevelLabel(level: TunnelDiagnoseItem['level']): string {
-  return t(`tunnel.diagnoseLevel.${level}`)
-}
-
-function diagnoseMessage(item: TunnelDiagnoseItem): string {
-  return t(`tunnel.diagnoseMessage.${item.key}.${item.level}`)
-}
-
-// ── Toggle ────────────────────────────────────────────────────────────────────
-async function handleToggle(tunnel: Tunnel) {
-  const s = new Set(toggling.value)
-  s.add(tunnel.id)
-  toggling.value = s
-
-  try {
-    const res = await tunnelApi.updateStatus({
-      id: tunnel.id,
-      enabled: tunnel.enabled ? 0 : 1,
-    })
-    if (res.data.code === 0) {
-      ElMessage.success(t('tunnel.toggleSuccess'))
-      loadData(pagination.currentPage)
-    } else if (res.data.code === 2) {
-      ElMessage({ type: 'warning', message: res.data.msg, duration: 8000, showClose: true })
-      loadData(pagination.currentPage)
-    } else {
-      ElMessage({ type: 'error', message: res.data.msg || t('common.failed'), duration: 8000, showClose: true })
-    }
-  } finally {
-    const s2 = new Set(toggling.value)
-    s2.delete(tunnel.id)
-    toggling.value = s2
-  }
-}
-
-// ── Remove ────────────────────────────────────────────────────────────────────
-function handleRemove(tunnel: Tunnel) {
-  deleteDialog.tunnelId = tunnel.id
-  deleteDialog.source = tunnel.source
-  deleteDialog.details = [
-    { label: t('common.id'), value: String(tunnel.id) },
-    { label: t('tunnel.source'), value: tunnel.source },
-    { label: t('tunnel.endpoint'), value: tunnel.endpoint || '-' },
-    { label: t('common.type'), value: TUNNEL_TYPE_NAMES[tunnel.tunnel_type] ?? String(tunnel.tunnel_type) },
-  ]
-  deleteDialog.loading = false
-  deleteDialog.visible = true
-}
-
-async function handleRemoveConfirm() {
-  deleteDialog.loading = true
-  try {
-    const res = await tunnelApi.remove({ id: deleteDialog.tunnelId })
-    if (res.data.code === 0) {
-      ElMessage.success(t('tunnel.deleteSuccess'))
-      deleteDialog.visible = false
-      loadData(pagination.currentPage)
-    } else {
-      ElMessage.error(res.data.msg || t('common.failed'))
-    }
-  } finally {
-    deleteDialog.loading = false
-  }
-}
-
-onMounted(() => loadData(1))
+onMounted(async () => {
+  const page = restoreFilters()
+  persistReady = true
+  await loadData(page)
+})
 </script>
 
-<style scoped lang="scss">
-.table-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-}
+<template>
+  <div>
+    <PageHeader :title="t('tunnel.title')" :subtitle="t('tunnel.subtitle')">
+      <Button icon="refresh" :loading="loading" @click="loadData(pagination.currentPage)">{{ t('common.refresh') }}</Button>
+      <Button variant="primary" icon="plus" @click="editor?.openAdd()">{{ t('tunnel.add') }}</Button>
+    </PageHeader>
 
-.addr-code {
-  background: var(--bg-primary);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: 'JetBrains Mono', Consolas, monospace;
-  font-size: 12px;
-  color: var(--accent);
-  border: 1px solid var(--border-color);
-}
+    <div class="ui-card overflow-hidden">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
+        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <Segmented :model-value="statusFilter" :options="filterOptions" @update:model-value="statusFilter = $event as typeof statusFilter" />
+          <div class="w-32">
+            <Select :model-value="typeFilter" @update:model-value="typeFilter = String($event) as typeof typeFilter">
+              <option v-for="opt in typeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </Select>
+          </div>
+        </div>
+        <div class="w-full max-w-xs">
+          <Input :model-value="searchText" :placeholder="t('tunnel.searchPlaceholder')" @update:model-value="searchText = String($event); scheduleSearch()" />
+        </div>
+      </div>
+      <p class="border-b border-line px-4 py-2 text-xs text-faint">{{ serverQuery ? t('common.serverFilterActive') : t('common.currentPageFilterHint') }}</p>
 
-.form-hint {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-top: 4px;
-}
+      <Spinner v-if="loading && !tunnels.length" :label="t('common.loading')" />
+      <EmptyState v-else-if="loadError" :title="t('common.loadFailed')" :description="loadError" icon="warning" retry @retry="loadData(pagination.currentPage)" />
+      <EmptyState v-else-if="!displayedTunnels.length" :title="searchText || statusFilter !== 'all' || typeFilter !== 'all' ? t('common.noResults') : t('tunnel.empty')" icon="tunnel" />
 
-.submit-alert {
-  margin-top: 12px;
-}
+      <div v-else>
+        <div class="divide-y divide-line md:hidden">
+          <article v-for="item in displayedTunnels" :key="item.id" class="space-y-3 px-4 py-4">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <button type="button" class="truncate text-left font-medium text-ink hover:text-accent" @click="detail?.show(item)">{{ tunnelDisplayName(item) }}</button>
+                <p class="mt-0.5 text-xs text-faint">{{ TUNNEL_TYPE_NAMES[item.tunnel_type] }} · {{ endpointName(item.receiver, item.receiver_name) }} ← {{ endpointName(item.sender, item.sender_name) }}</p>
+              </div>
+              <StatusBadge :tone="runtimeTone(item)" :label="runtimeLabel(item)" :title="listenTip(item)" />
+            </div>
+            <div class="space-y-1 text-sm">
+              <div class="flex gap-2"><span class="shrink-0 text-faint">{{ t('tunnel.source') }}</span><CopyableText :value="item.source" /></div>
+              <div class="flex gap-2"><span class="shrink-0 text-faint">{{ t('tunnel.endpoint') }}</span><CopyableText :value="item.endpoint" /></div>
+            </div>
+            <div v-if="canManageTunnel(item, auth())" class="flex items-center justify-between gap-2">
+              <Switch :model-value="item.enabled" :label="item.enabled ? t('common.enabled') : t('common.disabled')" :disabled="toggling.has(item.id)" @update:model-value="requestToggle(item)" />
+              <div class="flex items-center gap-1">
+                <Button size="sm" variant="ghost" @click="editor?.openEdit(item)">{{ t('tunnel.edit') }}</Button>
+                <ActionMenu
+                  :items="[
+                    { key: 'clone', label: t('tunnel.clone'), icon: 'copy' },
+                    { key: 'diagnose', label: t('tunnel.diagnose'), icon: 'activity' },
+                    { key: 'delete', label: t('common.delete'), icon: 'trash', tone: 'danger' },
+                  ]"
+                  @select="onMenu(item, $event)"
+                />
+              </div>
+            </div>
+            <div v-else class="flex justify-end">
+              <Button size="sm" variant="ghost" icon="activity" @click="diagnose?.run(item)">{{ t('tunnel.diagnose') }}</Button>
+            </div>
+          </article>
+        </div>
 
-.diagnose-panel {
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: var(--bg-primary);
-  padding: 12px;
-  margin-top: 12px;
-}
+        <div class="hidden overflow-x-auto md:block">
+          <table class="min-w-full text-left text-sm">
+            <thead class="border-b border-line bg-canvas text-xs uppercase tracking-wide text-faint">
+              <tr>
+                <th class="px-4 py-3 font-medium">{{ t('tunnel.table.name') }}</th>
+                <th class="px-4 py-3 font-medium">{{ t('common.status') }}</th>
+                <th class="px-4 py-3 font-medium">{{ t('tunnel.source') }} / {{ t('tunnel.endpoint') }}</th>
+                <th class="px-4 py-3 font-medium">{{ t('tunnel.enabled') }}</th>
+                <th class="px-4 py-3 font-medium">{{ t('common.actions') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in displayedTunnels" :key="item.id" class="border-b border-line last:border-0 hover:bg-canvas/80">
+                <td class="px-4 py-3.5">
+                  <button type="button" class="truncate text-left font-medium text-ink hover:text-accent" :title="tunnelDisplayName(item)" @click="detail?.show(item)">{{ tunnelDisplayName(item) }}</button>
+                  <p class="mt-0.5 text-xs text-faint">{{ TUNNEL_TYPE_NAMES[item.tunnel_type] }} · {{ endpointName(item.receiver, item.receiver_name) }} ← {{ endpointName(item.sender, item.sender_name) }}</p>
+                </td>
+                <td class="px-4 py-3.5">
+                  <StatusBadge :tone="runtimeTone(item)" :label="runtimeLabel(item)" />
+                  <p v-if="listenTip(item)" class="mt-1 max-w-[14rem] truncate text-[11px] text-faint" :title="listenTip(item)">{{ listenTip(item) }}</p>
+                </td>
+                <td class="px-4 py-3.5">
+                  <div class="max-w-[16rem] space-y-1">
+                    <CopyableText :value="item.source" />
+                    <CopyableText :value="item.endpoint" />
+                  </div>
+                </td>
+                <td class="px-4 py-3.5">
+                  <Switch
+                    v-if="canManageTunnel(item, auth())"
+                    :model-value="item.enabled"
+                    :disabled="toggling.has(item.id)"
+                    @update:model-value="requestToggle(item)"
+                  />
+                  <span v-else class="text-xs text-faint">{{ item.enabled ? t('common.enabled') : t('common.disabled') }}</span>
+                </td>
+                <td class="px-4 py-3.5">
+                  <div v-if="canManageTunnel(item, auth())" class="flex items-center gap-1">
+                    <Button size="sm" variant="ghost" @click="editor?.openEdit(item)">{{ t('tunnel.edit') }}</Button>
+                    <ActionMenu
+                      :items="[
+                        { key: 'clone', label: t('tunnel.clone'), icon: 'copy' },
+                        { key: 'diagnose', label: t('tunnel.diagnose'), icon: 'activity' },
+                        { key: 'delete', label: t('common.delete'), icon: 'trash', tone: 'danger' },
+                      ]"
+                      @select="onMenu(item, $event)"
+                    />
+                  </div>
+                  <Button v-else size="sm" variant="ghost" icon="activity" @click="diagnose?.run(item)">{{ t('tunnel.diagnose') }}</Button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-.diagnose-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
+      <Pagination
+        v-if="pagination.total > 0"
+        class="border-t border-line px-4"
+        :page="pagination.currentPage"
+        :page-size="pagination.pageSize"
+        :total="pagination.total"
+        @update:page="loadData($event)"
+        @update:page-size="pagination.pageSize = $event; loadData(1)"
+      />
+    </div>
 
-.diagnose-list {
-  display: grid;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.diagnose-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-</style>
+    <TunnelEditorDrawer ref="editor" @saved="loadData(pagination.currentPage)" />
+    <TunnelReadonlyDrawer ref="detail" @edit="editor?.openEdit($event)" @diagnose="diagnose?.run($event)" />
+    <DiagnoseDialog ref="diagnose" />
+    <ConfirmDialog
+      :open="confirm.open"
+      :title="confirm.title"
+      :message="confirm.message"
+      :details="confirm.details"
+      :loading="confirm.loading"
+      :confirm-text="confirm.confirmText"
+      :tone="confirm.tone"
+      @update:open="confirm.open = $event"
+      @confirm="confirmAction"
+    />
+  </div>
+</template>

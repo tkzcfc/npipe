@@ -1,138 +1,28 @@
-<template>
-  <div class="main-layout" :class="{ 'sidebar-collapsed': appStore.sidebarCollapsed, 'mobile-open': mobileOpen }">
-    <div class="mobile-backdrop" @click="mobileOpen = false" />
-    <aside class="sidebar">
-      <div class="sidebar-logo">
-        <span class="logo-icon"><el-icon><Connection /></el-icon></span>
-        <span v-show="!appStore.sidebarCollapsed" class="logo-text">npipe Console</span>
-      </div>
-
-      <el-menu
-        :default-active="activeMenu"
-        :collapse="appStore.sidebarCollapsed"
-        :collapse-transition="false"
-        class="sidebar-menu"
-      >
-        <el-menu-item
-          v-for="item in menuItems"
-          :key="item.path"
-          :index="item.path"
-          :class="{ 'is-navigating': pendingPath === item.path }"
-          @click="navigateTo(item.path)"
-        >
-          <el-icon><component :is="item.icon" /></el-icon>
-          <template #title>{{ item.title }}</template>
-        </el-menu-item>
-      </el-menu>
-
-      <div class="sidebar-footer">
-        <el-tooltip :content="appStore.sidebarCollapsed ? $t('layout.expand') : $t('layout.collapse')" placement="right">
-          <button class="collapse-btn" @click="appStore.toggleSidebar">
-            <el-icon>
-              <Expand v-if="appStore.sidebarCollapsed" />
-              <Fold v-else />
-            </el-icon>
-          </button>
-        </el-tooltip>
-      </div>
-    </aside>
-
-    <!-- Main content -->
-    <div class="main-wrapper">
-      <header class="header">
-        <div class="header-left">
-          <button class="mobile-menu-btn" @click="mobileOpen = !mobileOpen">
-            <el-icon><Expand /></el-icon>
-          </button>
-          <div class="route-title">{{ route.meta.title }}</div>
-        </div>
-        <div class="header-right">
-          <el-tooltip :content="appStore.theme === 'dark' ? $t('layout.themeLight') : $t('layout.themeDark')">
-            <button class="icon-btn" @click="appStore.toggleTheme">
-              <el-icon>
-                <Sunny v-if="appStore.theme === 'dark'" />
-                <Moon v-else />
-              </el-icon>
-            </button>
-          </el-tooltip>
-
-          <el-dropdown @command="onCommand">
-            <div class="user-avatar">
-              <el-icon><UserFilled /></el-icon>
-              <span class="username">{{ authStore.displayName }}</span>
-              <span class="role-badge">{{ authStore.isAdmin ? $t('layout.admin') : $t('layout.user') }}</span>
-              <el-icon class="arrow"><ArrowDown /></el-icon>
-            </div>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="logout">
-                  <el-icon><SwitchButton /></el-icon> {{ $t('layout.logout') }}
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
-      </header>
-
-      <main class="content">
-        <div v-if="isRouteLoading" class="route-loading-bar" />
-        <router-view v-slot="{ Component }">
-          <transition name="fade" mode="out-in">
-            <component :is="Component" />
-          </transition>
-        </router-view>
-      </main>
-    </div>
-
-    <ConfirmAction
-      v-model:visible="logoutDialog.visible"
-      :title="$t('layout.logoutTitle')"
-      :message="$t('layout.logoutConfirm')"
-      :loading="logoutDialog.loading"
-      :confirm-text="$t('layout.logout')"
-      :cancel-text="$t('common.cancel')"
-      confirm-type="warning"
-      @confirm="handleLogoutConfirm"
-    />
-  </div>
-</template>
-
 <script setup lang="ts">
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
-import { ElMessage } from 'element-plus'
-import ConfirmAction from '@/components/ConfirmAction.vue'
-import {
-  ArrowDown,
-  Connection,
-  Document,
-  Expand,
-  Fold,
-  Moon,
-  Odometer,
-  Sunny,
-  SwitchButton,
-  Tickets,
-  Tools,
-  User,
-  UserFilled,
-} from '@element-plus/icons-vue'
+import { useToastStore } from '@/stores/toast'
+import { cn } from '@/utils/cn'
+import Button from '@/components/ui/Button.vue'
+import Icon from '@/components/ui/Icon.vue'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import LanguageSwitch from '@/components/LanguageSwitch.vue'
+import ThemeSwitch from '@/components/ThemeSwitch.vue'
+import AccountMenu from '@/components/AccountMenu.vue'
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
 const authStore = useAuthStore()
-const pendingPath = ref('')
-const isRouteLoading = ref(false)
+const toast = useToastStore()
+
 const mobileOpen = ref(false)
-const logoutDialog = ref({
-  visible: false,
-  loading: false,
-})
+const logoutOpen = ref(false)
+const logoutLoading = ref(false)
 
 const isMobile = () => window.innerWidth <= 768
 function onResize() {
@@ -140,365 +30,166 @@ function onResize() {
 }
 onMounted(() => window.addEventListener('resize', onResize))
 onUnmounted(() => window.removeEventListener('resize', onResize))
+watch(() => route.fullPath, () => { mobileOpen.value = false })
 
-watch(
-  () => route.fullPath,
-  () => {
-    pendingPath.value = ''
-    isRouteLoading.value = false
+const systemPaths = ['/logs', '/operations', '/maintenance']
+
+const menuItems = computed(() => [
+  ...(authStore.isAdmin ? [{ path: '/dashboard', title: t('nav.dashboard'), icon: 'activity' }] : []),
+  {
+    path: authStore.isAdmin ? '/players' : `/players/${authStore.currentUserId}`,
+    title: authStore.isAdmin ? t('nav.players') : t('nav.myAccount'),
+    icon: 'user',
   },
-)
+  { path: '/tunnels', title: t('nav.tunnels'), icon: 'tunnel' },
+  ...(authStore.isAdmin ? [{ path: '/logs', title: t('nav.system'), icon: 'shield' }] : []),
+])
 
-const activeMenu = computed(() => {
+const activePath = computed(() => {
   if (route.path.startsWith('/players')) return authStore.isAdmin ? '/players' : `/players/${authStore.currentUserId}`
   if (route.path.startsWith('/tunnels')) return '/tunnels'
+  if (systemPaths.includes(route.path)) return '/logs'
   return route.path
 })
 
-const menuItems = computed(() => [
-  ...(authStore.isAdmin ? [{ path: '/dashboard', title: t('dashboard.title'), icon: Odometer }] : []),
-  { path: authStore.isAdmin ? '/players' : `/players/${authStore.currentUserId}`, title: authStore.isAdmin ? t('player.title') : t('player.myAccount'), icon: User },
-  { path: '/tunnels', title: t('tunnel.title'), icon: Connection },
-  { path: '/logs', title: t('loginLog.title'), icon: Document },
-  ...(authStore.isAdmin ? [{ path: '/operations', title: t('operationLog.title'), icon: Tickets }] : []),
-  ...(authStore.isAdmin ? [{ path: '/maintenance', title: t('maintenance.title'), icon: Tools }] : []),
-])
-
-async function navigateTo(path: string) {
-  if (path === route.path || pendingPath.value === path) return
-  pendingPath.value = path
-  isRouteLoading.value = true
+async function go(path: string) {
+  if (path === route.path) return
   mobileOpen.value = false
-  try {
-    await router.push(path)
-  } catch {
-    pendingPath.value = ''
-    isRouteLoading.value = false
-  }
+  await router.push(path)
 }
 
-async function onCommand(cmd: string) {
-  if (cmd === 'logout') {
-    logoutDialog.value.visible = true
+async function goAccount() {
+  mobileOpen.value = false
+  if (authStore.currentUserId) {
+    await router.push({ name: 'PlayerDetail', params: { id: authStore.currentUserId } })
+    return
   }
+  if (authStore.isAdmin) await router.push({ name: 'Players' })
 }
 
-async function handleLogoutConfirm() {
-  logoutDialog.value.loading = true
+async function goLoginLogs() {
+  mobileOpen.value = false
+  await router.push({ name: 'LoginLogs' })
+}
+
+async function confirmLogout() {
+  logoutLoading.value = true
   try {
     await authStore.logout()
-    ElMessage.success(t('layout.logoutSuccess'))
-    logoutDialog.value.visible = false
-    await router.push('/login')
+    toast.info(t('layout.logoutSuccess'))
+    logoutOpen.value = false
+    await router.replace({ name: 'Login' })
   } finally {
-    logoutDialog.value.loading = false
+    logoutLoading.value = false
   }
 }
+
+const pageTitle = computed(() => {
+  const key = typeof route.meta.titleKey === 'string' ? route.meta.titleKey : ''
+  return key ? t(key) : ''
+})
 </script>
 
-<style scoped lang="scss">
-.main-layout {
-  display: flex;
-  height: 100vh;
-  overflow: hidden;
+<template>
+  <div
+    :class="cn(
+      'min-h-full bg-canvas text-ink',
+      mobileOpen && 'max-md:overflow-hidden',
+    )"
+    :style="{ '--current-sidebar': appStore.sidebarCollapsed ? 'var(--sidebar-w-collapsed)' : 'var(--sidebar-w)' }"
+  >
+    <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-[90] focus:rounded-lg focus:bg-surface focus:px-3 focus:py-2">
+      {{ t('common.skipToContent') }}
+    </a>
 
-  --sidebar-w: 220px;
+    <div v-if="mobileOpen" class="fixed inset-0 z-40 bg-black/50 md:hidden" @click="mobileOpen = false" />
 
-  &.sidebar-collapsed {
-    --sidebar-w: 64px;
-  }
-}
+    <aside
+      :class="cn(
+        'fixed inset-y-0 left-0 z-50 flex flex-col border-r border-line bg-sidebar text-[var(--text-sidebar)] transition-all duration-200',
+        'max-md:-translate-x-full',
+        mobileOpen && 'max-md:translate-x-0',
+      )"
+      :style="{ width: appStore.sidebarCollapsed ? 'var(--sidebar-w-collapsed)' : 'var(--sidebar-w)' }"
+    >
+      <div class="flex h-14 items-center gap-2.5 px-4">
+        <img src="/logo.svg" alt="" class="h-8 w-8 rounded-lg" />
+        <div v-if="!appStore.sidebarCollapsed" class="min-w-0">
+          <p class="truncate text-sm font-semibold tracking-wide">{{ t('layout.appName') }}</p>
+          <p class="ui-kicker !text-[var(--text-sidebar-muted)]">{{ t('layout.appTag') }}</p>
+        </div>
+      </div>
 
-// ── Sidebar ──────────────────────────────────────────────────────────────────
-.sidebar {
-  width: var(--sidebar-w);
-  min-width: var(--sidebar-w);
-  height: 100vh;
-  background: linear-gradient(180deg, #111827 0%, #0f1724 100%);
-  border-right: 1px solid var(--border-color);
-  display: flex;
-  flex-direction: column;
-  transition: width .25s ease, min-width .25s ease;
-  overflow: hidden;
-  position: relative;
-  z-index: 10;
-}
+      <nav class="flex-1 space-y-1 px-2 py-3" :aria-label="t('layout.appName')">
+        <button
+          v-for="item in menuItems"
+          :key="item.path"
+          type="button"
+          :class="cn(
+            'flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
+            appStore.sidebarCollapsed && 'justify-center px-0',
+            activePath === item.path
+              ? 'bg-accent-dim text-accent'
+              : 'text-[var(--text-sidebar-muted)] hover:bg-[var(--bg-sidebar-hover)] hover:text-[var(--text-sidebar)]',
+          )"
+          :title="item.title"
+          @click="go(item.path)"
+        >
+          <Icon :name="item.icon" :size="18" />
+          <span v-if="!appStore.sidebarCollapsed" class="truncate">{{ item.title }}</span>
+        </button>
+      </nav>
 
-.sidebar-logo {
-  height: 64px;
-  display: flex;
-  align-items: center;
-  padding: 0 20px;
-  gap: 10px;
-  border-bottom: 1px solid rgba(255,255,255,.06);
-  white-space: nowrap;
-  overflow: hidden;
+      <div class="mt-auto border-t border-line">
+        <div class="hidden p-2 md:block">
+          <button
+            type="button"
+            class="flex w-full items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs text-[var(--text-sidebar-muted)] hover:bg-[var(--bg-sidebar-hover)]"
+            :aria-label="appStore.sidebarCollapsed ? t('layout.expand') : t('layout.collapse')"
+            @click="appStore.toggleSidebar()"
+          >
+            <Icon :name="appStore.sidebarCollapsed ? 'chevronRight' : 'chevronLeft'" :size="16" />
+            <span v-if="!appStore.sidebarCollapsed">{{ t('layout.collapse') }}</span>
+          </button>
+        </div>
+        <AccountMenu :collapsed="appStore.sidebarCollapsed" @account="goAccount" @login-logs="goLoginLogs" @logout="logoutOpen = true" />
+      </div>
+    </aside>
 
-  .logo-icon {
-    width: 30px;
-    height: 30px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #8ab4ff;
-    background: rgba(91,143,249,.14);
-    flex-shrink: 0;
-  }
+    <div class="flex min-h-full flex-col" :style="{ marginLeft: 'var(--current-sidebar)' }" style="margin-left: 0;">
+      <div class="flex min-h-full flex-col md:ml-[var(--current-sidebar)]">
+        <header class="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-line bg-[var(--bg-header)]/90 px-4 backdrop-blur">
+          <div class="flex min-w-0 items-center gap-2">
+            <Button class="md:hidden" variant="ghost" size="sm" icon="menu" :aria-label="t('layout.openMenu')" @click="mobileOpen = true" />
+            <div class="min-w-0">
+              <p class="truncate text-sm font-semibold text-ink">{{ pageTitle }}</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <LanguageSwitch class="hidden sm:block" />
+            <ThemeSwitch />
+          </div>
+        </header>
 
-  .logo-text {
-    font-size: 15px;
-    font-weight: 700;
-    color: #fff;
-    letter-spacing: 0;
-  }
-}
+        <div v-if="appStore.routeLoading" class="h-0.5 overflow-hidden bg-line">
+          <div class="h-full w-1/3 animate-pulse bg-accent" />
+        </div>
 
-.sidebar-menu {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  border: none;
-  background: transparent;
-  padding-top: 8px;
+        <main id="main" class="flex-1 px-4 py-5 sm:px-6">
+          <router-view />
+        </main>
+      </div>
+    </div>
 
-  :deep(.el-menu-item) {
-    height: 42px;
-    line-height: 42px;
-    margin: 2px 10px;
-    border-radius: 7px;
-    color: rgba(255,255,255,.55);
-    transition: all .18s;
-
-    &:hover {
-      background: rgba(255,255,255,.07) !important;
-      color: rgba(255,255,255,.9);
-    }
-
-    &.is-active,
-    &.is-navigating {
-      background: rgba(91,143,249,.22) !important;
-      color: #5b8ff9 !important;
-
-      .el-icon { color: #5b8ff9; }
-    }
-
-    &.is-navigating {
-      cursor: wait;
-      opacity: .82;
-    }
-  }
-}
-
-.sidebar-footer {
-  padding: 12px 14px;
-  border-top: 1px solid rgba(255,255,255,.05);
-}
-
-.collapse-btn {
-  width: 100%;
-  background: rgba(255,255,255,.05);
-  border: 1px solid rgba(255,255,255,.07);
-  border-radius: 7px;
-  color: rgba(255,255,255,.4);
-  cursor: pointer;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all .2s;
-
-  &:hover {
-    background: rgba(255,255,255,.1);
-    color: #fff;
-  }
-}
-
-// ── Main wrapper ────────────────────────────────────────────────────────────
-.main-wrapper {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-// ── Header ──────────────────────────────────────────────────────────────────
-.header {
-  height: 64px;
-  background: var(--bg-header);
-  border-bottom: 1px solid var(--border-color);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  flex-shrink: 0;
-  box-shadow: var(--shadow-sm);
-}
-
-.route-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.icon-btn {
-  background: none;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  width: 32px; height: 32px;
-  cursor: pointer;
-  color: var(--text-secondary);
-  display: flex; align-items: center; justify-content: center;
-  transition: all .2s;
-
-  &:hover { border-color: var(--accent); color: var(--accent); }
-}
-
-.user-avatar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  padding: 4px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--border-color);
-  color: var(--text-secondary);
-  transition: all .2s;
-  font-size: 13px;
-
-  &:hover { border-color: var(--accent); color: var(--accent); }
-
-  .username { font-weight: 500; }
-  .role-badge {
-    font-size: 11px;
-    line-height: 1;
-    padding: 3px 5px;
-    border-radius: 5px;
-    color: var(--accent);
-    background: rgba(91,143,249,.12);
-  }
-  .arrow { font-size: 12px; }
-}
-
-// ── Content ──────────────────────────────────────────────────────────────────
-.content {
-  flex: 1;
-  overflow-y: auto;
-  background: var(--bg-primary);
-  position: relative;
-}
-
-.route-loading-bar {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  height: 2px;
-  overflow: hidden;
-  background: rgba(91,143,249,.14);
-
-  &::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: -35%;
-    width: 35%;
-    background: var(--accent);
-    animation: route-loading 1s ease-in-out infinite;
-  }
-}
-
-// ── Transition ───────────────────────────────────────────────────────────────
-.fade-enter-active, .fade-leave-active { transition: opacity .2s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
-
-@keyframes route-loading {
-  0% { left: -35%; }
-  100% { left: 100%; }
-}
-
-// ── Mobile ───────────────────────────────────────────────────────────────────
-.mobile-menu-btn {
-  display: none;
-  background: none;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  width: 32px; height: 32px;
-  cursor: pointer;
-  color: var(--text-secondary);
-  align-items: center;
-  justify-content: center;
-  transition: all .2s;
-  flex-shrink: 0;
-
-  &:hover { border-color: var(--accent); color: var(--accent); }
-}
-
-.mobile-backdrop {
-  display: none;
-}
-
-@media (max-width: 768px) {
-  .main-layout {
-    --sidebar-w: 0px;
-
-    &.sidebar-collapsed {
-      --sidebar-w: 0px;
-    }
-  }
-
-  .sidebar {
-    position: fixed;
-    left: 0; top: 0;
-    width: 220px !important;
-    min-width: 220px !important;
-    transform: translateX(-100%);
-    transition: transform .25s ease;
-    z-index: 1000;
-  }
-
-  .sidebar-footer {
-    display: none;
-  }
-
-  .mobile-open {
-    .sidebar {
-      transform: translateX(0);
-    }
-
-    .mobile-backdrop {
-      display: block;
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, .5);
-      z-index: 999;
-    }
-  }
-
-  .mobile-menu-btn {
-    display: flex;
-  }
-
-  .header {
-    padding: 0 12px;
-  }
-
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .user-avatar {
-    .username, .role-badge, .arrow {
-      display: none;
-    }
-  }
-}
-</style>
+    <ConfirmDialog
+      :open="logoutOpen"
+      :title="t('layout.logoutTitle')"
+      :message="t('layout.logoutConfirm')"
+      :loading="logoutLoading"
+      :confirm-text="t('layout.logout')"
+      tone="warning"
+      @update:open="logoutOpen = $event"
+      @confirm="confirmLogout"
+    />
+  </div>
+</template>

@@ -1,147 +1,157 @@
-<template>
-  <div class="page-container">
-    <div class="page-head">
-      <div>
-        <h1>{{ $t('loginLog.title') }}</h1>
-        <p>{{ $t('loginLog.subtitle') }}</p>
-      </div>
-      <el-button :icon="Refresh" @click="loadData(1)" :loading="loading">{{ $t('common.refresh') }}</el-button>
-    </div>
-
-    <section class="panel">
-      <div class="table-toolbar">
-        <div class="filter-row">
-          <el-input-number
-            v-model="filterUserId"
-            :min="1"
-            :placeholder="$t('loginLog.userFilter')"
-            controls-position="right"
-            clearable
-          />
-          <el-button type="primary" :icon="Search" @click="loadData(1)">{{ $t('common.search') }}</el-button>
-          <el-button text @click="clearFilter">{{ $t('common.all') }}</el-button>
-        </div>
-      </div>
-
-      <el-table v-loading="loading" :data="items" row-key="id" style="width:100%; margin-top: 14px;">
-        <el-table-column prop="id" label="ID" width="90" />
-        <el-table-column prop="user_id" :label="$t('loginLog.userId')" width="100" />
-        <el-table-column :label="$t('loginLog.source')" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.login_source === 'web' ? 'warning' : 'info'" size="small">
-              {{ row.login_source === 'web' ? $t('loginLog.sourceWeb') : $t('loginLog.sourceClient') }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column :label="$t('loginLog.result')" width="90">
-          <template #default="{ row }">
-            <el-tag :type="row.success ? 'success' : 'danger'" size="small">
-              {{ row.success ? $t('loginLog.success') : $t('loginLog.failed') }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="ip_addr" label="IP" min-width="150">
-          <template #default="{ row }">
-            <span class="font-mono">{{ row.ip_addr }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column :label="$t('loginLog.loginTime')" min-width="170">
-          <template #default="{ row }">
-            <span>{{ row.login_time ? formatTime(row.login_time) : '-' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column :label="$t('loginLog.logoutTime')" min-width="170">
-          <template #default="{ row }">
-            <span v-if="row.logout_time">{{ formatTime(row.logout_time) }}</span>
-            <el-tag v-else-if="row.success && row.login_source !== 'web'" type="success" size="small">{{ $t('loginLog.online') }}</el-tag>
-            <span v-else class="text-muted">—</span>
-          </template>
-        </el-table-column>
-        <el-table-column :label="$t('loginLog.duration')" width="130" align="right">
-          <template #default="{ row }">
-            <span>{{ row.logout_time ? formatDuration(row.duration_secs) : '-' }}</span>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <div class="pager-row">
-        <el-pagination
-          v-model:current-page="pagination.currentPage"
-          v-model:page-size="pagination.pageSize"
-          :total="pagination.total"
-          layout="total, prev, pager, next"
-          background
-          @current-change="loadData"
-        />
-      </div>
-    </section>
-  </div>
-</template>
-
 <script setup lang="ts">
-import { formatDateTime } from '@/utils/time'
-import { onMounted, reactive, ref } from 'vue'
-import { Refresh, Search } from '@element-plus/icons-vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { playerApi } from '@/api'
+import { useAuthStore } from '@/stores/auth'
 import type { LoginHistoryItem } from '@/types'
+import { formatDuration } from '@/utils/format'
+import { formatDateTime } from '@/utils/time'
+import { accountScope, loadFilters, saveFilters } from '@/utils/filters'
+import PageHeader from '@/components/PageHeader.vue'
+import SystemTabs from '@/components/SystemTabs.vue'
+import StatusBadge from '@/components/StatusBadge.vue'
+import Button from '@/components/ui/Button.vue'
+import Input from '@/components/ui/Input.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import Spinner from '@/components/ui/Spinner.vue'
+import Pagination from '@/components/ui/Pagination.vue'
+
+const { t } = useI18n()
+const route = useRoute()
+const authStore = useAuthStore()
 
 const loading = ref(false)
+const loadError = ref('')
 const items = ref<LoginHistoryItem[]>([])
-const filterUserId = ref<number | undefined>()
+const filterUserId = ref('')
+const pagination = reactive({ currentPage: 1, pageSize: 20, total: 0 })
 
-const pagination = reactive({
-  currentPage: 1,
-  pageSize: 20,
-  total: 0,
+const parsedUserId = computed(() => {
+  const raw = filterUserId.value.trim()
+  if (!raw) return undefined
+  const n = Number(raw)
+  return Number.isFinite(n) ? n : undefined
 })
 
 async function loadData(page = pagination.currentPage) {
   loading.value = true
+  loadError.value = ''
   pagination.currentPage = page
   try {
     const res = await playerApi.loginHistory({
-      user_id: filterUserId.value,
+      user_id: authStore.isAdmin ? parsedUserId.value : undefined,
       page_number: page - 1,
       page_size: pagination.pageSize,
     })
     items.value = res.data.items ?? []
     pagination.total = res.data.total_count ?? 0
+  } catch {
+    loadError.value = t('common.loadFailed')
   } finally {
     loading.value = false
   }
 }
 
 function clearFilter() {
-  filterUserId.value = undefined
+  filterUserId.value = ''
   loadData(1)
 }
 
-function formatTime(ts: number): string {
-  return formatDateTime(ts)
+function sourceLabel(source: string) {
+  return source === 'web' ? t('loginLog.sourceWeb') : t('loginLog.sourceClient')
 }
 
-function formatDuration(secs: number): string {
-  if (secs < 60) return `${secs}s`
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ${secs % 60}s`
-  const h = Math.floor(secs / 3600)
-  const m = Math.floor((secs % 3600) / 60)
-  return `${h}h ${m}m`
+let persistReady = false
+
+function restoreFilters() {
+  const queryId = String(route.query.user_id ?? '').trim()
+  if (queryId) {
+    filterUserId.value = queryId
+    return
+  }
+  const saved = loadFilters<{ userId?: string }>('logins', accountScope(authStore.role, authStore.currentUserId))
+  if (saved?.userId && authStore.isAdmin) filterUserId.value = saved.userId
 }
 
-onMounted(() => loadData(1))
+watch([filterUserId], () => {
+  if (!persistReady || !authStore.isAdmin) return
+  saveFilters('logins', accountScope(authStore.role, authStore.currentUserId), { userId: filterUserId.value })
+})
+
+watch(() => route.query.user_id, (value) => {
+  const next = String(value ?? '').trim()
+  if (next && next !== filterUserId.value) {
+    filterUserId.value = next
+    loadData(1)
+  }
+})
+
+onMounted(() => {
+  restoreFilters()
+  persistReady = true
+  loadData(1)
+})
 </script>
 
-<style scoped lang="scss">
-.filter-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
+<template>
+  <div>
+    <SystemTabs />
+    <PageHeader :title="authStore.isAdmin ? t('loginLog.title') : t('layout.myLoginLogs')" :subtitle="authStore.isAdmin ? t('loginLog.subtitle') : ''">
+      <Button icon="refresh" :loading="loading" @click="loadData(pagination.currentPage)">{{ t('common.refresh') }}</Button>
+    </PageHeader>
 
-.pager-row {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
-}
-</style>
+    <div class="ui-card overflow-hidden">
+      <div v-if="authStore.isAdmin" class="flex flex-wrap items-end gap-2 border-b border-line px-4 py-3">
+        <div class="w-40">
+          <Input v-model="filterUserId" type="number" min="0" :placeholder="t('loginLog.userFilterPlaceholder')" />
+        </div>
+        <Button size="sm" variant="primary" @click="loadData(1)">{{ t('common.search') }}</Button>
+        <Button size="sm" variant="ghost" @click="clearFilter">{{ t('common.all') }}</Button>
+      </div>
+
+      <Spinner v-if="loading && !items.length" :label="t('common.loading')" />
+      <EmptyState v-else-if="loadError" :title="t('common.loadFailed')" :description="loadError" icon="warning" retry @retry="loadData()" />
+      <EmptyState v-else-if="!items.length" :title="t('loginLog.empty')" icon="log" />
+
+      <div v-else class="overflow-x-auto">
+        <table class="min-w-full text-left text-sm">
+          <thead class="border-b border-line bg-canvas text-xs uppercase tracking-wide text-faint">
+            <tr>
+              <th class="px-4 py-2 font-medium">{{ t('loginLog.userId') }}</th>
+              <th class="px-4 py-2 font-medium">{{ t('loginLog.ip') }}</th>
+              <th class="px-4 py-2 font-medium">{{ t('loginLog.source') }}</th>
+              <th class="px-4 py-2 font-medium">{{ t('loginLog.result') }}</th>
+              <th class="px-4 py-2 font-medium">{{ t('loginLog.loginTime') }}</th>
+              <th class="px-4 py-2 font-medium">{{ t('loginLog.logoutTime') }}</th>
+              <th class="px-4 py-2 font-medium">{{ t('loginLog.duration') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in items" :key="item.id" class="border-b border-line last:border-0">
+              <td class="px-4 py-2 tabular">{{ item.user_id }}</td>
+              <td class="mono px-4 py-2 text-[13px]">{{ item.ip_addr || '—' }}</td>
+              <td class="px-4 py-2">{{ sourceLabel(item.login_source) }}</td>
+              <td class="px-4 py-2">
+                <StatusBadge :tone="item.success ? 'success' : 'danger'" :label="item.success ? t('loginLog.success') : t('loginLog.failed')" />
+              </td>
+              <td class="px-4 py-2 tabular">{{ formatDateTime(item.login_time) }}</td>
+              <td class="px-4 py-2 tabular">{{ item.logout_time ? formatDateTime(item.logout_time) : '—' }}</td>
+              <td class="px-4 py-2">{{ item.logout_time ? formatDuration(item.duration_secs) : t('loginLog.online') }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <Pagination
+        v-if="pagination.total > 0"
+        class="border-t border-line px-4"
+        :page="pagination.currentPage"
+        :page-size="pagination.pageSize"
+        :total="pagination.total"
+        @update:page="loadData($event)"
+        @update:page-size="pagination.pageSize = $event; loadData(1)"
+      />
+    </div>
+  </div>
+</template>

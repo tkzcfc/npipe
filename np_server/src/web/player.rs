@@ -1,3 +1,4 @@
+use super::list_query;
 use super::proto;
 use super::support::{
     auth_context, bool_text, forbidden_response, player_name, player_online, record_operation,
@@ -8,10 +9,13 @@ use crate::global::GLOBAL_DB_POOL;
 use crate::orm_entity::login_history;
 use crate::orm_entity::prelude::User;
 use crate::orm_entity::traffic_hourly;
+use crate::orm_entity::user;
 use actix_identity::Identity;
 use actix_web::{error, HttpResponse, Responder};
 use chrono::{Duration, Utc};
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{
+    ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+};
 
 fn traffic_start_hour(hours: u32) -> String {
     let hours = hours.max(1);
@@ -35,36 +39,118 @@ pub(super) async fn player_list(
     };
 
     let req = serde_json::from_str::<proto::PlayerListRequest>(&body)?;
-
-    let page_number = req.page_number;
-    let page_size = if req.page_size == 0 {
-        20
-    } else {
-        req.page_size.min(100)
+    let query = match list_query::parse_player_list_query(
+        &req.q,
+        req.enabled,
+        req.web_access,
+        req.online,
+    ) {
+        Ok(query) => query,
+        Err(msg) => {
+            return Ok(HttpResponse::Ok().json(proto::GeneralResponse { code: -1, msg }))
+        }
     };
 
+    let page_number = req.page_number;
+    let page_size = list_query::normalize_page_size(req.page_size);
     let db = GLOBAL_DB_POOL.get().unwrap();
-    let (users, total_count) = if auth.role == "admin" {
-        let paginator = User::find().paginate(db, page_size as u64);
-        let users = paginator
-            .fetch_page(page_number as u64)
+
+    let mut cond = Condition::all();
+    if auth.role != "admin" {
+        match auth.user_id {
+            Some(user_id) => {
+                cond = cond.add(user::Column::Id.eq(user_id));
+            }
+            None => {
+                return Ok(HttpResponse::Ok().json(proto::PlayerListResponse {
+                    players: vec![],
+                    cur_page_number: req.page_number,
+                    total_count: 0,
+                    query_version: proto::LIST_QUERY_VERSION,
+                }));
+            }
+        }
+    }
+    if let Some(ref q) = query.q {
+        let mut any = Condition::any().add(list_query::username_contains_expr(q));
+        if let Some(id) = list_query::parse_digit_id(q) {
+            any = any.add(user::Column::Id.eq(id));
+        }
+        cond = cond.add(any);
+    }
+    if let Some(enabled) = query.enabled {
+        cond = cond.add(user::Column::Enabled.eq(enabled));
+    }
+    if let Some(web_access) = query.web_access {
+        cond = cond.add(user::Column::WebAccess.eq(web_access));
+    }
+
+    let sql_err = |err: sea_orm::DbErr| error::ErrorInternalServerError(format!("sqlx error:{}", err));
+    let (users, total_count) = if query.needs_memory_scan() {
+        // SQL candidates first, then apply live online status, then paginate.
+        let mut users = User::find()
+            .filter(cond)
+            .order_by_asc(user::Column::Id)
+            .all(db)
             .await
-            .map_err(|err| error::ErrorInternalServerError(format!("sqlx error:{}", err)))?;
-        let total_count = User::find()
+            .map_err(sql_err)?;
+        if let Some(online) = query.online {
+            let want_online = online == 1;
+            let mut filtered = Vec::with_capacity(users.len());
+            for user in users {
+                if player_is_online(user.id).await == want_online {
+                    filtered.push(user);
+                }
+            }
+            users = filtered;
+        }
+        let total_count = users.len();
+        let page = list_query::slice_page(&users, page_number, page_size);
+        (page, total_count)
+    } else if query.has_filter() {
+        let finder = User::find()
+            .filter(cond)
+            .order_by_asc(user::Column::Id);
+        let total_count = finder
+            .clone()
             .count(db)
             .await
-            .map_err(|err| error::ErrorInternalServerError(format!("sqlx error:{}", err)))?;
+            .map_err(sql_err)? as usize;
+        let (start, end) = list_query::page_range(page_number, page_size, total_count);
+        let users = if start >= end {
+            vec![]
+        } else {
+            finder
+                .offset(start as u64)
+                .limit(page_size as u64)
+                .all(db)
+                .await
+                .map_err(sql_err)?
+        };
         (users, total_count)
-    } else if let Some(user_id) = auth.user_id {
-        let users = User::find_by_id(user_id)
-            .one(db)
-            .await
-            .map_err(|err| error::ErrorInternalServerError(format!("sqlx error:{}", err)))?
-            .into_iter()
-            .collect();
-        (users, 1)
+    } else if auth.role == "admin" {
+        // Unfiltered admin path keeps the historical query order.
+        let total_count = User::find().count(db).await.map_err(sql_err)? as usize;
+        let (start, end) = list_query::page_range(page_number, page_size, total_count);
+        let users = if start >= end {
+            vec![]
+        } else {
+            User::find()
+                .paginate(db, page_size as u64)
+                .fetch_page(page_number as u64)
+                .await
+                .map_err(sql_err)?
+        };
+        (users, total_count)
     } else {
-        (vec![], 0)
+        // Unfiltered self path: still honor pagination (page 0 returns the user).
+        let users: Vec<_> = User::find()
+            .filter(cond)
+            .all(db)
+            .await
+            .map_err(sql_err)?;
+        let total_count = users.len();
+        (list_query::slice_page(&users, page_number, page_size), total_count)
     };
 
     let mut players: Vec<proto::PlayerListItem> = Vec::new();
@@ -103,8 +189,17 @@ pub(super) async fn player_list(
     Ok(HttpResponse::Ok().json(proto::PlayerListResponse {
         players,
         cur_page_number: req.page_number,
-        total_count: total_count as usize,
+        total_count,
+        query_version: proto::LIST_QUERY_VERSION,
     }))
+}
+
+async fn player_is_online(player_id: u32) -> bool {
+    if let Some(p) = GLOBAL_MANAGER.player_manager.get_player(player_id) {
+        p.read().await.is_online()
+    } else {
+        false
+    }
 }
 
 pub(super) async fn remove_player(

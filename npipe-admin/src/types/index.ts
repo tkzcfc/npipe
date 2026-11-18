@@ -165,12 +165,18 @@ export interface DatabaseMaintenanceInfoResponse {
 export interface PlayerListRequest {
   page_number: number
   page_size: number
+  q?: string
+  enabled?: number
+  web_access?: number
+  online?: number
 }
 
 export interface PlayerListResponse {
   players: Player[]
   cur_page_number: number
   total_count: number
+  /** Present on servers that apply search/filter before pagination. Constant 1. */
+  query_version?: number
 }
 
 export interface PlayerAddRequest {
@@ -277,15 +283,26 @@ export interface TunnelDetail extends Tunnel {
   password: string
 }
 
+export type TunnelUserRole = 'any' | 'sender' | 'receiver'
+export type TunnelListenStatus = 'disabled' | 'offline' | 'listening' | 'failed' | 'unknown'
+
 export interface TunnelListRequest {
   page_number: number
   page_size: number
+  q?: string
+  tunnel_type?: number
+  enabled?: number
+  user_id?: number
+  user_role?: TunnelUserRole
+  listen_status?: TunnelListenStatus
 }
 
 export interface TunnelListResponse {
   tunnels: Tunnel[]
   cur_page_number: number
   total_count: number
+  /** Present on servers that apply search/filter before pagination. Constant 1. */
+  query_version?: number
 }
 
 export interface TunnelDetailRequest {

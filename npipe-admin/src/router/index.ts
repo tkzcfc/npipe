@@ -1,13 +1,14 @@
 import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
+import i18n from '@/locales'
 
 const routes: RouteRecordRaw[] = [
   {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/login/index.vue'),
-    meta: { requiresAuth: false, title: '登录' },
+    meta: { requiresAuth: false, titleKey: 'login.title' },
   },
   {
     path: '/',
@@ -19,43 +20,43 @@ const routes: RouteRecordRaw[] = [
         path: 'dashboard',
         name: 'Dashboard',
         component: () => import('@/views/dashboard/index.vue'),
-        meta: { title: '运行概览', icon: 'Odometer', requiresAuth: true, adminOnly: true },
+        meta: { titleKey: 'dashboard.title', requiresAuth: true, adminOnly: true },
       },
       {
         path: 'players',
         name: 'Players',
         component: () => import('@/views/players/index.vue'),
-        meta: { title: '用户管理', icon: 'User', requiresAuth: true },
+        meta: { titleKey: 'player.title', requiresAuth: true },
       },
       {
         path: 'players/:id',
         name: 'PlayerDetail',
         component: () => import('@/views/players/detail.vue'),
-        meta: { title: '用户详情', requiresAuth: true },
+        meta: { titleKey: 'player.detailTitle', requiresAuth: true },
       },
       {
         path: 'tunnels',
         name: 'Tunnels',
         component: () => import('@/views/tunnels/index.vue'),
-        meta: { title: '隧道管理', icon: 'Connection', requiresAuth: true },
+        meta: { titleKey: 'tunnel.title', requiresAuth: true },
       },
       {
         path: 'logs',
         name: 'LoginLogs',
         component: () => import('@/views/logins/index.vue'),
-        meta: { title: '登录日志', icon: 'Document', requiresAuth: true },
+        meta: { titleKey: 'loginLog.title', requiresAuth: true },
       },
       {
         path: 'operations',
         name: 'OperationLogs',
         component: () => import('@/views/operations/index.vue'),
-        meta: { title: '操作日志', icon: 'Tickets', requiresAuth: true, adminOnly: true },
+        meta: { titleKey: 'operationLog.title', requiresAuth: true, adminOnly: true },
       },
       {
         path: 'maintenance',
         name: 'Maintenance',
         component: () => import('@/views/maintenance/index.vue'),
-        meta: { title: '数据维护', icon: 'Tools', requiresAuth: true, adminOnly: true },
+        meta: { titleKey: 'maintenance.title', requiresAuth: true, adminOnly: true },
       },
     ],
   },
@@ -94,14 +95,15 @@ router.beforeEach(async (to, from) => {
     if (to.name === 'PlayerDetail' && !authStore.isAdmin && Number(to.params.id) !== authStore.currentUserId) {
       return { name: 'PlayerDetail', params: { id: authStore.currentUserId } }
     }
-  } else {
-    // On login page, if already logged in, redirect to dashboard
-    if (authStore.isLoggedIn) {
-      return { name: 'Dashboard' }
-    }
+  } else if (authStore.isLoggedIn) {
+    return authStore.isAdmin
+      ? { name: 'Dashboard' }
+      : { name: 'PlayerDetail', params: { id: authStore.currentUserId } }
   }
 
-  document.title = `${to.meta.title ? to.meta.title + ' - ' : ''}npipe Console`
+  const titleKey = typeof to.meta.titleKey === 'string' ? to.meta.titleKey : ''
+  const page = titleKey ? String(i18n.global.t(titleKey)) : ''
+  document.title = page ? `${page} · npipe Console` : 'npipe Console'
 })
 
 router.afterEach(() => {

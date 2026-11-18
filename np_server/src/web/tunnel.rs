@@ -1,3 +1,4 @@
+use super::list_query::{self, TunnelMatchInput};
 use super::proto;
 use super::support::{
     auth_context, bool_text, forbidden_response, player_online, record_operation, AuthContext,
@@ -20,44 +21,53 @@ pub(super) async fn tunnel_list(
     let auth = auth_context(identity).await?;
 
     let req = serde_json::from_str::<proto::TunnelListRequest>(&body)?;
-
-    let (tunnel_list, total_count) = if auth.role == "admin" {
-        GLOBAL_MANAGER
-            .tunnel_manager
-            .query_with_total(req.page_number, req.page_size)
-            .await
-    } else if let Some(user_id) = auth.user_id {
-        let page_size = if req.page_size == 0 {
-            20
-        } else {
-            req.page_size.min(100)
-        };
-        let tunnels: Vec<_> = GLOBAL_MANAGER
-            .tunnel_manager
-            .tunnels
-            .read()
-            .await
-            .iter()
-            .filter(|data| data.sender == user_id || data.receiver == user_id)
-            .cloned()
-            .collect();
-        let total_count = tunnels.len();
-        let start = req.page_number * page_size;
-        let end = (start + page_size).min(total_count);
-        let page = if start <= end {
-            tunnels[start..end].to_vec()
-        } else {
-            vec![]
-        };
-        (page, total_count)
-    } else {
-        (vec![], 0)
+    let query = match list_query::parse_tunnel_list_query(
+        &req.q,
+        req.tunnel_type,
+        req.enabled,
+        req.user_id,
+        &req.user_role,
+        &req.listen_status,
+    ) {
+        Ok(query) => query,
+        Err(msg) => {
+            return Ok(HttpResponse::Ok().json(proto::GeneralResponse { code: -1, msg }))
+        }
     };
 
-    // 收集所有涉及的用户 ID（排除 0 代表服务器），批量查一次用户名
+    if let Some(user_id) = query.user_id {
+        if auth.role != "admin" && auth.user_id != Some(user_id) {
+            return Ok(forbidden_response());
+        }
+    }
+
+    let page_number = req.page_number;
+    let page_size = list_query::normalize_page_size(req.page_size);
+
+    // Single snapshot of the in-memory tunnel set for a consistent page.
+    let snapshot: Vec<tunnel::Model> = GLOBAL_MANAGER
+        .tunnel_manager
+        .tunnels
+        .read()
+        .await
+        .iter()
+        .cloned()
+        .collect();
+
+    let visible: Vec<tunnel::Model> = if auth.role == "admin" {
+        snapshot
+    } else if let Some(user_id) = auth.user_id {
+        snapshot
+            .into_iter()
+            .filter(|data| data.sender == user_id || data.receiver == user_id)
+            .collect()
+    } else {
+        Vec::new()
+    };
+
     let user_ids: Vec<u32> = {
         let mut ids: std::collections::HashSet<u32> = std::collections::HashSet::new();
-        for data in &tunnel_list {
+        for data in &visible {
             if data.sender != 0 {
                 ids.insert(data.sender);
             }
@@ -80,21 +90,68 @@ pub(super) async fn tunnel_list(
             .collect()
     };
 
-    let mut tunnels: Vec<proto::TunnelListItem> = Vec::new();
+    let mut online_cache: HashMap<u32, bool> = HashMap::new();
+    async fn cached_online(cache: &mut HashMap<u32, bool>, player_id: u32) -> bool {
+        if let Some(value) = cache.get(&player_id) {
+            return *value;
+        }
+        let value = player_online(player_id).await;
+        cache.insert(player_id, value);
+        value
+    }
 
-    for data in tunnel_list {
-        let custom_mapping: HashMap<String, String> =
-            serde_json::from_str(&data.custom_mapping).map_or(HashMap::new(), |x| x);
-        let sender_online = player_online(data.sender).await;
-        let receiver_online = player_online(data.receiver).await;
-        let available = data.enabled == 1 && sender_online && receiver_online;
-        let (listen_status, listen_error) = listen_status_of(&data, receiver_online);
+    let mut enriched = Vec::with_capacity(visible.len());
+    for data in visible {
         let sender_name = user_name_map.get(&data.sender).cloned().unwrap_or_default();
         let receiver_name = user_name_map
             .get(&data.receiver)
             .cloned()
             .unwrap_or_default();
+        let sender_online = cached_online(&mut online_cache, data.sender).await;
+        let receiver_online = cached_online(&mut online_cache, data.receiver).await;
+        let (listen_status, listen_error) = listen_status_of(&data, receiver_online);
+        enriched.push((
+            data,
+            sender_name,
+            receiver_name,
+            sender_online,
+            receiver_online,
+            listen_status,
+            listen_error,
+        ));
+    }
 
+    if query.has_filter() {
+        enriched.retain(|(data, sender_name, receiver_name, _, _, listen_status, _)| {
+            list_query::tunnel_matches(
+                &TunnelMatchInput {
+                    id: data.id,
+                    source: &data.source,
+                    endpoint: &data.endpoint,
+                    description: &data.description,
+                    tunnel_type: data.tunnel_type,
+                    enabled: data.enabled,
+                    sender: data.sender,
+                    receiver: data.receiver,
+                    sender_name,
+                    receiver_name,
+                    listen_status,
+                },
+                &query,
+            )
+        });
+        enriched.sort_by_key(|(data, _, _, _, _, _, _)| data.id);
+    }
+
+    let total_count = enriched.len();
+    let page = list_query::slice_page(&enriched, page_number, page_size);
+
+    let mut tunnels: Vec<proto::TunnelListItem> = Vec::with_capacity(page.len());
+    for (data, sender_name, receiver_name, sender_online, receiver_online, listen_status, listen_error) in page
+    {
+        let custom_mapping: HashMap<String, String> =
+            serde_json::from_str(&data.custom_mapping).map_or(HashMap::new(), |x| x);
+        let available = data.enabled == 1 && sender_online && receiver_online;
         tunnels.push(proto::TunnelListItem {
             id: data.id,
             source: data.source,
@@ -115,15 +172,17 @@ pub(super) async fn tunnel_list(
             available,
             listen_status: listen_status.to_owned(),
             listen_error,
-        })
+        });
     }
 
     Ok(HttpResponse::Ok().json(proto::TunnelListResponse {
         tunnels,
         cur_page_number: req.page_number,
         total_count,
+        query_version: proto::LIST_QUERY_VERSION,
     }))
 }
+
 
 fn user_tunnel_allowed(auth: &AuthContext, sender: u32, receiver: u32) -> bool {
     auth.role == "admin"

@@ -1,26 +1,42 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { setLanguage, currentLocale } from '@/locales'
+import {
+  THEME_STORAGE_KEY,
+  applyResolvedTheme,
+  readThemeMode,
+  resolveTheme,
+  type ResolvedTheme,
+  type ThemeMode,
+} from '@/utils/theme'
+import type { LocaleCode } from '@/utils/locale'
 
-export type Theme = 'dark' | 'light'
+function prefersDark() {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches
+}
 
 export const useAppStore = defineStore('app', () => {
-  const theme = ref<Theme>((localStorage.getItem('theme') as Theme) ?? 'dark')
+  const themeMode = ref<ThemeMode>(typeof localStorage === 'undefined' ? 'system' : readThemeMode(localStorage))
+  const resolvedTheme = ref<ResolvedTheme>(resolveTheme(themeMode.value, typeof window === 'undefined' ? true : prefersDark()))
+  const locale = ref<LocaleCode>(currentLocale())
   const sidebarCollapsed = ref(false)
   const routeLoading = ref(false)
+  let media: MediaQueryList | null = null
 
-  function setTheme(t: Theme) {
-    theme.value = t
-    localStorage.setItem('theme', t)
-    document.documentElement.setAttribute('data-theme', t)
-    if (t === 'dark') {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-    }
+  function syncResolved() {
+    resolvedTheme.value = resolveTheme(themeMode.value, prefersDark())
+    applyResolvedTheme(resolvedTheme.value, themeMode.value)
   }
 
-  function toggleTheme() {
-    setTheme(theme.value === 'dark' ? 'light' : 'dark')
+  function setThemeMode(mode: ThemeMode) {
+    themeMode.value = mode
+    localStorage.setItem(THEME_STORAGE_KEY, mode)
+    syncResolved()
+  }
+
+  function setLocale(next: LocaleCode) {
+    setLanguage(next)
+    locale.value = next
   }
 
   function toggleSidebar() {
@@ -31,8 +47,29 @@ export const useAppStore = defineStore('app', () => {
     routeLoading.value = loading
   }
 
-  // init on creation
-  setTheme(theme.value)
+  function initThemeListener() {
+    syncResolved()
+    media = window.matchMedia('(prefers-color-scheme: dark)')
+    const onChange = () => {
+      if (themeMode.value === 'system') syncResolved()
+    }
+    media.addEventListener('change', onChange)
+    return () => media?.removeEventListener('change', onChange)
+  }
 
-  return { theme, sidebarCollapsed, routeLoading, setTheme, toggleTheme, toggleSidebar, setRouteLoading }
+  const isDark = computed(() => resolvedTheme.value === 'dark')
+
+  return {
+    themeMode,
+    resolvedTheme,
+    isDark,
+    locale,
+    sidebarCollapsed,
+    routeLoading,
+    setThemeMode,
+    setLocale,
+    toggleSidebar,
+    setRouteLoading,
+    initThemeListener,
+  }
 })

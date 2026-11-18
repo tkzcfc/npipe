@@ -1,119 +1,28 @@
-<template>
-  <div class="page-container">
-    <div class="page-head">
-      <div>
-        <h1>{{ $t('maintenance.title') }}</h1>
-        <p>{{ $t('maintenance.subtitle') }}</p>
-      </div>
-      <div class="maintenance-actions">
-        <el-button :icon="Refresh" :loading="maintenanceLoading" @click="loadMaintenanceInfo">
-          {{ $t('maintenance.refreshInfo') }}
-        </el-button>
-        <el-button type="danger" :icon="Delete" @click="cleanupDatabase">
-          {{ $t('maintenance.cleanup') }}
-        </el-button>
-      </div>
-    </div>
-
-    <section class="panel">
-      <el-form class="cleanup-form" :model="cleanupForm" label-position="top">
-        <el-form-item :label="$t('maintenance.loginHistoryKeepDays')">
-          <el-input-number
-            v-model="cleanupForm.login_history_keep_days"
-            :min="1"
-            :max="3650"
-            controls-position="right"
-            @change="loadMaintenanceInfo"
-          />
-        </el-form-item>
-        <el-form-item :label="$t('maintenance.operationLogKeepDays')">
-          <el-input-number
-            v-model="cleanupForm.operation_log_keep_days"
-            :min="1"
-            :max="3650"
-            controls-position="right"
-            @change="loadMaintenanceInfo"
-          />
-        </el-form-item>
-        <el-form-item :label="$t('maintenance.trafficHourlyKeepDays')">
-          <el-input-number
-            v-model="cleanupForm.traffic_hourly_keep_days"
-            :min="1"
-            :max="3650"
-            controls-position="right"
-            @change="loadMaintenanceInfo"
-          />
-        </el-form-item>
-      </el-form>
-
-      <el-table
-        v-loading="maintenanceLoading"
-        :data="maintenanceRows"
-        class="maintenance-table"
-        size="small"
-        style="width:100%;"
-      >
-        <el-table-column prop="name" :label="$t('maintenance.dataType')" min-width="120" />
-        <el-table-column prop="total" :label="$t('maintenance.totalCount')" width="130" align="right" />
-        <el-table-column :label="$t('maintenance.cleanupCount')" width="150" align="right">
-          <template #default="{ row }">
-            <el-tag :type="row.cleanup > 0 ? 'warning' : 'success'" size="small">{{ row.cleanup }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column :label="$t('maintenance.oldest')" min-width="170">
-          <template #default="{ row }">
-            <span>{{ formatDateTime(row.oldest) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column :label="$t('maintenance.newest')" min-width="170">
-          <template #default="{ row }">
-            <span>{{ formatDateTime(row.newest) }}</span>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <div v-if="cleanupResult" class="cleanup-result">
-        <span>{{ $t('maintenance.cleaned') }}</span>
-        <el-tag type="info">{{ $t('maintenance.loginHistory') }} {{ cleanupResult.login_history_deleted }}</el-tag>
-        <el-tag type="info">{{ $t('maintenance.operationLog') }} {{ cleanupResult.operation_log_deleted }}</el-tag>
-        <el-tag type="info">{{ $t('maintenance.trafficHourly') }} {{ cleanupResult.traffic_hourly_deleted }}</el-tag>
-      </div>
-    </section>
-
-    <ConfirmAction
-      v-model:visible="cleanupDialog.visible"
-      :title="$t('maintenance.confirmTitle')"
-      :message="$t('maintenance.confirm')"
-      :loading="cleanupDialog.loading"
-      :confirm-text="$t('maintenance.cleanup')"
-      :cancel-text="$t('common.cancel')"
-      confirm-type="danger"
-      :warning-text="$t('common.irreversible')"
-      @confirm="handleCleanupConfirm"
-    />
-  </div>
-</template>
-
 <script setup lang="ts">
-import { formatDateTime } from '@/utils/time'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Delete, Refresh } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
 import { operationApi } from '@/api'
-import ConfirmAction from '@/components/ConfirmAction.vue'
 import type { CleanupDatabaseResponse, DatabaseMaintenanceInfoResponse } from '@/types'
+import { formatDateTime } from '@/utils/time'
+import PageHeader from '@/components/PageHeader.vue'
+import SystemTabs from '@/components/SystemTabs.vue'
+import Button from '@/components/ui/Button.vue'
+import Field from '@/components/ui/Field.vue'
+import Input from '@/components/ui/Input.vue'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import Spinner from '@/components/ui/Spinner.vue'
+import { useToastStore } from '@/stores/toast'
 
 const { t } = useI18n()
+const toast = useToastStore()
 
-const maintenanceLoading = ref(false)
-const maintenanceInfo = ref<DatabaseMaintenanceInfoResponse | null>(null)
-const cleanupResult = ref<CleanupDatabaseResponse | null>(null)
-
-const cleanupDialog = reactive({
-  visible: false,
-  loading: false,
-})
+const loading = ref(false)
+const loadError = ref('')
+const info = ref<DatabaseMaintenanceInfoResponse | null>(null)
+const lastResult = ref<CleanupDatabaseResponse | null>(null)
+const confirmOpen = ref(false)
+const cleaning = ref(false)
 
 const cleanupForm = reactive({
   login_history_keep_days: 90,
@@ -121,103 +30,127 @@ const cleanupForm = reactive({
   traffic_hourly_keep_days: 90,
 })
 
-const maintenanceRows = computed(() => {
-  const info = maintenanceInfo.value
+const rows = computed(() => {
+  const data = info.value
   return [
     {
+      key: 'login',
       name: t('maintenance.loginHistory'),
-      total: info?.login_history.total_count ?? 0,
-      cleanup: info?.login_history.cleanup_count ?? 0,
-      oldest: info?.login_history.oldest ?? '',
-      newest: info?.login_history.newest ?? '',
+      keep: 'login_history_keep_days' as const,
+      total: data?.login_history.total_count ?? 0,
+      cleanup: data?.login_history.cleanup_count ?? 0,
+      oldest: data?.login_history.oldest ?? '',
+      newest: data?.login_history.newest ?? '',
     },
     {
+      key: 'ops',
       name: t('maintenance.operationLog'),
-      total: info?.operation_log.total_count ?? 0,
-      cleanup: info?.operation_log.cleanup_count ?? 0,
-      oldest: info?.operation_log.oldest ?? '',
-      newest: info?.operation_log.newest ?? '',
+      keep: 'operation_log_keep_days' as const,
+      total: data?.operation_log.total_count ?? 0,
+      cleanup: data?.operation_log.cleanup_count ?? 0,
+      oldest: data?.operation_log.oldest ?? '',
+      newest: data?.operation_log.newest ?? '',
     },
     {
+      key: 'traffic',
       name: t('maintenance.trafficHourly'),
-      total: info?.traffic_hourly.total_count ?? 0,
-      cleanup: info?.traffic_hourly.cleanup_count ?? 0,
-      oldest: info?.traffic_hourly.oldest ?? '',
-      newest: info?.traffic_hourly.newest ?? '',
+      keep: 'traffic_hourly_keep_days' as const,
+      total: data?.traffic_hourly.total_count ?? 0,
+      cleanup: data?.traffic_hourly.cleanup_count ?? 0,
+      oldest: data?.traffic_hourly.oldest ?? '',
+      newest: data?.traffic_hourly.newest ?? '',
     },
   ]
 })
 
-async function loadMaintenanceInfo() {
-  maintenanceLoading.value = true
+async function loadInfo() {
+  loading.value = true
+  loadError.value = ''
   try {
     const res = await operationApi.maintenanceInfo({ ...cleanupForm })
-    maintenanceInfo.value = res.data
+    info.value = res.data
+  } catch {
+    loadError.value = t('common.loadFailed')
   } finally {
-    maintenanceLoading.value = false
+    loading.value = false
   }
 }
 
-function cleanupDatabase() {
-  cleanupDialog.visible = true
-}
+let debounce: number | undefined
+watch(cleanupForm, () => {
+  window.clearTimeout(debounce)
+  debounce = window.setTimeout(() => loadInfo(), 400)
+}, { deep: true })
 
-async function handleCleanupConfirm() {
-  cleanupDialog.loading = true
+async function handleCleanup() {
+  cleaning.value = true
   try {
     const res = await operationApi.cleanupDatabase({ ...cleanupForm })
-    cleanupResult.value = res.data
-    ElMessage.success(t('maintenance.cleanupSuccess'))
-    cleanupDialog.visible = false
-    loadMaintenanceInfo()
+    lastResult.value = res.data
+    toast.success(t('maintenance.cleanupSuccess'))
+    confirmOpen.value = false
+    await loadInfo()
   } finally {
-    cleanupDialog.loading = false
+    cleaning.value = false
   }
 }
 
-onMounted(() => loadMaintenanceInfo())
+onMounted(() => loadInfo())
 </script>
 
-<style scoped lang="scss">
-.maintenance-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
+<template>
+  <div>
+    <SystemTabs />
+    <PageHeader :title="t('maintenance.title')" :subtitle="t('maintenance.subtitle')">
+      <Button icon="refresh" :loading="loading" @click="loadInfo">{{ t('maintenance.refreshInfo') }}</Button>
+      <Button variant="danger" @click="confirmOpen = true">{{ t('maintenance.cleanup') }}</Button>
+    </PageHeader>
 
-.cleanup-form {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
-  gap: 12px;
+    <p class="mb-4 text-sm text-muted">{{ t('maintenance.previewHint') }}</p>
 
-  :deep(.el-form-item) {
-    margin-bottom: 0;
-  }
+    <Spinner v-if="loading && !info" :label="t('common.loading')" />
+    <EmptyState v-else-if="loadError" :title="t('common.loadFailed')" :description="loadError" icon="warning" retry @retry="loadInfo" />
 
-  :deep(.el-input-number) {
-    width: 100%;
-  }
-}
+    <div v-else class="grid gap-4 xl:grid-cols-3">
+      <section v-for="row in rows" :key="row.key" class="ui-card p-5">
+        <h2 class="text-sm font-semibold">{{ row.name }}</h2>
+        <div class="mt-4">
+          <Field :label="t('maintenance.keepDays')">
+            <Input
+              :model-value="cleanupForm[row.keep]"
+              type="number"
+              min="1"
+              @update:model-value="cleanupForm[row.keep] = Math.max(1, Number($event) || 1)"
+            />
+          </Field>
+        </div>
+        <dl class="mt-4 space-y-2 text-sm">
+          <div class="flex justify-between"><dt class="text-muted">{{ t('maintenance.totalCount') }}</dt><dd class="tabular">{{ row.total }}</dd></div>
+          <div class="flex justify-between"><dt class="text-muted">{{ t('maintenance.cleanupCount') }}</dt><dd class="tabular text-[var(--danger)]">{{ row.cleanup }}</dd></div>
+          <div class="flex justify-between gap-3"><dt class="text-muted">{{ t('maintenance.oldest') }}</dt><dd class="tabular text-right">{{ row.oldest ? formatDateTime(row.oldest) : t('maintenance.emptyRange') }}</dd></div>
+          <div class="flex justify-between gap-3"><dt class="text-muted">{{ t('maintenance.newest') }}</dt><dd class="tabular text-right">{{ row.newest ? formatDateTime(row.newest) : t('maintenance.emptyRange') }}</dd></div>
+        </dl>
+      </section>
+    </div>
 
-.maintenance-table {
-  margin-top: 14px;
-}
+    <section v-if="lastResult" class="ui-card mt-4 p-5">
+      <h2 class="text-sm font-semibold">{{ t('maintenance.lastResult') }}</h2>
+      <dl class="mt-3 grid gap-2 text-sm sm:grid-cols-3">
+        <div><dt class="text-muted">{{ t('maintenance.loginHistory') }}</dt><dd class="tabular">{{ lastResult.login_history_deleted }}</dd></div>
+        <div><dt class="text-muted">{{ t('maintenance.operationLog') }}</dt><dd class="tabular">{{ lastResult.operation_log_deleted }}</dd></div>
+        <div><dt class="text-muted">{{ t('maintenance.trafficHourly') }}</dt><dd class="tabular">{{ lastResult.traffic_hourly_deleted }}</dd></div>
+      </dl>
+    </section>
 
-.cleanup-result {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 14px;
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-
-@media (max-width: 900px) {
-  .cleanup-form {
-    grid-template-columns: 1fr;
-  }
-}
-</style>
+    <ConfirmDialog
+      :open="confirmOpen"
+      :title="t('maintenance.confirmTitle')"
+      :message="t('maintenance.confirm')"
+      :loading="cleaning"
+      :confirm-text="t('maintenance.cleanup')"
+      tone="danger"
+      @update:open="confirmOpen = $event"
+      @confirm="handleCleanup"
+    />
+  </div>
+</template>

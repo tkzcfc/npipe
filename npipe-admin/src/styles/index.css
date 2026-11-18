@@ -1,0 +1,218 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root,
+:root[data-theme='light'] {
+  --bg: #f3f5f7;
+  --bg-card: #ffffff;
+  --bg-sidebar: #ffffff;
+  --bg-sidebar-hover: rgba(18, 23, 28, 0.06);
+  --bg-header: #ffffff;
+  --text: #12171c;
+  --text-secondary: #5c6770;
+  --text-muted: #8a939c;
+  --text-sidebar: #12171c;
+  --text-sidebar-muted: #5c6770;
+  --border: #e3e7eb;
+  --border-strong: #d0d5db;
+  --accent: #0e9f74;
+  --accent-hover: #0b8a64;
+  --accent-fg: #06281e;
+  --accent-bg: rgba(14, 159, 116, 0.1);
+  --success: #0e9f74;
+  --warning: #c4841d;
+  --danger: #d64545;
+  --info: #2f7fbf;
+  --shadow-sm: 0 1px 2px rgba(16, 21, 28, 0.05);
+  --shadow-md: 0 12px 32px rgba(16, 21, 28, 0.08);
+  --radius: 10px;
+  --sidebar-w: 232px;
+  --sidebar-w-collapsed: 76px;
+  color-scheme: light;
+}
+
+:root[data-theme='dark'],
+.dark {
+  --bg: #0b0f14;
+  --bg-card: #12181f;
+  --bg-sidebar: #080b0f;
+  --bg-sidebar-hover: rgba(255, 255, 255, 0.05);
+  --bg-header: #12181f;
+  --text: #e8eef3;
+  --text-secondary: #9aa5b1;
+  --text-muted: #6b7580;
+  --text-sidebar: #e8eef3;
+  --text-sidebar-muted: #8b96a1;
+  --border: #1e262f;
+  --border-strong: #2a3440;
+  --accent: #2ee6a6;
+  --accent-hover: #5bf0ba;
+  --accent-fg: #06281e;
+  --accent-bg: rgba(46, 230, 166, 0.12);
+  --success: #2ee6a6;
+  --warning: #e0a63a;
+  --danger: #f06a6a;
+  --info: #6aa0ff;
+  --shadow-sm: 0 1px 8px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 16px 40px rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: 'IBM Plex Sans', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  background: var(--accent-bg);
+  color: var(--text);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.mono {
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@layer components {
+  .ui-card {
+    @apply rounded-[10px] border border-line bg-surface shadow-soft;
+  }
+  .ui-kicker {
+    @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-faint;
+  }
+}
+
+
+.login-aurora {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.login-orb {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(40px);
+  opacity: 0.55;
+  will-change: transform;
+  animation: login-orb-drift 28s ease-in-out infinite;
+}
+
+.login-orb-a {
+  width: 42vw;
+  height: 42vw;
+  max-width: 520px;
+  max-height: 520px;
+  left: -8%;
+  top: -12%;
+  background: radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--accent) 70%, transparent), transparent 68%);
+  animation-duration: 26s;
+}
+
+.login-orb-b {
+  width: 36vw;
+  height: 36vw;
+  max-width: 420px;
+  max-height: 420px;
+  right: -6%;
+  top: 18%;
+  background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--info) 45%, transparent), transparent 70%);
+  animation-duration: 34s;
+  animation-delay: -8s;
+}
+
+.login-orb-c {
+  width: 50vw;
+  height: 28vw;
+  max-width: 640px;
+  max-height: 360px;
+  left: 20%;
+  bottom: -16%;
+  background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent) 28%, transparent), transparent 72%);
+  animation-duration: 32s;
+  animation-delay: -16s;
+}
+
+.login-grid {
+  pointer-events: none;
+  position: absolute;
+  inset: -20%;
+  opacity: 0.35;
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 48px 48px;
+  animation: login-grid-shift 48s linear infinite;
+  mask-image: radial-gradient(ellipse at center, black 35%, transparent 78%);
+}
+
+@keyframes login-orb-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  40% { transform: translate3d(4%, 6%, 0) scale(1.08); }
+  70% { transform: translate3d(-3%, 3%, 0) scale(0.96); }
+}
+
+@keyframes login-grid-shift {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-48px, -24px, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-orb,
+  .login-grid {
+    animation: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .login-orb {
+    filter: blur(32px);
+    opacity: 0.42;
+  }
+}

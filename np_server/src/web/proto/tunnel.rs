@@ -4,9 +4,27 @@ use std::collections::HashMap;
 /// 玩家列表请求
 #[derive(Serialize, Deserialize)]
 pub struct TunnelListRequest {
-    // 页码  从1开始
+    // 页码实际从 0 开始（历史注释有误，保持兼容）
     pub page_number: usize,
     pub page_size: usize,
+    /// 搜索描述、入口/出口地址、关联用户名；纯数字时同时匹配相关 ID。不搜索密码或代理认证用户名。
+    #[serde(default)]
+    pub q: Option<String>,
+    /// 通道类型：0=TCP, 1=UDP, 2=SOCKS5, 3=HTTP（与 InletProxyType 一致）
+    #[serde(default)]
+    pub tunnel_type: Option<i64>,
+    /// 启用状态，仅允许 0 或 1
+    #[serde(default)]
+    pub enabled: Option<i64>,
+    /// 按关联用户筛选
+    #[serde(default)]
+    pub user_id: Option<u32>,
+    /// 与 user_id 搭配：any / sender / receiver。单独出现视为非法。
+    #[serde(default)]
+    pub user_role: Option<String>,
+    /// disabled / offline / listening / failed / unknown
+    #[serde(default)]
+    pub listen_status: Option<String>,
 }
 
 /// 通道列表子项
@@ -74,6 +92,8 @@ pub struct TunnelListResponse {
     pub tunnels: Vec<TunnelListItem>,
     pub cur_page_number: usize,
     pub total_count: usize,
+    /// 查询能力版本，始终为 LIST_QUERY_VERSION，与是否携带过滤条件无关
+    pub query_version: u32,
 }
 
 /// 删除通道请求

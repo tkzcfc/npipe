@@ -1,5 +1,6 @@
 mod auth;
 mod dashboard;
+mod list_query;
 mod logs;
 mod maintenance;
 mod player;

@@ -1,30 +1,33 @@
 import { createI18n } from 'vue-i18n'
 import zhCN from './zh-CN'
 import enUS from './en-US'
+import { htmlLang, readLocale, type LocaleCode, LOCALE_STORAGE_KEY } from '@/utils/locale'
 
-// 类型定义：确保 zh-CN 和 en-US 的 key 完全一致
 type MessageSchema = typeof zhCN
 
-// 从 localStorage 读取用户语言偏好，默认中文
-const savedLang = localStorage.getItem('lang')
-const defaultLocale = (savedLang === 'en-US' || savedLang === 'zh-CN') ? savedLang : 'zh-CN'
+const initialLocale = typeof localStorage === 'undefined' ? 'zh-CN' : readLocale(localStorage)
 
 const i18n = createI18n<[MessageSchema], 'zh-CN' | 'en-US'>({
-  legacy: false,           // 使用 Composition API 模式
-  locale: defaultLocale,
+  legacy: false,
+  locale: initialLocale,
   fallbackLocale: 'zh-CN',
   messages: {
     'zh-CN': zhCN,
     'en-US': enUS,
   },
-  // 禁止控制台警告：允许在中文 locale 中回退到 key 本身
   silentTranslationWarn: true,
+  missingWarn: false,
+  fallbackWarn: false,
 })
 
 export default i18n
 
-/** 切换语言，同时持久化到 localStorage */
-export function setLanguage(lang: 'zh-CN' | 'en-US') {
-  ;(i18n.global.locale as any).value = lang
-  localStorage.setItem('lang', lang)
+export function setLanguage(lang: LocaleCode) {
+  ;(i18n.global.locale as unknown as { value: LocaleCode }).value = lang
+  localStorage.setItem(LOCALE_STORAGE_KEY, lang)
+  document.documentElement.setAttribute('lang', htmlLang(lang))
+}
+
+export function currentLocale(): LocaleCode {
+  return (i18n.global.locale as unknown as { value: LocaleCode }).value
 }

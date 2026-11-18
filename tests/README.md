@@ -40,6 +40,19 @@ python tests/transport_smoke.py
 python tests/transport_smoke.py --build
 ```
 
+
+### 0.2 管理后台列表查询接口测试
+
+在隔离的临时 SQLite 与 loopback 端口上启动 `np_server`，覆盖用户/隧道列表的全量搜索、筛选、分页、权限隔离与 `query_version` 兼容。不会使用或修改项目根目录的 `data.db`。
+
+```bash
+cargo build -p np_server
+python tests/admin_list_query_test.py
+
+# 若还没有 debug 二进制
+python tests/admin_list_query_test.py --build
+```
+
 ### 0.1 代理多连接压力测试
 
 自动启动临时 `np_server` + `np_client` + TCP Echo Server，创建 TCP 隧道，并发连接进行回显验证和压力统计。

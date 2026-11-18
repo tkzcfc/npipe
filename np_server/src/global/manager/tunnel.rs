@@ -343,6 +343,7 @@ impl TunnelManager {
 
     /// 查询通道，同时返回总条数
     /// 只加一次读锁，避免调用方再次加锁获取总数。
+    #[allow(dead_code)]
     pub async fn query_with_total(
         &self,
         page_number: usize,
@@ -355,14 +356,12 @@ impl TunnelManager {
         };
         let guard = self.tunnels.read().await;
         let total_count = guard.len();
-        let start = page_number * page_size;
-        let end = (start + page_size).min(total_count);
-        let page = if start <= end {
-            guard[start..end].to_vec()
-        } else {
-            vec![]
-        };
-        (page, total_count)
+        let start = page_number.saturating_mul(page_size);
+        if start >= total_count {
+            return (Vec::new(), total_count);
+        }
+        let end = start.saturating_add(page_size).min(total_count);
+        (guard[start..end].to_vec(), total_count)
     }
 }
 

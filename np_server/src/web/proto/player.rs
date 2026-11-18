@@ -4,9 +4,21 @@ use serde::{Deserialize, Serialize};
 /// 玩家列表回复
 #[derive(Serialize, Deserialize)]
 pub struct PlayerListRequest {
-    // 页码  从1开始
+    // 页码实际从 0 开始（历史注释有误，保持兼容）
     pub page_number: usize,
     pub page_size: usize,
+    /// 搜索用户名（大小写不敏感包含）；纯数字时同时精确匹配用户 ID
+    #[serde(default)]
+    pub q: Option<String>,
+    /// 启用状态，仅允许 0 或 1
+    #[serde(default)]
+    pub enabled: Option<i64>,
+    /// 后台访问权限，仅允许 0 或 1
+    #[serde(default)]
+    pub web_access: Option<i64>,
+    /// 在线状态，仅允许 0 或 1（基于实时内存数据，筛选后再分页）
+    #[serde(default)]
+    pub online: Option<i64>,
 }
 
 /// 玩家列表子项
@@ -30,6 +42,8 @@ pub struct PlayerListResponse {
     pub players: Vec<PlayerListItem>,
     pub cur_page_number: usize,
     pub total_count: usize,
+    /// 查询能力版本，始终为 LIST_QUERY_VERSION，与是否携带过滤条件无关
+    pub query_version: u32,
 }
 
 /// 删除玩家

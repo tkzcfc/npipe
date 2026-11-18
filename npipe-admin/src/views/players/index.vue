@@ -1,363 +1,221 @@
-<template>
-  <div class="page-container">
-    <div class="page-head">
-      <div>
-        <h1>{{ $t('player.title') }}</h1>
-        <p>{{ $t('player.subtitle') }}</p>
-      </div>
-    </div>
-
-    <section class="panel">
-      <!-- Toolbar -->
-      <div class="table-toolbar">
-        <div style="display: flex; gap: 8px;">
-          <el-button v-if="authStore.isAdmin" type="primary" :icon="Plus" @click="openAddDialog">{{ $t('player.add') }}</el-button>
-          <el-button :icon="Refresh" :loading="loading" @click="loadData(pagination.currentPage)">{{ $t('common.refresh') }}</el-button>
-        </div>
-        <el-input
-          v-model="searchText"
-          :placeholder="$t('player.searchPlaceholder')"
-          clearable
-          style="width: 220px;"
-          :prefix-icon="Search"
-          @input="onSearch"
-          @clear="onSearch"
-        />
-      </div>
-
-      <!-- Table -->
-      <el-table
-        v-loading="loading"
-        :data="displayedPlayers"
-        stripe
-        row-key="id"
-        style="width: 100%; margin-top: 16px;"
-      >
-        <template #empty>
-          <el-empty :description="loadError || '暂无用户数据'">
-            <el-button v-if="loadError" type="primary" :icon="Refresh" @click="loadData(pagination.currentPage)">
-              重试
-            </el-button>
-          </el-empty>
-        </template>
-        <el-table-column prop="id" :label="$t('player.table.id')" width="80" />
-        <el-table-column prop="username" :label="$t('player.table.username')" min-width="160">
-          <template #default="{ row }">
-            <div style="display:flex; align-items:center; gap:8px;">
-              <el-avatar :size="28" style="background: var(--accent); font-size: 13px; flex-shrink:0;">
-                {{ row.username.charAt(0).toUpperCase() }}
-              </el-avatar>
-              <span class="font-mono">{{ row.username }}</span>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column :label="$t('player.table.status')" width="110">
-          <template #default="{ row }">
-            <el-tag :type="row.enabled ? row.online ? 'success' : 'info' : 'danger'" size="small">
-              {{ row.enabled ? row.online ? $t('common.online') : $t('common.offline') : $t('player.disabled') }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column :label="$t('player.table.account')" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.enabled ? 'success' : 'danger'" size="small">
-              {{ row.enabled ? $t('player.enabled') : $t('player.disabled') }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column v-if="authStore.isAdmin" :label="$t('player.table.webAccess')" width="110">
-          <template #default="{ row }">
-            <el-tag :type="row.web_access ? 'success' : 'info'" size="small">
-              {{ row.web_access ? $t('player.allowed') : $t('player.notAllowed') }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="ip_addr" :label="$t('player.table.ip')" min-width="140">
-          <template #default="{ row }">
-            <span class="font-mono">{{ row.online ? row.ip_addr : '-' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column :label="$t('player.table.protocol')" width="100">
-          <template #default="{ row }">
-            <el-tag v-if="row.online && row.connection_protocol" size="small" effect="plain">
-              {{ row.connection_protocol.toUpperCase() }}
-            </el-tag>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column :label="$t('player.table.onlineTime')" min-width="170">
-          <template #default="{ row }">
-            <span>{{ row.online && row.online_time ? formatTime(row.online_time) : '-' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column :label="$t('player.table.totalTrafficIn')" min-width="120" align="right">
-          <template #default="{ row }">
-            <span class="font-mono">{{ formatBytes(row.total_bytes_in) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column :label="$t('player.table.totalTrafficOut')" min-width="120" align="right">
-          <template #default="{ row }">
-            <span class="font-mono">{{ formatBytes(row.total_bytes_out) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column :label="$t('player.table.actions')" width="240" fixed="right">
-          <template #default="{ row }">
-            <div class="row-actions">
-              <el-button size="small" type="primary" text :icon="View" @click="openDetailDialog(row)">
-                {{ $t('player.detail') }}
-              </el-button>
-              <template v-if="authStore.isAdmin">
-                <el-button
-                  size="small"
-                  text
-                  :type="row.enabled ? 'warning' : 'success'"
-                  :icon="row.enabled ? CircleClose : SuccessFilled"
-                  @click="handleToggleStatus(row)"
-                >
-                  {{ row.enabled ? $t('player.disable') : $t('player.enable') }}
-                </el-button>
-                <el-button
-                  size="small"
-                  text
-                  :icon="SwitchButton"
-                  :disabled="!row.online"
-                  @click="handleKick(row)"
-                >
-                  {{ $t('player.kick') }}
-                </el-button>
-              </template>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <!-- Pagination -->
-      <div style="margin-top: 16px; display:flex; justify-content:flex-end;">
-        <el-pagination
-          v-model:current-page="pagination.currentPage"
-          v-model:page-size="pagination.pageSize"
-          :total="pagination.total"
-          layout="total, prev, pager, next"
-          background
-          @current-change="loadData"
-        />
-      </div>
-    </section>
-
-    <!-- Add Dialog -->
-    <el-dialog
-      v-model="addDialog.visible"
-      :title="$t('player.addTitle')"
-      width="440px"
-      destroy-on-close
-    >
-      <el-form
-        ref="addFormRef"
-        :model="addDialog.form"
-        :rules="addRules"
-        label-width="80px"
-        @submit.prevent
-      >
-        <el-form-item :label="$t('player.username')" prop="username">
-          <el-input v-model="addDialog.form.username" :placeholder="$t('login.usernamePlaceholder')" />
-        </el-form-item>
-        <el-form-item :label="$t('player.password')" prop="password">
-          <el-input v-model="addDialog.form.password" type="password" show-password :placeholder="$t('login.passwordPlaceholder')" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="addDialog.visible = false">{{ $t('common.cancel') }}</el-button>
-        <el-button type="primary" :loading="addDialog.loading" @click="handleAdd">{{ $t('common.ok') }}</el-button>
-      </template>
-    </el-dialog>
-
-    <ConfirmAction
-      v-model:visible="actionDialog.visible"
-      :title="actionDialog.title"
-      :message="actionDialog.message"
-      :details="actionDialog.details"
-      :loading="actionDialog.loading"
-      :confirm-text="actionDialog.confirmText"
-      :cancel-text="$t('common.cancel')"
-      :confirm-type="actionDialog.confirmType"
-      @confirm="handleActionConfirm"
-    />
-  </div>
-</template>
-
 <script setup lang="ts">
-import { formatDateTime } from '@/utils/time'
-import { ref, reactive, computed, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
-import { CircleClose, Plus, Refresh, Search, SuccessFilled, SwitchButton, View } from '@element-plus/icons-vue'
 import { playerApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
-import ConfirmAction from '@/components/ConfirmAction.vue'
-import type { Player } from '@/types'
+import { useToastStore } from '@/stores/toast'
+import type { Player, PlayerListRequest } from '@/types'
+import { accountScope, loadFilters, saveFilters } from '@/utils/filters'
+import { clampQuery, isApiErrorPayload, supportsListQuery } from '@/utils/listQuery'
+import { messageFromResult, type ApiResultLike, messageFromUnknown } from '@/utils/apiMessage'
+import { useUnsavedGuard } from '@/composables/useUnsavedGuard'
+import PageHeader from '@/components/PageHeader.vue'
+import StatusBadge from '@/components/StatusBadge.vue'
+import Button from '@/components/ui/Button.vue'
+import Input from '@/components/ui/Input.vue'
+import Select from '@/components/ui/Select.vue'
+import Field from '@/components/ui/Field.vue'
+import Dialog from '@/components/ui/Dialog.vue'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import Spinner from '@/components/ui/Spinner.vue'
+import Pagination from '@/components/ui/Pagination.vue'
+import Switch from '@/components/ui/Switch.vue'
+import ActionMenu from '@/components/ui/ActionMenu.vue'
 
 const { t } = useI18n()
 const router = useRouter()
 const authStore = useAuthStore()
+const toast = useToastStore()
 
-// ── State ───────────────────────────────────────────────────────────────────
 const loading = ref(false)
 const loadError = ref('')
 const players = ref<Player[]>([])
 const searchText = ref('')
+const enabledFilter = ref<'all' | '0' | '1'>('all')
+const onlineFilter = ref<'all' | '0' | '1'>('all')
+const webAccessFilter = ref<'all' | '0' | '1'>('all')
+const serverQuery = ref(false)
 let loadSeq = 0
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+const pagination = reactive({ currentPage: 1, pageSize: 20, total: 0 })
+let persistReady = false
 
-const pagination = reactive({
-  currentPage: 1,
-  pageSize: 20,
-  total: 0,
-})
-
-// ── Computed ─────────────────────────────────────────────────────────────────
 const displayedPlayers = computed(() => {
-  if (!searchText.value) return players.value
-  const q = searchText.value.toLowerCase()
-  return players.value.filter(p => p.username.toLowerCase().includes(q))
+  if (serverQuery.value) return players.value
+  return players.value.filter((p) => {
+    if (enabledFilter.value !== 'all' && (p.enabled ? '1' : '0') !== enabledFilter.value) return false
+    if (onlineFilter.value !== 'all' && (p.online ? '1' : '0') !== onlineFilter.value) return false
+    if (webAccessFilter.value !== 'all' && (p.web_access ? '1' : '0') !== webAccessFilter.value) return false
+    const q = searchText.value.trim().toLowerCase()
+    if (!q) return true
+    return p.username.toLowerCase().includes(q) || String(p.id).includes(q)
+  })
 })
 
-// ── Data ─────────────────────────────────────────────────────────────────────
+const enabledOptions = computed(() => [
+  { label: t('common.all'), value: 'all' },
+  { label: t('player.enabledOnly'), value: '1' },
+  { label: t('player.disabledOnly'), value: '0' },
+])
+const onlineOptions = computed(() => [
+  { label: t('common.all'), value: 'all' },
+  { label: t('player.onlineOnly'), value: '1' },
+  { label: t('player.offlineOnly'), value: '0' },
+])
+const webAccessOptions = computed(() => [
+  { label: t('common.all'), value: 'all' },
+  { label: t('player.webAccessOn'), value: '1' },
+  { label: t('player.webAccessOff'), value: '0' },
+])
+
+function restoreFilters() {
+  const saved = loadFilters<{
+    search?: string
+    enabled?: typeof enabledFilter.value
+    online?: typeof onlineFilter.value
+    webAccess?: typeof webAccessFilter.value
+    page?: number
+    pageSize?: number
+  }>(
+    'players',
+    accountScope(authStore.role, authStore.currentUserId),
+  )
+  if (!saved) return 1
+  if (saved.search != null) searchText.value = saved.search
+  if (saved.enabled) enabledFilter.value = saved.enabled
+  if (saved.online) onlineFilter.value = saved.online
+  if (saved.webAccess) webAccessFilter.value = saved.webAccess
+  if (saved.pageSize) pagination.pageSize = saved.pageSize
+  return saved.page || 1
+}
+
+watch([searchText, enabledFilter, onlineFilter, webAccessFilter, () => pagination.currentPage, () => pagination.pageSize], () => {
+  if (!persistReady) return
+  saveFilters('players', accountScope(authStore.role, authStore.currentUserId), {
+    search: searchText.value,
+    enabled: enabledFilter.value,
+    online: onlineFilter.value,
+    webAccess: webAccessFilter.value,
+    page: pagination.currentPage,
+    pageSize: pagination.pageSize,
+  })
+})
+
+function buildPlayerRequest(page: number): PlayerListRequest {
+  const req: PlayerListRequest = { page_number: page - 1, page_size: pagination.pageSize }
+  const q = clampQuery(searchText.value)
+  if (q) req.q = q
+  if (enabledFilter.value !== 'all') req.enabled = Number(enabledFilter.value)
+  if (onlineFilter.value !== 'all') req.online = Number(onlineFilter.value)
+  if (webAccessFilter.value !== 'all') req.web_access = Number(webAccessFilter.value)
+  return req
+}
+
 async function loadData(page = 1) {
   const seq = ++loadSeq
   loading.value = true
   loadError.value = ''
   pagination.currentPage = page
   try {
-    const res = await playerApi.list({ page_number: page - 1, page_size: pagination.pageSize })
+    const res = await playerApi.list(buildPlayerRequest(page))
     if (seq !== loadSeq) return
-    players.value          = res.data.players ?? []
-    pagination.total       = res.data.total_count ?? 0
+    if (isApiErrorPayload(res.data)) {
+      loadError.value = messageFromResult(res.data as ApiResultLike, t, t('common.loadFailed'))
+      players.value = []
+      pagination.total = 0
+      serverQuery.value = false
+      return
+    }
+    serverQuery.value = supportsListQuery(res.data)
+    players.value = res.data.players ?? []
+    pagination.total = res.data.total_count ?? 0
   } catch {
     if (seq !== loadSeq) return
-    loadError.value = '数据加载失败，请稍后刷新重试'
+    loadError.value = t('common.loadFailed')
   } finally {
     if (seq === loadSeq) loading.value = false
   }
 }
 
-function onSearch() {
-  /* client-side filter, no extra request needed */
+function scheduleSearch() {
+  if (!persistReady) return
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => { loadData(1) }, 300)
 }
 
-// ── Add ───────────────────────────────────────────────────────────────────────
-const addFormRef  = ref<FormInstance>()
-const addDialog = reactive({
-  visible: false,
-  loading: false,
-  form: { username: '', password: '' },
+watch([enabledFilter, onlineFilter, webAccessFilter], () => {
+  if (persistReady) loadData(1)
 })
-const addRules: FormRules = {
-  username: [{ required: true, message: () => t('player.validation.usernameRequired'), trigger: 'blur' },
-             { min: 1, max: 30, message: () => t('player.validation.username'), trigger: 'blur' }],
-  password: [{ required: true, message: () => t('player.validation.passwordRequired'), trigger: 'blur' },
-             { min: 1, max: 15, message: () => t('player.validation.password'), trigger: 'blur' }],
+
+onBeforeUnmount(() => {
+  if (searchTimer) clearTimeout(searchTimer)
+})
+
+const addOpen = ref(false)
+const addLoading = ref(false)
+const addForm = reactive({ username: '', password: '' })
+const addErrors = reactive({ username: '', password: '' })
+const addDirty = computed(() => addOpen.value && (!!addForm.username || !!addForm.password))
+const { confirmDiscard } = useUnsavedGuard(addDirty, () => t('common.unsavedLeave'))
+
+function openAdd() {
+  addForm.username = ''
+  addForm.password = ''
+  addErrors.username = ''
+  addErrors.password = ''
+  addOpen.value = true
+}
+
+function onAddOpen(next: boolean) {
+  if (!next && !confirmDiscard()) return
+  addOpen.value = next
+}
+
+function validateAdd() {
+  addErrors.username = !addForm.username.trim()
+    ? t('player.validation.usernameRequired')
+    : (addForm.username.length > 30 ? t('player.validation.username') : '')
+  addErrors.password = !addForm.password
+    ? t('player.validation.passwordRequired')
+    : (addForm.password.length > 15 ? t('player.validation.password') : '')
+  return !addErrors.username && !addErrors.password
+}
+
+async function handleAdd() {
+  if (addLoading.value || !validateAdd()) return
+  addLoading.value = true
+  try {
+    const res = await playerApi.add({ ...addForm })
+    if (res.data.code === 0) {
+      toast.success(t('player.addSuccess'))
+      addOpen.value = false
+      loadData(1)
+    } else {
+      toast.error(messageFromResult(res.data, t, t('common.failed')))
+    }
+  } catch (err) {
+    toast.error(messageFromUnknown(err, t, t('common.failed')))
+  } finally {
+    addLoading.value = false
+  }
 }
 
 type PlayerAction = 'status' | 'kick'
-
-const actionDialog = reactive({
-  visible: false,
+const action = reactive({
+  open: false,
   loading: false,
-  action: '' as PlayerAction | '',
+  kind: '' as PlayerAction | '',
   target: null as Player | null,
   title: '',
   message: '',
   confirmText: '',
-  confirmType: 'warning' as 'primary' | 'success' | 'warning' | 'danger',
+  tone: 'warning' as 'warning' | 'success' | 'danger',
   details: [] as { label: string; value: string | number }[],
 })
 
-function openAddDialog() {
-  addDialog.form = { username: '', password: '' }
-  addDialog.visible = true
-}
-
-async function handleAdd() {
-  const valid = await addFormRef.value?.validate().catch(() => false)
-  if (!valid) return
-  addDialog.loading = true
-  try {
-    const res = await playerApi.add(addDialog.form)
-    if (res.data.code === 0) {
-      ElMessage.success(t('player.addSuccess'))
-      addDialog.visible = false
-      loadData(1)
-    } else {
-      ElMessage.error(res.data.msg || t('common.failed'))
-    }
-  } finally {
-    addDialog.loading = false
-  }
-}
-
-function openDetailDialog(player: Player) {
-  router.push({ name: 'PlayerDetail', params: { id: player.id } })
-}
-
-function handleToggleStatus(player: Player) {
-  if (!authStore.isAdmin) return
-  actionDialog.action = 'status'
-  actionDialog.target = player
-  actionDialog.title = t(player.enabled ? 'player.disableTitle' : 'player.enableTitle')
-  actionDialog.message = t(player.enabled ? 'player.disableConfirm' : 'player.enableConfirm', { name: player.username })
-  actionDialog.confirmText = t(player.enabled ? 'common.disable' : 'common.enable')
-  actionDialog.confirmType = player.enabled ? 'warning' : 'success'
-  actionDialog.details = playerDetails(player)
-  actionDialog.loading = false
-  actionDialog.visible = true
-}
-
-function handleKick(player: Player) {
-  if (!authStore.isAdmin) return
-  actionDialog.action = 'kick'
-  actionDialog.target = player
-  actionDialog.title = t('player.kickTitle')
-  actionDialog.message = t('player.kickConfirm', { name: player.username })
-  actionDialog.confirmText = t('common.confirm')
-  actionDialog.confirmType = 'warning'
-  actionDialog.details = playerDetails(player)
-  actionDialog.loading = false
-  actionDialog.visible = true
-}
-
-async function handleActionConfirm() {
-  const target = actionDialog.target
-  if (!target || !actionDialog.action) return
-
-  actionDialog.loading = true
-  try {
-    if (actionDialog.action === 'status') {
-      const wasEnabled = target.enabled
-      const res = await playerApi.updateStatus({ id: target.id, enabled: wasEnabled ? 0 : 1 })
-      if (res.data.code === 0) {
-        ElMessage.success(wasEnabled ? t('player.disableSuccess') : t('player.enableSuccess'))
-        actionDialog.visible = false
-        loadData(pagination.currentPage)
-      } else {
-        ElMessage.error(res.data.msg || t('common.failed'))
-      }
-      return
-    }
-
-    const res = await playerApi.kick({ id: target.id })
-    if (res.data.code === 0) {
-      ElMessage.success(t('player.kickSuccess'))
-      actionDialog.visible = false
-      loadData(pagination.currentPage)
-    } else {
-      ElMessage.error(res.data.msg || t('common.failed'))
-    }
-  } finally {
-    actionDialog.loading = false
-  }
-}
-
-function playerDetails(player: Player) {
+function detailsOf(player: Player) {
   return [
     { label: t('common.id'), value: player.id },
     { label: t('player.username'), value: player.username },
@@ -365,46 +223,205 @@ function playerDetails(player: Player) {
   ]
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-function formatTime(ts: number): string {
-  return formatDateTime(ts)
+function handleToggleStatus(player: Player) {
+  if (!authStore.isAdmin) return
+  action.kind = 'status'
+  action.target = player
+  action.title = t(player.enabled ? 'player.disableTitle' : 'player.enableTitle')
+  action.message = t(player.enabled ? 'player.disableConfirm' : 'player.enableConfirm', { name: player.username })
+  action.confirmText = t(player.enabled ? 'common.disable' : 'common.enable')
+  action.tone = player.enabled ? 'warning' : 'success'
+  action.details = detailsOf(player)
+  action.loading = false
+  action.open = true
 }
 
-function formatBytes(n: number): string {
-  if (n < 1024) return n + ' B'
-  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB'
-  if (n < 1073741824) return (n / 1048576).toFixed(1) + ' MB'
-  return (n / 1073741824).toFixed(2) + ' GB'
+function handleKick(player: Player) {
+  if (!authStore.isAdmin) return
+  action.kind = 'kick'
+  action.target = player
+  action.title = t('player.kickTitle')
+  action.message = t('player.kickConfirm', { name: player.username })
+  action.confirmText = t('common.confirm')
+  action.tone = 'warning'
+  action.details = detailsOf(player)
+  action.loading = false
+  action.open = true
 }
 
+async function handleActionConfirm() {
+  const target = action.target
+  if (!target || !action.kind || action.loading) return
+  action.loading = true
+  try {
+    if (action.kind === 'status') {
+      const wasEnabled = target.enabled
+      const res = await playerApi.updateStatus({ id: target.id, enabled: wasEnabled ? 0 : 1 })
+      if (res.data.code === 0) {
+        toast.success(wasEnabled ? t('player.disableSuccess') : t('player.enableSuccess'))
+        action.open = false
+        loadData(pagination.currentPage)
+      } else {
+        toast.error(messageFromResult(res.data, t, t('common.failed')))
+      }
+      return
+    }
+    const res = await playerApi.kick({ id: target.id })
+    if (res.data.code === 0) {
+      toast.success(t('player.kickSuccess'))
+      action.open = false
+      loadData(pagination.currentPage)
+    } else {
+      toast.error(messageFromResult(res.data, t, t('common.failed')))
+    }
+  } catch (err) {
+    toast.error(messageFromUnknown(err, t, t('common.failed')))
+  } finally {
+    action.loading = false
+  }
+}
 
-onMounted(() => loadData(1))
+function goDetail(player: Player) {
+  router.push({ name: 'PlayerDetail', params: { id: player.id } })
+}
+
+onMounted(async () => {
+  const page = restoreFilters()
+  persistReady = true
+  await loadData(page)
+})
 </script>
 
-<style scoped lang="scss">
-.table-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-}
+<template>
+  <div>
+    <PageHeader :title="t('player.title')" :subtitle="t('player.subtitle')">
+      <Button icon="refresh" :loading="loading" @click="loadData(pagination.currentPage)">{{ t('common.refresh') }}</Button>
+      <Button v-if="authStore.isAdmin" variant="primary" icon="plus" @click="openAdd">{{ t('player.add') }}</Button>
+    </PageHeader>
 
-.row-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 2px;
-  white-space: nowrap;
+    <div class="ui-card overflow-hidden">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
+        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <div class="w-32">
+            <Select :model-value="enabledFilter" @update:model-value="enabledFilter = String($event) as typeof enabledFilter">
+              <option v-for="opt in enabledOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </Select>
+          </div>
+          <div class="w-32">
+            <Select :model-value="onlineFilter" @update:model-value="onlineFilter = String($event) as typeof onlineFilter">
+              <option v-for="opt in onlineOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </Select>
+          </div>
+          <div class="w-36">
+            <Select :model-value="webAccessFilter" @update:model-value="webAccessFilter = String($event) as typeof webAccessFilter">
+              <option v-for="opt in webAccessOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </Select>
+          </div>
+        </div>
+        <div class="w-full max-w-xs">
+          <Input :model-value="searchText" :placeholder="t('player.searchPlaceholder')" @update:model-value="searchText = String($event); scheduleSearch()" />
+        </div>
+      </div>
+      <p class="border-b border-line px-4 py-2 text-xs text-faint">{{ serverQuery ? t('common.serverFilterActive') : t('common.currentPageFilterHint') }}</p>
 
-  :deep(.el-button + .el-button) {
-    margin-left: 0;
-  }
-}
+      <Spinner v-if="loading && !players.length" :label="t('common.loading')" />
+      <EmptyState v-else-if="loadError" :title="t('common.loadFailed')" :description="loadError" icon="warning" retry @retry="loadData(pagination.currentPage)" />
+      <EmptyState v-else-if="!displayedPlayers.length" :title="searchText ? t('common.noResults') : t('player.empty')" icon="user" />
 
-@media (max-width: 720px) {
-  .table-toolbar {
-    align-items: stretch;
-  }
-}
-</style>
+      <div v-else>
+        <div class="divide-y divide-line md:hidden">
+          <article v-for="player in displayedPlayers" :key="player.id" class="flex items-center justify-between gap-3 px-4 py-4">
+            <button type="button" class="min-w-0 text-left" @click="goDetail(player)">
+              <p class="truncate font-medium">{{ player.username }}</p>
+              <p class="mt-1"><StatusBadge :pulse="player.online" :tone="player.online ? 'success' : 'neutral'" :label="player.online ? t('common.online') : t('common.offline')" /></p>
+            </button>
+            <div class="flex shrink-0 items-center gap-2">
+              <Switch v-if="authStore.isAdmin" :model-value="player.enabled" @update:model-value="handleToggleStatus(player)" />
+              <Button size="sm" variant="ghost" @click="goDetail(player)">{{ t('player.detail') }}</Button>
+              <ActionMenu
+                v-if="authStore.isAdmin && player.online"
+                :items="[{ key: 'kick', label: t('player.kick'), icon: 'kick', tone: 'danger' }]"
+                @select="handleKick(player)"
+              />
+            </div>
+          </article>
+        </div>
+
+        <div class="hidden overflow-x-auto md:block">
+          <table class="min-w-full text-left text-sm">
+            <thead class="border-b border-line bg-canvas text-xs uppercase tracking-wide text-faint">
+              <tr>
+                <th class="px-4 py-3 font-medium">{{ t('player.table.username') }}</th>
+                <th class="px-4 py-3 font-medium">{{ t('player.table.status') }}</th>
+                <th class="px-4 py-3 font-medium">{{ t('player.table.account') }}</th>
+                <th class="px-4 py-3 font-medium">{{ t('common.actions') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="player in displayedPlayers" :key="player.id" class="border-b border-line last:border-0 hover:bg-canvas/80">
+                <td class="px-4 py-3.5">
+                  <button type="button" class="text-left font-medium hover:text-accent" @click="goDetail(player)">{{ player.username }}</button>
+                  <p class="text-xs text-faint">#{{ player.id }}</p>
+                </td>
+                <td class="px-4 py-3.5">
+                  <StatusBadge :pulse="player.online" :tone="player.online ? 'success' : 'neutral'" :label="player.online ? t('common.online') : t('common.offline')" />
+                </td>
+                <td class="px-4 py-3.5">
+                  <Switch v-if="authStore.isAdmin" :model-value="player.enabled" @update:model-value="handleToggleStatus(player)" />
+                  <StatusBadge v-else :tone="player.enabled ? 'success' : 'danger'" :label="player.enabled ? t('player.enabled') : t('player.disabled')" />
+                </td>
+                <td class="px-4 py-3.5">
+                  <div class="flex items-center gap-1">
+                    <Button size="sm" variant="ghost" @click="goDetail(player)">{{ t('player.detail') }}</Button>
+                    <ActionMenu
+                      v-if="authStore.isAdmin && player.online"
+                      :items="[{ key: 'kick', label: t('player.kick'), icon: 'kick', tone: 'danger' }]"
+                      @select="handleKick(player)"
+                    />
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <Pagination
+        v-if="pagination.total > 0"
+        class="border-t border-line px-4"
+        :page="pagination.currentPage"
+        :page-size="pagination.pageSize"
+        :total="pagination.total"
+        @update:page="loadData($event)"
+        @update:page-size="pagination.pageSize = $event; loadData(1)"
+      />
+    </div>
+
+    <Dialog :open="addOpen" :title="t('player.addTitle')" @update:open="onAddOpen">
+      <div class="space-y-3">
+        <Field :label="t('player.username')" required :error="addErrors.username">
+          <Input v-model="addForm.username" :invalid="!!addErrors.username" autocomplete="off" />
+        </Field>
+        <Field :label="t('player.password')" required :error="addErrors.password">
+          <Input v-model="addForm.password" type="password" :invalid="!!addErrors.password" autocomplete="new-password" />
+        </Field>
+      </div>
+      <template #footer>
+        <Button variant="secondary" :disabled="addLoading" @click="onAddOpen(false)">{{ t('common.cancel') }}</Button>
+        <Button variant="primary" :loading="addLoading" @click="handleAdd">{{ t('common.confirm') }}</Button>
+      </template>
+    </Dialog>
+
+    <ConfirmDialog
+      :open="action.open"
+      :title="action.title"
+      :message="action.message"
+      :details="action.details"
+      :loading="action.loading"
+      :confirm-text="action.confirmText"
+      :tone="action.tone"
+      @update:open="action.open = $event"
+      @confirm="handleActionConfirm"
+    />
+  </div>
+</template>

@@ -1,17 +1,20 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi } from '@/api'
+import { clearAllFilters } from '@/utils/filters'
 
 export const useAuthStore = defineStore('auth', () => {
   const isLoggedIn = ref(false)
-  const role = ref<string>('')        // 'admin' | 'user' | ''
+  const role = ref<string>('')
   const currentUserId = ref<number>(0)
   const username = ref<string>('')
   let checkAuthPromise: Promise<boolean> | null = null
 
   const isAdmin = computed(() => role.value === 'admin')
   const isUser = computed(() => role.value === 'user')
-  const displayName = computed(() => username.value || (isAdmin.value ? 'Admin' : currentUserId.value ? `User #${currentUserId.value}` : 'User'))
+  const displayName = computed(() =>
+    username.value || (isAdmin.value ? 'Admin' : currentUserId.value ? `User #${currentUserId.value}` : 'User'),
+  )
 
   async function checkAuth(): Promise<boolean> {
     if (checkAuthPromise) return checkAuthPromise
@@ -37,20 +40,24 @@ export const useAuthStore = defineStore('auth', () => {
     return checkAuthPromise
   }
 
-  async function login(loginUsername: string, password: string): Promise<{ ok: boolean; msg: string }> {
+  async function login(loginUsername: string, password: string): Promise<{ ok: boolean; msg: string; code: number }> {
     const res = await authApi.login({ username: loginUsername, password })
     if (res.data.code === 0) {
       isLoggedIn.value = true
       role.value = res.data.role ?? ''
       currentUserId.value = res.data.user_id ?? 0
       username.value = res.data.username ?? loginUsername
-      return { ok: true, msg: res.data.msg }
+      return { ok: true, msg: res.data.msg, code: 0 }
     }
-    return { ok: false, msg: res.data.msg }
+    return { ok: false, msg: res.data.msg, code: res.data.code }
   }
 
   async function logout() {
-    try { await authApi.logout() } catch { /* ignore */ }
+    try {
+      await authApi.logout()
+    } catch {
+      /* ignore */
+    }
     clearSession()
   }
 
@@ -59,8 +66,8 @@ export const useAuthStore = defineStore('auth', () => {
     role.value = ''
     currentUserId.value = 0
     username.value = ''
+    clearAllFilters()
   }
 
   return { isLoggedIn, role, currentUserId, username, displayName, isAdmin, isUser, checkAuth, login, logout, clearSession }
 })
-
